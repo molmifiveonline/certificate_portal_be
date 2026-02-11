@@ -11,10 +11,38 @@ const getPermissionsByRoleId = async (roleId) => {
   return rows.map((row) => row.slug);
 };
 
-const getAllPermissions = async () => {
-  const [rows] = await pool.query(
-    "SELECT * FROM permissions ORDER BY group_name, name",
-  );
+const getAllPermissions = async (page, limit) => {
+  let query = "SELECT * FROM permissions ORDER BY group_name, name";
+  const params = [];
+
+  // Check if pagination is requested (both page and limit must be present)
+  if (page && limit) {
+    // Get total count first
+    const [countResult] = await pool.query(
+      "SELECT COUNT(*) as total FROM permissions",
+    );
+    const total = countResult[0].total;
+
+    // Add LIMIT and OFFSET
+    const offset = (page - 1) * limit;
+    query += " LIMIT ? OFFSET ?";
+    params.push(parseInt(limit), parseInt(offset));
+
+    const [rows] = await pool.query(query, params);
+
+    return {
+      data: rows,
+      meta: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // No pagination, return all rows as array (backward compatibility or default)
+  const [rows] = await pool.query(query);
   return rows;
 };
 

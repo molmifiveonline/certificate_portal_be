@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const UserDao = require("../dao/userDao");
 const TrainerDao = require("../dao/trainerDao");
+const LogDao = require("../dao/LogDao");
 const db = require("../config/db");
 const { Parser } = require("json2csv");
 const fs = require("fs");
@@ -13,14 +14,12 @@ const createTrainer = async (req, res) => {
       last_name,
       email,
       password,
-      mobile,
-      rank,
-      specialization,
       prefix,
-      officer,
-      other_officer,
       designation,
       nationality,
+      rank,
+      officer,
+      other_officer,
     } = req.body;
 
     // Validation
@@ -66,17 +65,30 @@ const createTrainer = async (req, res) => {
       last_name,
       email,
       password: hashedPassword,
-      mobile,
+      mobile: req.body.mobile, // Added mobile as it was missing in original dist
       prefix,
-      officer,
-      other_officer,
       designation,
       nationality,
       rank,
-      specialization,
       digital_signature,
       profile_photo,
+      officer,
+      other_officer,
     });
+
+    // Log the action
+    // Assuming req.user is populated by auth middleware for the admin creating the trainer
+    // If not, we might need to check how this route is protected.
+    // Proceeding assuming req.user.id exists as it's a protected route
+    if (req.user && req.user.id) {
+      await LogDao.createLog({
+        user_id: req.user.id,
+        action: "CREATE_TRAINER",
+        details: `Created trainer: ${first_name} ${last_name} (${email})`,
+        ip_address: req.ip,
+        user_agent: req.get("User-Agent"),
+      });
+    }
 
     res.status(201).json({ message: "Trainer created successfully", userId });
   } catch (error) {
@@ -87,9 +99,16 @@ const createTrainer = async (req, res) => {
 
 const getAllTrainers = async (req, res) => {
   try {
-    const { search, limit, offset } = req.query;
-    const trainers = await TrainerDao.getAllTrainers({ search, limit, offset });
-    res.status(200).json(trainers);
+    const { search, page, limit, designation, sort_by, sort_order } = req.query;
+    const result = await TrainerDao.getAllTrainers({
+      search,
+      page,
+      limit,
+      designation,
+      sort_by,
+      sort_order,
+    });
+    res.status(200).json(result);
   } catch (error) {
     console.error("Get All Trainers Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -136,6 +155,17 @@ const updateTrainer = async (req, res) => {
         .json({ message: "Trainer not found or no changes made" });
     }
 
+    // Log the action
+    if (req.user && req.user.id) {
+      await LogDao.createLog({
+        user_id: req.user.id,
+        action: "UPDATE_TRAINER",
+        details: `Updated trainer ID: ${id}`,
+        ip_address: req.ip,
+        user_agent: req.get("User-Agent"),
+      });
+    }
+
     res.status(200).json({ message: "Trainer updated successfully" });
   } catch (error) {
     console.error("Update Trainer Error:", error);
@@ -149,6 +179,18 @@ const deleteTrainer = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: "Trainer not found" });
     }
+
+    // Log the action
+    if (req.user && req.user.id) {
+      await LogDao.createLog({
+        user_id: req.user.id,
+        action: "DELETE_TRAINER",
+        details: `Deleted trainer ID: ${req.params.id}`,
+        ip_address: req.ip,
+        user_agent: req.get("User-Agent"),
+      });
+    }
+
     res.status(200).json({ message: "Trainer deleted successfully" });
   } catch (error) {
     console.error("Delete Trainer Error:", error);
@@ -158,20 +200,18 @@ const deleteTrainer = async (req, res) => {
 
 const exportTrainers = async (req, res) => {
   try {
-    const trainers = await TrainerDao.getAllTrainers();
+    const result = await TrainerDao.getAllTrainers();
+    const trainers = result.data;
 
     const fields = [
       "id",
       "first_name",
       "last_name",
       "email",
-      "mobile",
       "prefix",
-      "officer",
       "designation",
       "nationality",
       "rank",
-      "specialization",
     ];
     const opts = { fields };
 
