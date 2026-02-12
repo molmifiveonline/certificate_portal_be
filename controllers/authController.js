@@ -28,6 +28,16 @@ const registerCandidate = async (req, res) => {
       alternate_mobile,
       indos_number,
       registration_type,
+      designation,
+      vessel_type,
+      last_vessel_name,
+      next_vessel_name,
+      manning_company,
+      sign_on_date,
+      sign_off_date,
+      officer,
+      seaman_book_no,
+      profile_image,
     } = req.body;
 
     // Basic Validation
@@ -93,7 +103,18 @@ const registerCandidate = async (req, res) => {
       whatsapp_number,
       alternate_mobile,
       indos_number,
+      indos_number,
       registration_type,
+      designation,
+      vessel_type,
+      last_vessel_name,
+      next_vessel_name,
+      manning_company,
+      sign_on_date,
+      sign_off_date,
+      officer,
+      seaman_book_no,
+      profile_image,
     });
 
     // Send Welcome Email
@@ -166,6 +187,15 @@ const registerCandidate = async (req, res) => {
                         <p><strong>Seaman Book No.:</strong> -</p>
                         <p><strong>WhatsApp Number:</strong> ${whatsapp_number || "-"}</p>
                         <p><strong>Alternate Number:</strong> ${alternate_mobile || "-"}</p>
+                        <p><strong>Designation:</strong> ${designation || "-"}</p>
+                        <p><strong>Vessel Type:</strong> ${vessel_type || "-"}</p>
+                        <p><strong>Last Vessel Name:</strong> ${last_vessel_name || "-"}</p>
+                        <p><strong>Next Vessel Name:</strong> ${next_vessel_name || "-"}</p>
+                        <p><strong>Manning Company:</strong> ${manning_company || "-"}</p>
+                        <p><strong>Sign On Date:</strong> ${sign_on_date || "-"}</p>
+                        <p><strong>Sign Off Date:</strong> ${sign_off_date || "-"}</p>
+                        <p><strong>Officer:</strong> ${officer || "-"}</p>
+                        <p><strong>Seaman Book No:</strong> ${seaman_book_no || "-"}</p>
                     </div>
                     
                     <h3>Account Information</h3>

@@ -3,13 +3,27 @@ const LogDao = require("../dao/LogDao");
 
 const getAllCandidates = async (req, res) => {
   try {
-    const { search, page, limit, sort_by, sort_order } = req.query;
+    const {
+      search,
+      page,
+      limit,
+      sort_by,
+      sort_order,
+      manager,
+      rank,
+      nationality,
+      status,
+    } = req.query;
     const result = await CandidateDao.getAllCandidates({
       search,
       page,
       limit,
       sort_by,
       sort_order,
+      manager,
+      rank,
+      nationality,
+      status,
     });
     res.status(200).json(result);
   } catch (error) {
@@ -111,6 +125,16 @@ const exportCandidates = async (req, res) => {
       "rank",
       "whatsapp_number",
       "registration_type",
+      "designation",
+      "vessel_type",
+      "last_vessel_name",
+      "next_vessel_name",
+      "manning_company",
+      "sign_on_date",
+      "sign_off_date",
+      "officer",
+      "seaman_book_no",
+      "profile_image",
       "created_at",
     ];
 
