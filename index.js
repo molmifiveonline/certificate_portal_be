@@ -18,12 +18,18 @@ const menuRoutes = require("./routes/menuRoutes");
 const permissionRoutes = require("./routes/permissionRoutes");
 const trainerRoutes = require("./routes/trainerRoutes");
 const logRoutes = require("./routes/logRoutes");
+const hotelDetailRoutes = require("./routes/hotelDetailRoutes");
+const locationRoutes = require("./routes/locationRoutes");
+const candidateRoutes = require("./routes/candidateRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/admin", permissionRoutes);
 app.use("/api/trainer", trainerRoutes);
 app.use("/api/log-history", logRoutes);
+app.use("/api/hotel-details", hotelDetailRoutes);
+app.use("/api/locations", locationRoutes);
+app.use("/api/candidate", candidateRoutes);
 
 // Static files
 const path = require("path");

@@ -15,12 +15,19 @@ class UserDao {
   }
 
   static async createUser(userData) {
-    const { role_id, first_name, last_name, email, password, mobile } =
-      userData;
+    const {
+      role_id,
+      first_name,
+      last_name,
+      email,
+      password,
+      mobile,
+      status = 1,
+    } = userData;
     const userId = uuidv4();
     const [result] = await db.query(
-      "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [userId, role_id, first_name, last_name, email, password, mobile],
+      "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [userId, role_id, first_name, last_name, email, password, mobile, status],
     );
     return userId;
   }
@@ -43,13 +50,23 @@ class UserDao {
       alternate_mobile,
       indos_number,
       registration_type,
+      designation,
+      vessel_type,
+      last_vessel_name,
+      next_vessel_name,
+      manning_company,
+      sign_on_date,
+      sign_off_date,
+      officer,
+      seaman_book_no,
+      profile_image,
     } = profileData;
 
     const profileId = uuidv4();
     const [result] = await db.query(
       `INSERT INTO candidate_profiles 
-      (id, user_id, middle_name, prefix, gender, dob, nationality, passport_no, employee_id, manager, other_manager, rank, other_rank, whatsapp_number, alternate_mobile, indos_number, registration_type) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, user_id, middle_name, prefix, gender, dob, nationality, passport_no, employee_id, manager, other_manager, rank, other_rank, whatsapp_number, alternate_mobile, indos_number, registration_type, designation, vessel_type, last_vessel_name, next_vessel_name, manning_company, sign_on_date, sign_off_date, officer, seaman_book_no, profile_image) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         profileId,
         user_id,
@@ -68,6 +85,16 @@ class UserDao {
         alternate_mobile,
         indos_number,
         registration_type,
+        designation,
+        vessel_type,
+        last_vessel_name,
+        next_vessel_name,
+        manning_company,
+        sign_on_date,
+        sign_off_date,
+        officer,
+        seaman_book_no,
+        profile_image,
       ],
     );
     return profileId;

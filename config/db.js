@@ -7,8 +7,18 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 50,
   queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+});
+
+pool.on("acquire", (connection) => {
+  // console.log("Connection %d acquired", connection.threadId);
+});
+
+pool.on("release", (connection) => {
+  // console.log("Connection %d released", connection.threadId);
 });
 
 module.exports = pool;

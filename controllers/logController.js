@@ -38,14 +38,25 @@ const createLog = async (req, res) => {
 
 const getLogs = async (req, res) => {
   try {
-    // Optional: Add pagination and filters from query params
-    // const { page = 1, limit = 10, userId } = req.query;
+    let page = parseInt(req.query.page) || 1;
+    let limit = parseInt(req.query.limit) || 10;
+    let search = req.query.search || "";
+    let userId = req.query.userId;
+
+    // Handle case where frontend sends params nested in userId object
+    if (userId && typeof userId === "object") {
+      page = parseInt(userId.page) || page;
+      limit = parseInt(userId.limit) || limit;
+      search = userId.search || search;
+      // If userId was just a container for params, actual userId filter might not exist or be inside
+      userId = userId.id || null;
+    }
 
     let logs;
-    if (req.query.userId) {
-      logs = await LogDao.getLogsByUserId(req.query.userId);
+    if (userId) {
+      logs = await LogDao.getLogsByUserId(userId, page, limit, search);
     } else {
-      logs = await LogDao.getLogs();
+      logs = await LogDao.getLogs(page, limit, search);
     }
 
     res.json(logs);

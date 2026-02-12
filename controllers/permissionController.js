@@ -1,10 +1,12 @@
 const permissionDao = require("../dao/permissionDao");
 const roleDao = require("../dao/roleDao");
+const LogDao = require("../dao/LogDao");
 const { ok, error } = require("../utils/responseHandler");
 
 const getAllPermissions = async (req, res) => {
   try {
-    const permissions = await permissionDao.getAllPermissions();
+    const { page, limit } = req.query;
+    const permissions = await permissionDao.getAllPermissions(page, limit);
     return ok(res, "Permissions fetched successfully", permissions);
   } catch (err) {
     console.error("Get All Permissions Error:", err);
@@ -14,7 +16,8 @@ const getAllPermissions = async (req, res) => {
 
 const getAllRoles = async (req, res) => {
   try {
-    const roles = await roleDao.getAllRoles();
+    const { page, limit } = req.query;
+    const roles = await roleDao.getAllRoles(page, limit);
     return ok(res, "Roles fetched successfully", roles);
   } catch (err) {
     console.error("Get All Roles Error:", err);
@@ -43,6 +46,18 @@ const updateRolePermissions = async (req, res) => {
     }
 
     await permissionDao.updateRolePermissions(roleId, permissionIds);
+
+    // Log the action
+    if (req.user && req.user.id) {
+      await LogDao.createLog({
+        user_id: req.user.id,
+        action: "UPDATE_ROLE_PERMISSIONS",
+        details: `Updated permissions for role ID: ${roleId}`,
+        ip_address: req.ip,
+        user_agent: req.get("User-Agent"),
+      });
+    }
+
     return ok(res, "Role permissions updated successfully");
   } catch (err) {
     console.error("Update Role Permissions Error:", err);
