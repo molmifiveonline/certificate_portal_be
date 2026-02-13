@@ -21,6 +21,8 @@ const logRoutes = require("./routes/logRoutes");
 const hotelDetailRoutes = require("./routes/hotelDetailRoutes");
 const locationRoutes = require("./routes/locationRoutes");
 const candidateRoutes = require("./routes/candidateRoutes");
+const feedbackCategoryRoutes = require("./routes/feedbackCategoryRoutes");
+const feedbackQuestionRoutes = require("./routes/feedbackQuestionRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
@@ -30,6 +32,12 @@ app.use("/api/log-history", logRoutes);
 app.use("/api/hotel-details", hotelDetailRoutes);
 app.use("/api/locations", locationRoutes);
 app.use("/api/candidate", candidateRoutes);
+app.use("/api/feedback-categories", feedbackCategoryRoutes);
+app.use("/api/feedback-questions", feedbackQuestionRoutes);
+
+// Feedback Answers
+const feedbackAnswerRoutes = require("./routes/feedbackAnswerRoutes");
+app.use("/api/feedback-answers", feedbackAnswerRoutes);
 
 // Static files
 const path = require("path");
