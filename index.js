@@ -1,9 +1,9 @@
+const dotenv = require("dotenv");
+dotenv.config();
+
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const db = require("./config/db");
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -23,6 +23,7 @@ const locationRoutes = require("./routes/locationRoutes");
 const candidateRoutes = require("./routes/candidateRoutes");
 const feedbackCategoryRoutes = require("./routes/feedbackCategoryRoutes");
 const feedbackQuestionRoutes = require("./routes/feedbackQuestionRoutes");
+const feedbackFormRoutes = require("./routes/feedbackFormRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
@@ -34,10 +35,19 @@ app.use("/api/locations", locationRoutes);
 app.use("/api/candidate", candidateRoutes);
 app.use("/api/feedback-categories", feedbackCategoryRoutes);
 app.use("/api/feedback-questions", feedbackQuestionRoutes);
+app.use("/api/feedback-forms", feedbackFormRoutes);
 
 // Feedback Answers
 const feedbackAnswerRoutes = require("./routes/feedbackAnswerRoutes");
 app.use("/api/feedback-answers", feedbackAnswerRoutes);
+
+// Master Courses
+const masterCourseRoutes = require("./routes/masterCourseRoutes");
+app.use("/api/master-courses", masterCourseRoutes);
+
+// Active Courses
+const activeCourseRoutes = require("./routes/activeCourseRoutes");
+app.use("/api/courses", activeCourseRoutes);
 
 // Static files
 const path = require("path");

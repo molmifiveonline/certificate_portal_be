@@ -13,6 +13,7 @@ const getAllCandidates = async (req, res) => {
       rank,
       nationality,
       status,
+      registration_type,
     } = req.query;
     const result = await CandidateDao.getAllCandidates({
       search,
@@ -24,6 +25,7 @@ const getAllCandidates = async (req, res) => {
       rank,
       nationality,
       status,
+      registration_type,
     });
     res.status(200).json(result);
   } catch (error) {
