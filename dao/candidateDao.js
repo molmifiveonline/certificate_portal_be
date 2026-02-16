@@ -37,6 +37,11 @@ class CandidateDao {
       params.push(filters.nationality);
     }
 
+    if (filters.registration_type) {
+      baseQuery += ` AND cp.registration_type = ?`;
+      params.push(filters.registration_type);
+    }
+
     // Status Filter Logic
     if (
       filters.status !== undefined &&

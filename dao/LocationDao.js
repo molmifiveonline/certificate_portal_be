@@ -72,6 +72,7 @@ class LocationDao {
     const id = uuidv4();
     const {
       location_name,
+      type,
       short_code,
       email,
       phone_number,
@@ -80,10 +81,11 @@ class LocationDao {
     } = data;
 
     await db.query(
-      "INSERT INTO locations (id, location_name, short_code, email, phone_number, address, google_map_link) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO locations (id, location_name, type, short_code, email, phone_number, address, google_map_link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [
         id,
         location_name,
+        type || "Inhouse" /** Default to Inhouse if not provided */,
         short_code,
         email,
         phone_number,
@@ -98,6 +100,7 @@ class LocationDao {
   static async updateLocation(id, data) {
     const {
       location_name,
+      type,
       short_code,
       email,
       phone_number,
@@ -106,9 +109,10 @@ class LocationDao {
     } = data;
 
     await db.query(
-      "UPDATE locations SET location_name = ?, short_code = ?, email = ?, phone_number = ?, address = ?, google_map_link = ? WHERE id = ?",
+      "UPDATE locations SET location_name = ?, type = ?, short_code = ?, email = ?, phone_number = ?, address = ?, google_map_link = ? WHERE id = ?",
       [
         location_name,
+        type,
         short_code,
         email,
         phone_number,
