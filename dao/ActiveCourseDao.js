@@ -17,6 +17,8 @@ class ActiveCourseDao {
       description = null,
       start_date,
       end_date,
+      start_time = null,
+      end_time = null,
       type_of_location = null,
       location_id = null,
       other_location = null,
@@ -27,16 +29,19 @@ class ActiveCourseDao {
       secondary_trainer_ids = null,
       whatsapp_link = null,
       zoom_link = null,
+      zoom_username = null,
+      zoom_password = null,
     } = data;
 
     const query = `
             INSERT INTO courses (
                 id, course_id, master_course_id, master_course_name, topic, course_name, 
-                description, start_date, end_date, type_of_location, location_id, 
+                description, start_date, end_date, start_time, end_time, type_of_location, location_id, 
                 other_location, course_type, remarks, status, course_level, 
-                primary_trainer_id, secondary_trainer_ids, whatsapp_link, zoom_link
+                primary_trainer_id, secondary_trainer_ids, whatsapp_link, zoom_link,
+                zoom_username, zoom_password
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Initiated', ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Initiated', ?, ?, ?, ?, ?, ?, ?)
         `;
 
     const params = [
@@ -49,6 +54,8 @@ class ActiveCourseDao {
       description,
       start_date,
       end_date,
+      start_time,
+      end_time,
       type_of_location,
       location_id,
       other_location,
@@ -59,6 +66,8 @@ class ActiveCourseDao {
       secondary_trainer_ids,
       whatsapp_link,
       zoom_link,
+      zoom_username,
+      zoom_password,
     ];
 
     await pool.execute(query, params);

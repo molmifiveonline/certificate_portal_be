@@ -65,7 +65,7 @@ const createTrainer = async (req, res) => {
       last_name,
       email,
       password: hashedPassword,
-      mobile: req.body.mobile, // Added mobile as it was missing in original dist
+      mobile: req.body.mobile,
       prefix,
       designation,
       nationality,
@@ -77,9 +77,6 @@ const createTrainer = async (req, res) => {
     });
 
     // Log the action
-    // Assuming req.user is populated by auth middleware for the admin creating the trainer
-    // If not, we might need to check how this route is protected.
-    // Proceeding assuming req.user.id exists as it's a protected route
     if (req.user && req.user.id) {
       await LogDao.createLog({
         user_id: req.user.id,

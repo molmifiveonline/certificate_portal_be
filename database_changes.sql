@@ -133,3 +133,102 @@ ALTER TABLE `courses` ADD COLUMN `topic` VARCHAR(255) NOT NULL AFTER `master_cou
 -- ---------------------------------------------------------
 -- Added material_link column to master_course table
 ALTER TABLE `master_course` ADD COLUMN `material_link` TEXT DEFAULT NULL AFTER `remarks`;
+
+-- Create missing courses_enrollment table
+CREATE TABLE IF NOT EXISTS `courses_enrollment` (
+  `id` char(36) NOT NULL,
+  `course_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `status` varchar(50) DEFAULT 'Active',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `courses_enrollment_course_id` (`course_id`),
+  KEY `courses_enrollment_candidate_id` (`candidate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Create missing course_attendance table
+CREATE TABLE IF NOT EXISTS `course_attendance` (
+  `id` char(36) NOT NULL,
+  `course_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `attendance_date` date DEFAULT NULL,
+  `status` varchar(50) DEFAULT 'Present',
+  `absent_reasons` text DEFAULT NULL,
+  `certificate_issue_date` date DEFAULT NULL,
+  `certificate_expiry_date` date DEFAULT NULL,
+  `mark_as_read` tinyint(1) DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `course_attendance_course_id` (`course_id`),
+  KEY `course_attendance_candidate_id` (`candidate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-17
+-- ---------------------------------------------------------
+-- Added question_bank table
+CREATE TABLE IF NOT EXISTS `question_bank` (
+  `id` varchar(36) NOT NULL,
+  `master_course_id` varchar(36) DEFAULT NULL,
+  `question` text DEFAULT NULL,
+  `type_of_test` varchar(255) DEFAULT NULL COMMENT '1=Pre, 2=Post, 3=Daily',
+  `option_a` text DEFAULT NULL,
+  `option_b` text DEFAULT NULL,
+  `option_c` text DEFAULT NULL,
+  `option_d` text DEFAULT NULL,
+  `correct_option` varchar(255) DEFAULT NULL,
+  `image` varchar(255) DEFAULT NULL,
+  `opt_img_a` varchar(255) DEFAULT NULL,
+  `opt_img_b` varchar(255) DEFAULT NULL,
+  `opt_img_c` varchar(255) DEFAULT NULL,
+  `opt_img_d` varchar(255) DEFAULT NULL,
+  `status` int(11) DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-17
+-- ---------------------------------------------------------
+-- Create assessment_results table for storing submitted assessments
+CREATE TABLE IF NOT EXISTS `assessment_results` (
+  `id` char(36) NOT NULL,
+  `assessment_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `course_id` char(36) NOT NULL,
+  `score` decimal(5,2) DEFAULT 0.00,
+  `total_questions` int(11) DEFAULT 0,
+  `correct_answers` int(11) DEFAULT 0,
+  `status` varchar(50) DEFAULT 'Completed',
+  `attempt_number` int(11) DEFAULT 1,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `assessment_results_assessment_id` (`assessment_id`),
+  KEY `assessment_results_candidate_id` (`candidate_id`),
+  KEY `assessment_results_course_id` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Create assessment_answers table for storing individual question answers
+CREATE TABLE IF NOT EXISTS `assessment_answers` (
+  `id` char(36) NOT NULL,
+  `assessment_result_id` char(36) NOT NULL,
+  `question_id` char(36) NOT NULL,
+  `selected_option` varchar(50) DEFAULT NULL,
+  `is_correct` tinyint(1) DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `assessment_answers_result_id` (`assessment_result_id`),
+  KEY `assessment_answers_question_id` (`question_id`),
+  CONSTRAINT `assessment_answers_result_fk` FOREIGN KEY (`assessment_result_id`) REFERENCES `assessment_results` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-17
+-- ---------------------------------------------------------
+-- Added start_time, end_time, zoom_username, zoom_password to courses table
+ALTER TABLE `courses`
+  ADD COLUMN `start_time` TIME DEFAULT NULL AFTER `end_date`,
+  ADD COLUMN `end_time` TIME DEFAULT NULL AFTER `start_time`,
+  ADD COLUMN `zoom_username` VARCHAR(255) DEFAULT NULL AFTER `zoom_link`,
+  ADD COLUMN `zoom_password` VARCHAR(255) DEFAULT NULL AFTER `zoom_username`;

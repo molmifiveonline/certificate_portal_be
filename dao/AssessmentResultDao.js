@@ -1,0 +1,181 @@
+const pool = require("../config/db");
+const { v4: uuidv4 } = require("uuid");
+
+class AssessmentResultDao {
+  /**
+   * Get distinct courses that have at least one submitted assessment result.
+   */
+  static async getCoursesWithSubmissions(search = "", page = 1, limit = 10) {
+    const offset = (page - 1) * limit;
+
+    let baseWhere = `WHERE ar.status = 'Completed'`;
+    const params = [];
+
+    if (search) {
+      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ?)`;
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT ar.course_id) as totalCount
+      FROM assessment_results ar
+      LEFT JOIN courses c ON ar.course_id = c.id
+      ${baseWhere}
+    `;
+    const [countResult] = await pool.execute(countQuery, params);
+    const totalCount = countResult[0].totalCount;
+
+    const dataQuery = `
+      SELECT 
+        c.id as course_id,
+        c.course_id as course_code,
+        c.course_name,
+        a.type_of_test,
+        COUNT(DISTINCT ar.candidate_id) as total_submissions
+      FROM assessment_results ar
+      LEFT JOIN courses c ON ar.course_id = c.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      ${baseWhere}
+      GROUP BY c.id, c.course_id, c.course_name, a.type_of_test
+      ORDER BY MAX(ar.created_at) DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const dataParams = [...params, limit.toString(), offset.toString()];
+    const [rows] = await pool.execute(dataQuery, dataParams);
+
+    return {
+      data: rows,
+      totalCount,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(totalCount / limit),
+    };
+  }
+
+  /**
+   * Get all candidate submissions for a specific course.
+   */
+  static async getSubmissionsByCourse(
+    courseId,
+    search = "",
+    page = 1,
+    limit = 10,
+  ) {
+    const offset = (page - 1) * limit;
+
+    let baseWhere = `WHERE ar.course_id = ? AND ar.status = 'Completed'`;
+    const params = [courseId];
+
+    if (search) {
+      baseWhere += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+
+    const countQuery = `
+      SELECT COUNT(*) as totalCount
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      ${baseWhere}
+    `;
+    const [countResult] = await pool.execute(countQuery, params);
+    const totalCount = countResult[0].totalCount;
+
+    const dataQuery = `
+      SELECT 
+        ar.id as result_id,
+        ar.assessment_id,
+        ar.candidate_id,
+        ar.course_id,
+        ar.score,
+        ar.total_questions,
+        ar.correct_answers,
+        ar.attempt_number,
+        ar.created_at,
+        u.first_name,
+        u.last_name,
+        u.email,
+        a.title as assessment_title,
+        a.type_of_test,
+        c.course_name
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      LEFT JOIN courses c ON ar.course_id = c.id
+      ${baseWhere}
+      ORDER BY ar.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const dataParams = [...params, limit.toString(), offset.toString()];
+    const [rows] = await pool.execute(dataQuery, dataParams);
+
+    return {
+      data: rows,
+      totalCount,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(totalCount / limit),
+    };
+  }
+
+  /**
+   * Get detailed submission with all answers for a specific result.
+   */
+  static async getSubmissionDetail(resultId) {
+    // Get result info
+    const resultQuery = `
+      SELECT 
+        ar.*,
+        u.first_name,
+        u.last_name,
+        u.email,
+        a.title as assessment_title,
+        a.type_of_test,
+        c.course_name,
+        c.course_id as course_code
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      LEFT JOIN courses c ON ar.course_id = c.id
+      WHERE ar.id = ?
+    `;
+    const [resultRows] = await pool.execute(resultQuery, [resultId]);
+    if (resultRows.length === 0) return null;
+
+    const result = resultRows[0];
+
+    // Get answers with question details
+    const answersQuery = `
+      SELECT 
+        aa.id,
+        aa.question_id,
+        aa.selected_option,
+        aa.is_correct,
+        qb.question,
+        qb.option_a,
+        qb.option_b,
+        qb.option_c,
+        qb.option_d,
+        qb.correct_option,
+        qb.image,
+        qb.opt_img_a,
+        qb.opt_img_b,
+        qb.opt_img_c,
+        qb.opt_img_d
+      FROM assessment_answers aa
+      LEFT JOIN question_bank qb ON aa.question_id = qb.id
+      WHERE aa.assessment_result_id = ?
+      ORDER BY aa.created_at ASC
+    `;
+    const [answerRows] = await pool.execute(answersQuery, [resultId]);
+
+    return {
+      result,
+      answers: answerRows,
+    };
+  }
+}
+
+module.exports = AssessmentResultDao;
