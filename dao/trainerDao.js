@@ -125,7 +125,7 @@ class TrainerDao {
 
     return {
       data: rows,
-      totalCount,
+      total: totalCount,
       page: page || 1,
       limit: limit || totalCount,
       totalPages: limit ? Math.ceil(totalCount / limit) : 1,

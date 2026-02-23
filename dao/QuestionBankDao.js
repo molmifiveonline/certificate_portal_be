@@ -48,10 +48,8 @@ class QuestionBankDao {
     return { id, ...data };
   }
 
-  static async getAll(search = "", page = 1, limit = 10) {
-    const offset = (page - 1) * limit;
-    let query = `
-      SELECT q.*, m.master_course_name 
+  static async getAll(search = "", page, limit) {
+    let baseQuery = `
       FROM question_bank q
       LEFT JOIN master_course m ON q.master_course_id = m.id
       WHERE q.status = 1
@@ -61,22 +59,34 @@ class QuestionBankDao {
     const params = [];
 
     if (search) {
-      query += " AND (q.question LIKE ?)";
+      baseQuery += " AND (q.question LIKE ?)";
       countQuery += " AND (question LIKE ?)";
       params.push(`%${search}%`);
     }
 
-    query += " ORDER BY q.created_at DESC LIMIT ? OFFSET ?";
-    params.push(limit.toString(), offset.toString());
+    const countParams = search ? [`%${search}%`] : [];
+    const [countResult] = await pool.execute(countQuery, countParams);
+    const total = countResult[0].total;
+
+    let query = `SELECT q.*, m.master_course_name ${baseQuery} ORDER BY q.created_at DESC`;
+
+    let pageNum = page ? parseInt(page, 10) : null;
+    let limitNum = limit ? parseInt(limit, 10) : null;
+
+    if (pageNum && limitNum) {
+      const offset = (pageNum - 1) * limitNum;
+      query += " LIMIT ? OFFSET ?";
+      params.push(limitNum.toString(), offset.toString());
+    }
 
     const [rows] = await pool.execute(query, params);
-    const [countResult] = await pool.execute(countQuery, params.slice(0, -2));
 
     return {
       data: rows,
-      total: countResult[0].total,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      total,
+      page: pageNum || 1,
+      limit: limitNum || total,
+      totalPages: limitNum ? Math.ceil(total / limitNum) : 1,
     };
   }
 

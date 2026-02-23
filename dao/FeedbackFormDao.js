@@ -73,13 +73,22 @@ class FeedbackFormDao {
     const [rows] = await db.query(query, params);
 
     // Get total count
-    const [countResult] = await db.query(
-      "SELECT COUNT(*) as total FROM feedback_forms WHERE status = 1",
-    );
+    let countQuery =
+      "SELECT COUNT(*) as total FROM feedback_forms WHERE status = 1";
+    const countParams = [];
+    if (filters.search) {
+      countQuery += " AND title LIKE ?";
+      countParams.push(`%${filters.search}%`);
+    }
+    const [countResult] = await db.query(countQuery, countParams);
+    const total = countResult[0].total;
 
     return {
       data: rows,
-      total: countResult[0].total,
+      total,
+      page: filters.page ? Number(filters.page) : 1,
+      limit: filters.limit ? Number(filters.limit) : total,
+      totalPages: filters.limit ? Math.ceil(total / Number(filters.limit)) : 1,
     };
   }
 

@@ -35,10 +35,8 @@ class AssessmentDao {
     return { id, ...data };
   }
 
-  static async getAll(search = "", page = 1, limit = 10) {
-    const offset = (page - 1) * limit;
-    let query = `
-      SELECT a.*, c.course_name
+  static async getAll(search = "", page, limit) {
+    let baseQuery = `
       FROM assessment a
       LEFT JOIN courses c ON a.course_id = c.id
       WHERE a.status = 1
@@ -48,23 +46,34 @@ class AssessmentDao {
     const params = [];
 
     if (search) {
-      query += " AND (a.title LIKE ? OR c.course_name LIKE ?)";
+      baseQuery += " AND (a.title LIKE ? OR c.course_name LIKE ?)";
       countQuery += " AND (title LIKE ?)";
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    query += " ORDER BY a.created_at DESC LIMIT ? OFFSET ?";
-    const queryParams = [...params, limit.toString(), offset.toString()];
     const countParams = search ? [`%${search}%`] : [];
-
-    const [rows] = await pool.execute(query, queryParams);
     const [countResult] = await pool.execute(countQuery, countParams);
+    const total = countResult[0].total;
+
+    let query = `SELECT a.*, c.course_name ${baseQuery} ORDER BY a.created_at DESC`;
+
+    let pageNum = page ? parseInt(page, 10) : null;
+    let limitNum = limit ? parseInt(limit, 10) : null;
+
+    if (pageNum && limitNum) {
+      const offset = (pageNum - 1) * limitNum;
+      query += " LIMIT ? OFFSET ?";
+      params.push(limitNum.toString(), offset.toString());
+    }
+
+    const [rows] = await pool.execute(query, params);
 
     return {
       data: rows,
-      total: countResult[0].total,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      total,
+      page: pageNum || 1,
+      limit: limitNum || total,
+      totalPages: limitNum ? Math.ceil(total / limitNum) : 1,
     };
   }
 
@@ -167,6 +176,26 @@ class AssessmentDao {
 
     query += " ORDER BY c.id DESC";
     const params = typeOfTest && typeOfTest !== "3" ? [typeOfTest] : [];
+    const [rows] = await pool.execute(query, params);
+    return rows;
+  }
+
+  // Get assessments for a specific course
+  static async getAssessmentsByCourseId(courseId, typeOfTest = null) {
+    let query = `
+      SELECT a.*, c.course_name
+      FROM assessment a
+      LEFT JOIN courses c ON a.course_id = c.id
+      WHERE a.course_id = ? AND a.status = 1
+    `;
+    const params = [courseId];
+
+    if (typeOfTest) {
+      query += " AND a.type_of_test = ?";
+      params.push(typeOfTest);
+    }
+
+    query += " ORDER BY a.created_at DESC";
     const [rows] = await pool.execute(query, params);
     return rows;
   }

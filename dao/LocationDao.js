@@ -32,13 +32,6 @@ class LocationDao {
     const finalSortOrder = sort_order.toLowerCase() === "asc" ? "ASC" : "DESC";
     query += ` ORDER BY ${finalSortBy} ${finalSortOrder}`;
 
-    // Add pagination
-    const offset = (page - 1) * limit;
-    query += " LIMIT ? OFFSET ?";
-    params.push(Number(limit), Number(offset));
-
-    const [rows] = await db.query(query, params);
-
     // Get total count for pagination
     let countQuery = "SELECT COUNT(*) as total FROM locations WHERE status = 1";
     const countParams = [];
@@ -49,14 +42,26 @@ class LocationDao {
       countParams.push(searchPattern, searchPattern, searchPattern);
     }
     const [countResult] = await db.query(countQuery, countParams);
-    const totalCount = countResult[0].total;
+    const total = countResult[0].total;
+
+    // Add pagination if provided
+    let pageNum = page ? Number(page) : null;
+    let limitNum = limit ? Number(limit) : null;
+
+    if (pageNum && limitNum) {
+      const offset = (pageNum - 1) * limitNum;
+      query += " LIMIT ? OFFSET ?";
+      params.push(limitNum, offset);
+    }
+
+    const [rows] = await db.query(query, params);
 
     return {
       data: rows,
-      totalCount,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(totalCount / limit),
+      total,
+      page: pageNum || 1,
+      limit: limitNum || total,
+      totalPages: limitNum ? Math.ceil(total / limitNum) : 1,
     };
   }
 

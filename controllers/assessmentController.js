@@ -203,11 +203,12 @@ exports.getQuestionsByCourse = async (req, res) => {
 
 exports.getSubmittedCourses = async (req, res) => {
   try {
-    const { search, page, limit } = req.query;
+    const { search, page, limit, type_of_test } = req.query;
     const result = await AssessmentResultDao.getCoursesWithSubmissions(
       search,
       page || 1,
       limit || 10,
+      type_of_test,
     );
     res.status(200).json({
       success: true,
@@ -260,5 +261,125 @@ exports.getSubmissionDetail = async (req, res) => {
   } catch (error) {
     console.error("Error fetching submission detail:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getAssessmentsByCourse = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { type_of_test } = req.query;
+    const assessments = await AssessmentDao.getAssessmentsByCourseId(
+      courseId,
+      type_of_test,
+    );
+    res.status(200).json({ success: true, data: assessments });
+  } catch (error) {
+    console.error("Error fetching course assessments:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getAssessmentSubmissions = async (req, res) => {
+  try {
+    const { assessmentId } = req.params;
+    const { search, page, limit } = req.query;
+    const result = await AssessmentResultDao.getSubmissionsByAssessment(
+      assessmentId,
+      search,
+      page || 1,
+      limit || 10,
+    );
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      totalCount: result.totalCount,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
+  } catch (error) {
+    console.error("Error fetching assessment submissions:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.exportSubmittedAssessments = async (req, res) => {
+  try {
+    const { search } = req.query;
+    const xlsx = require("xlsx");
+
+    const submissions = await AssessmentResultDao.getAllSubmissions(search);
+
+    if (submissions.length === 0) {
+      return res.status(404).json({ message: "No submissions found." });
+    }
+
+    const headers = [
+      "Sr. No.",
+      "Date",
+      "Candidate Name",
+      "Employee ID / Passport",
+      "Rank",
+      "Email",
+      "Course Name",
+      "Course Code",
+      "Assessment Title",
+      "Type",
+      "Score",
+      "Total Questions",
+      "Result",
+    ];
+
+    const rows = submissions.map((sub, index) => {
+      const typeLabel =
+        { 1: "Pre Course", 2: "Post Course", 3: "Daily" }[sub.type_of_test] ||
+        sub.type_of_test;
+
+      const percentage = (sub.score / sub.total_questions) * 100;
+      const resultStatus = percentage >= 50 ? "PASS" : "FAIL";
+
+      return [
+        index + 1,
+        new Date(sub.created_at).toLocaleDateString("en-GB") +
+          " " +
+          new Date(sub.created_at).toLocaleTimeString("en-GB"),
+        `${sub.first_name} ${sub.last_name}`,
+        sub.employee_id || sub.passport_no || "--",
+        sub.rank || "--",
+        sub.email,
+        sub.course_name,
+        sub.course_code,
+        sub.assessment_title,
+        typeLabel,
+        `${sub.score} / ${sub.total_questions}`,
+        sub.total_questions,
+        resultStatus,
+      ];
+    });
+
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
+
+    const wscols = headers.map((h) => ({ wch: h.length + 5 }));
+    ws["!cols"] = wscols;
+
+    xlsx.utils.book_append_sheet(wb, ws, "Submitted Assessments");
+
+    const wbout = xlsx.write(wb, { bookType: "xlsx", type: "buffer" });
+
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="Submitted_Assessments.xlsx"',
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.send(wbout);
+  } catch (error) {
+    console.error("Export Submitted Assessments Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };

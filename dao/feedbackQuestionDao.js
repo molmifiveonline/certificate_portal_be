@@ -68,7 +68,7 @@ class FeedbackQuestionDao {
 
     return {
       data: rows,
-      totalCount,
+      total: totalCount,
       page,
       limit,
       totalPages: Math.ceil(totalCount / limit),

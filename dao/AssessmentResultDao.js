@@ -5,11 +5,21 @@ class AssessmentResultDao {
   /**
    * Get distinct courses that have at least one submitted assessment result.
    */
-  static async getCoursesWithSubmissions(search = "", page = 1, limit = 10) {
+  static async getCoursesWithSubmissions(
+    search = "",
+    page = 1,
+    limit = 10,
+    type_of_test = null,
+  ) {
     const offset = (page - 1) * limit;
 
     let baseWhere = `WHERE ar.status = 'Completed'`;
     const params = [];
+
+    if (type_of_test) {
+      baseWhere += ` AND a.type_of_test = ?`;
+      params.push(type_of_test);
+    }
 
     if (search) {
       baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ?)`;
@@ -20,6 +30,7 @@ class AssessmentResultDao {
       SELECT COUNT(DISTINCT ar.course_id) as totalCount
       FROM assessment_results ar
       LEFT JOIN courses c ON ar.course_id = c.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
       ${baseWhere}
     `;
     const [countResult] = await pool.execute(countQuery, params);
@@ -46,7 +57,7 @@ class AssessmentResultDao {
 
     return {
       data: rows,
-      totalCount,
+      total: totalCount,
       page: parseInt(page),
       limit: parseInt(limit),
       totalPages: Math.ceil(totalCount / limit),
@@ -113,7 +124,7 @@ class AssessmentResultDao {
 
     return {
       data: rows,
-      totalCount,
+      total: totalCount,
       page: parseInt(page),
       limit: parseInt(limit),
       totalPages: Math.ceil(totalCount / limit),
@@ -174,6 +185,119 @@ class AssessmentResultDao {
     return {
       result,
       answers: answerRows,
+    };
+  }
+
+  /**
+   * Get all submissions for export.
+   */
+  static async getAllSubmissions(search = "") {
+    let baseWhere = `WHERE ar.status = 'Completed'`;
+    const params = [];
+
+    if (search) {
+      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    const dataQuery = `
+      SELECT 
+        ar.id as result_id,
+        ar.assessment_id,
+        ar.candidate_id,
+        ar.course_id,
+        ar.score,
+        ar.total_questions,
+        ar.correct_answers,
+        ar.attempt_number,
+        ar.created_at,
+        u.first_name,
+        u.last_name,
+        u.email,
+        u.employee_id,
+        u.passport_no,
+        u.rank,
+        a.title as assessment_title,
+        a.type_of_test,
+        c.course_name,
+        c.course_id as course_code
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      LEFT JOIN courses c ON ar.course_id = c.id
+      ${baseWhere}
+      ORDER BY ar.created_at DESC
+    `;
+
+    const [rows] = await pool.execute(dataQuery, params);
+    return rows;
+  }
+
+  /**
+   * Get all candidate submissions for a specific assessment.
+   */
+  static async getSubmissionsByAssessment(
+    assessmentId,
+    search = "",
+    page = 1,
+    limit = 10,
+  ) {
+    const offset = (page - 1) * limit;
+
+    let baseWhere = `WHERE ar.assessment_id = ? AND ar.status = 'Completed'`;
+    const params = [assessmentId];
+
+    if (search) {
+      baseWhere += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+
+    const countQuery = `
+      SELECT COUNT(*) as totalCount
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      ${baseWhere}
+    `;
+    const [countResult] = await pool.execute(countQuery, params);
+    const totalCount = countResult[0].totalCount;
+
+    const dataQuery = `
+      SELECT 
+        ar.id as result_id,
+        ar.assessment_id,
+        ar.candidate_id,
+        ar.course_id,
+        ar.score,
+        ar.total_questions,
+        ar.correct_answers,
+        ar.attempt_number,
+        ar.created_at,
+        u.first_name,
+        u.last_name,
+        u.email,
+        a.title as assessment_title,
+        a.type_of_test,
+        c.course_name
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      LEFT JOIN courses c ON ar.course_id = c.id
+      ${baseWhere}
+      ORDER BY ar.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const dataParams = [...params, limit.toString(), offset.toString()];
+    const [rows] = await pool.execute(dataQuery, dataParams);
+
+    return {
+      data: rows,
+      total: totalCount,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(totalCount / limit),
     };
   }
 }

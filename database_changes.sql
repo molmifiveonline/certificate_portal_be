@@ -232,3 +232,100 @@ ALTER TABLE `courses`
   ADD COLUMN `end_time` TIME DEFAULT NULL AFTER `start_time`,
   ADD COLUMN `zoom_username` VARCHAR(255) DEFAULT NULL AFTER `zoom_link`,
   ADD COLUMN `zoom_password` VARCHAR(255) DEFAULT NULL AFTER `zoom_username`;
+
+-- Date: 2026-02-19
+-- ---------------------------------------------------------
+-- Create nominators table
+CREATE TABLE IF NOT EXISTS `nominators` (
+  `id` char(36) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-19
+-- ---------------------------------------------------------
+-- Add missing columns to courses table to match old PHP flow
+ALTER TABLE `courses`
+  ADD COLUMN `no_of_days` INT DEFAULT NULL,
+  ADD COLUMN `cancelation_reason` TEXT DEFAULT NULL,
+  ADD COLUMN `completion_reason` TEXT DEFAULT NULL;
+
+-- Add missing columns to courses_enrollment table to match old PHP flow
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `trainer_id` char(36) DEFAULT NULL,
+  ADD COLUMN `status_pool` varchar(50) DEFAULT NULL,
+  ADD COLUMN `candidate_email_status` tinyint(1) DEFAULT 0,
+  ADD COLUMN `email_type` varchar(50) DEFAULT NULL;
+
+-- Date: 2026-02-19 (Venue Updates)
+-- ---------------------------------------------------------
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `venue_name` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `venue_address` TEXT DEFAULT NULL,
+  ADD COLUMN `venue_contact` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `venue_map_link` TEXT DEFAULT NULL,
+  ADD COLUMN `venue_email` VARCHAR(255) DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `hotel_files` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `ce_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `file_type` varchar(50) DEFAULT NULL,
+  `uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `status` tinyint(1) DEFAULT 1,
+  KEY `hotel_files_ce_id` (`ce_id`),
+  KEY `hotel_files_candidate_id` (`candidate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-19 (Soft Delete)
+-- ---------------------------------------------------------
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `delete_remark` TEXT DEFAULT NULL;
+
+-- Date: 2026-02-19 (Course Tabs: Attendance + Certificates)
+-- ---------------------------------------------------------
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `is_present` TEXT DEFAULT NULL,
+  ADD COLUMN `holidays` TEXT DEFAULT NULL,
+  ADD COLUMN `absent_reasons` TEXT DEFAULT NULL,
+  ADD COLUMN `certficate_generated` VARCHAR(36) DEFAULT NULL,
+  ADD COLUMN `generated_date` DATE DEFAULT NULL,
+  ADD COLUMN `active` TINYINT(1) DEFAULT 0;
+
+-- Date: 2026-02-20
+-- ---------------------------------------------------------
+-- Create certificates table
+CREATE TABLE IF NOT EXISTS `certificates` (
+  `id` CHAR(36) NOT NULL,
+  `certificate_no` VARCHAR(255) UNIQUE NOT NULL,
+  `type` VARCHAR(100) NOT NULL, -- 'Others', 'DNV-ST0029', 'DNV-ST008', 'SIGTTO / LNG'
+  `topic` VARCHAR(255) NOT NULL,
+  `course_level` VARCHAR(100) DEFAULT 'Operational',
+  `course_id` CHAR(36) NOT NULL, -- Master Course ID
+  `active_course_id` CHAR(36) NOT NULL,
+  `candidate_id` CHAR(36) NOT NULL,
+  `trainer_id` CHAR(36) NOT NULL,
+  `location` VARCHAR(255) DEFAULT NULL,
+  `course_conduct` VARCHAR(50) DEFAULT NULL, -- 'ONL', 'ONS'
+  `status` TINYINT(1) DEFAULT 0, -- 0: Valid, 1: Invalid
+  `from_date` DATE DEFAULT NULL,
+  `to_date` DATE DEFAULT NULL,
+  `days` INT DEFAULT 0,
+  `issue_date` DATE DEFAULT NULL,
+  `added_date` DATE DEFAULT NULL,
+  `show_logo` TINYINT(1) DEFAULT 1,
+  `is_manual` TINYINT(1) DEFAULT 0,
+  `description1` TEXT,
+  `remarks` TEXT,
+  `subid` INT DEFAULT 0, -- For numeric increment in certificate number
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  FOREIGN KEY (`course_id`) REFERENCES `master_course` (`id`),
+  FOREIGN KEY (`active_course_id`) REFERENCES `courses` (`id`),
+  FOREIGN KEY (`candidate_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

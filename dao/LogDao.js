@@ -49,12 +49,10 @@ class LogDao {
 
     return {
       data: rows,
-      meta: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit),
-      },
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -95,12 +93,10 @@ class LogDao {
 
     return {
       data: rows,
-      meta: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit),
-      },
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 

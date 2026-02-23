@@ -61,6 +61,9 @@ app.use("/api/feedback-questions", feedbackQuestionRoutes);
 app.use("/api/feedback-forms", feedbackFormRoutes);
 app.use("/api/question-bank", questionBankRoutes);
 
+// Dummy Seeder Route for Testing
+app.use("/api/seed", require("./routes/seedRoutes"));
+
 // Assessment
 const assessmentRoutes = require("./routes/assessmentRoutes");
 app.use("/api/assessment", assessmentRoutes);
@@ -76,11 +79,23 @@ app.use("/api/master-courses", masterCourseRoutes);
 
 // Active Courses
 const activeCourseRoutes = require("./routes/activeCourseRoutes");
-app.use("/api/courses", activeCourseRoutes);
+app.use("/api/active-courses", activeCourseRoutes);
 
 // Dashboard
 const dashboardRoutes = require("./routes/dashboardRoutes");
 app.use("/api/dashboard", dashboardRoutes);
+
+// Reports
+const reportRoutes = require("./routes/admin/reportRoutes");
+app.use("/api/reports", reportRoutes);
+
+// Nominators
+const nominatorRoutes = require("./routes/nominatorRoutes");
+app.use("/api/nominators", nominatorRoutes);
+
+// Certificates
+const certificateRoutes = require("./routes/certificateRoutes");
+app.use("/api/certificates", certificateRoutes);
 
 // Static files
 const path = require("path");
