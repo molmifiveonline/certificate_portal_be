@@ -40,7 +40,7 @@ const registerCandidate = async (req, res) => {
       profile_image,
     } = req.body;
 
-    // Basic Validation
+    // Validation
     if (!email || !first_name || !last_name || !registration_type) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -67,7 +67,7 @@ const registerCandidate = async (req, res) => {
     let isSelfRegistration = false;
 
     if (!finalPassword) {
-      // Generate random secure password for database (user will reset it)
+      // Generate random password
       const { randomBytes } = require("crypto");
       finalPassword = randomBytes(16).toString("hex");
       isSelfRegistration = true;
@@ -119,7 +119,6 @@ const registerCandidate = async (req, res) => {
 
     // Send Welcome Email
     if (process.env.SMTP_USER || true) {
-      // Allow logging even if SMTP not set for dev
       try {
         const { sendEmail } = require("../utils/emailService");
         const subject = "Welcome Aboard! Your Registration Details";
@@ -213,7 +212,6 @@ const registerCandidate = async (req, res) => {
           </html>
         `;
 
-        // Only send if SMTP configured, otherwise we just logged the link above
         if (process.env.SMTP_USER) {
           await sendEmail(email, subject, html);
         }
@@ -301,8 +299,6 @@ const login = async (req, res) => {
       },
     });
 
-    // Log the action (After successful response to avoid blocking, or before if critical)
-    // We'll await it to ensure it's logged.
     await LogDao.createLog({
       user_id: user.id,
       action: "LOGIN",
@@ -327,7 +323,6 @@ const forgotPassword = async (req, res) => {
 
     const user = await UserDao.findUserByEmail(email);
     if (!user) {
-      // For security, do not reveal if user exists or not, but for now we follow the reference which prompts if email not found
       return res
         .status(404)
         .json({ message: "This email address does not exist." });
@@ -352,7 +347,6 @@ const forgotPassword = async (req, res) => {
       </div>
     `;
 
-    // Only attempt to send email if SMTP is configured, else just log it for dev
     if (process.env.SMTP_USER) {
       const { sendEmail } = require("../utils/emailService");
       await sendEmail(email, subject, html);
@@ -392,7 +386,6 @@ const resetPassword = async (req, res) => {
     const updated = await UserDao.updateUserPassword(userId, hashedPassword);
 
     if (updated) {
-      // Optionally send a confirmation email like in the reference
       const user = await UserDao.findUserById(userId);
       if (user && process.env.SMTP_USER) {
         const { sendEmail } = require("../utils/emailService");

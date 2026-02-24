@@ -48,7 +48,7 @@ class HotelDetailDao {
     const [rows] = await db.query(dataQuery, dataParams);
     return {
       data: rows,
-      totalCount,
+      total: totalCount,
       page: page || 1,
       limit: limit || totalCount,
       totalPages: limit ? Math.ceil(totalCount / limit) : 1,

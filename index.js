@@ -9,8 +9,30 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      console.log("Incoming request origin:", origin);
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  }),
+);
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 
 // Routes
 const authRoutes = require("./routes/authRoutes");
@@ -24,6 +46,7 @@ const candidateRoutes = require("./routes/candidateRoutes");
 const feedbackCategoryRoutes = require("./routes/feedbackCategoryRoutes");
 const feedbackQuestionRoutes = require("./routes/feedbackQuestionRoutes");
 const feedbackFormRoutes = require("./routes/feedbackFormRoutes");
+const questionBankRoutes = require("./routes/questionBankRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
@@ -36,8 +59,17 @@ app.use("/api/candidate", candidateRoutes);
 app.use("/api/feedback-categories", feedbackCategoryRoutes);
 app.use("/api/feedback-questions", feedbackQuestionRoutes);
 app.use("/api/feedback-forms", feedbackFormRoutes);
+app.use("/api/question-bank", questionBankRoutes);
+
+// Dummy Seeder Route for Testing
+app.use("/api/seed", require("./routes/seedRoutes"));
+
+// Assessment
+const assessmentRoutes = require("./routes/assessmentRoutes");
+app.use("/api/assessment", assessmentRoutes);
 
 // Feedback Answers
+
 const feedbackAnswerRoutes = require("./routes/feedbackAnswerRoutes");
 app.use("/api/feedback-answers", feedbackAnswerRoutes);
 
@@ -47,7 +79,23 @@ app.use("/api/master-courses", masterCourseRoutes);
 
 // Active Courses
 const activeCourseRoutes = require("./routes/activeCourseRoutes");
-app.use("/api/courses", activeCourseRoutes);
+app.use("/api/active-courses", activeCourseRoutes);
+
+// Dashboard
+const dashboardRoutes = require("./routes/dashboardRoutes");
+app.use("/api/dashboard", dashboardRoutes);
+
+// Reports
+const reportRoutes = require("./routes/admin/reportRoutes");
+app.use("/api/reports", reportRoutes);
+
+// Nominators
+const nominatorRoutes = require("./routes/nominatorRoutes");
+app.use("/api/nominators", nominatorRoutes);
+
+// Certificates
+const certificateRoutes = require("./routes/certificateRoutes");
+app.use("/api/certificates", certificateRoutes);
 
 // Static files
 const path = require("path");

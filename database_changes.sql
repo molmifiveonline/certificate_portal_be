@@ -133,3 +133,205 @@ ALTER TABLE `courses` ADD COLUMN `topic` VARCHAR(255) NOT NULL AFTER `master_cou
 -- ---------------------------------------------------------
 -- Added material_link column to master_course table
 ALTER TABLE `master_course` ADD COLUMN `material_link` TEXT DEFAULT NULL AFTER `remarks`;
+
+-- Create missing courses_enrollment table
+CREATE TABLE IF NOT EXISTS `courses_enrollment` (
+  `id` char(36) NOT NULL,
+  `course_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `status` varchar(50) DEFAULT 'Active',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `courses_enrollment_course_id` (`course_id`),
+  KEY `courses_enrollment_candidate_id` (`candidate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Create missing course_attendance table
+CREATE TABLE IF NOT EXISTS `course_attendance` (
+  `id` char(36) NOT NULL,
+  `course_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `attendance_date` date DEFAULT NULL,
+  `status` varchar(50) DEFAULT 'Present',
+  `absent_reasons` text DEFAULT NULL,
+  `certificate_issue_date` date DEFAULT NULL,
+  `certificate_expiry_date` date DEFAULT NULL,
+  `mark_as_read` tinyint(1) DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `course_attendance_course_id` (`course_id`),
+  KEY `course_attendance_candidate_id` (`candidate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-17
+-- ---------------------------------------------------------
+-- Added question_bank table
+CREATE TABLE IF NOT EXISTS `question_bank` (
+  `id` varchar(36) NOT NULL,
+  `master_course_id` varchar(36) DEFAULT NULL,
+  `question` text DEFAULT NULL,
+  `type_of_test` varchar(255) DEFAULT NULL COMMENT '1=Pre, 2=Post, 3=Daily',
+  `option_a` text DEFAULT NULL,
+  `option_b` text DEFAULT NULL,
+  `option_c` text DEFAULT NULL,
+  `option_d` text DEFAULT NULL,
+  `correct_option` varchar(255) DEFAULT NULL,
+  `image` varchar(255) DEFAULT NULL,
+  `opt_img_a` varchar(255) DEFAULT NULL,
+  `opt_img_b` varchar(255) DEFAULT NULL,
+  `opt_img_c` varchar(255) DEFAULT NULL,
+  `opt_img_d` varchar(255) DEFAULT NULL,
+  `status` int(11) DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-17
+-- ---------------------------------------------------------
+-- Create assessment_results table for storing submitted assessments
+CREATE TABLE IF NOT EXISTS `assessment_results` (
+  `id` char(36) NOT NULL,
+  `assessment_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `course_id` char(36) NOT NULL,
+  `score` decimal(5,2) DEFAULT 0.00,
+  `total_questions` int(11) DEFAULT 0,
+  `correct_answers` int(11) DEFAULT 0,
+  `status` varchar(50) DEFAULT 'Completed',
+  `attempt_number` int(11) DEFAULT 1,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `assessment_results_assessment_id` (`assessment_id`),
+  KEY `assessment_results_candidate_id` (`candidate_id`),
+  KEY `assessment_results_course_id` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Create assessment_answers table for storing individual question answers
+CREATE TABLE IF NOT EXISTS `assessment_answers` (
+  `id` char(36) NOT NULL,
+  `assessment_result_id` char(36) NOT NULL,
+  `question_id` char(36) NOT NULL,
+  `selected_option` varchar(50) DEFAULT NULL,
+  `is_correct` tinyint(1) DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `assessment_answers_result_id` (`assessment_result_id`),
+  KEY `assessment_answers_question_id` (`question_id`),
+  CONSTRAINT `assessment_answers_result_fk` FOREIGN KEY (`assessment_result_id`) REFERENCES `assessment_results` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-17
+-- ---------------------------------------------------------
+-- Added start_time, end_time, zoom_username, zoom_password to courses table
+ALTER TABLE `courses`
+  ADD COLUMN `start_time` TIME DEFAULT NULL AFTER `end_date`,
+  ADD COLUMN `end_time` TIME DEFAULT NULL AFTER `start_time`,
+  ADD COLUMN `zoom_username` VARCHAR(255) DEFAULT NULL AFTER `zoom_link`,
+  ADD COLUMN `zoom_password` VARCHAR(255) DEFAULT NULL AFTER `zoom_username`;
+
+-- Date: 2026-02-19
+-- ---------------------------------------------------------
+-- Create nominators table
+CREATE TABLE IF NOT EXISTS `nominators` (
+  `id` char(36) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-19
+-- ---------------------------------------------------------
+-- Add missing columns to courses table to match old PHP flow
+ALTER TABLE `courses`
+  ADD COLUMN `no_of_days` INT DEFAULT NULL,
+  ADD COLUMN `cancelation_reason` TEXT DEFAULT NULL,
+  ADD COLUMN `completion_reason` TEXT DEFAULT NULL;
+
+-- Add missing columns to courses_enrollment table to match old PHP flow
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `trainer_id` char(36) DEFAULT NULL,
+  ADD COLUMN `status_pool` varchar(50) DEFAULT NULL,
+  ADD COLUMN `candidate_email_status` tinyint(1) DEFAULT 0,
+  ADD COLUMN `email_type` varchar(50) DEFAULT NULL;
+
+-- Date: 2026-02-19 (Venue Updates)
+-- ---------------------------------------------------------
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `venue_name` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `venue_address` TEXT DEFAULT NULL,
+  ADD COLUMN `venue_contact` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `venue_map_link` TEXT DEFAULT NULL,
+  ADD COLUMN `venue_email` VARCHAR(255) DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `hotel_files` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `ce_id` char(36) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `file_type` varchar(50) DEFAULT NULL,
+  `uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `status` tinyint(1) DEFAULT 1,
+  KEY `hotel_files_ce_id` (`ce_id`),
+  KEY `hotel_files_candidate_id` (`candidate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-19 (Soft Delete)
+-- ---------------------------------------------------------
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `delete_remark` TEXT DEFAULT NULL;
+
+-- Date: 2026-02-19 (Course Tabs: Attendance + Certificates)
+-- ---------------------------------------------------------
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `is_present` TEXT DEFAULT NULL,
+  ADD COLUMN `holidays` TEXT DEFAULT NULL,
+  ADD COLUMN `absent_reasons` TEXT DEFAULT NULL,
+  ADD COLUMN `certficate_generated` VARCHAR(36) DEFAULT NULL,
+  ADD COLUMN `generated_date` DATE DEFAULT NULL,
+  ADD COLUMN `active` TINYINT(1) DEFAULT 0;
+
+-- Date: 2026-02-20
+-- ---------------------------------------------------------
+-- Create certificates table
+CREATE TABLE IF NOT EXISTS `certificates` (
+  `id` CHAR(36) NOT NULL,
+  `certificate_no` VARCHAR(255) UNIQUE NOT NULL,
+  `type` VARCHAR(100) NOT NULL, -- 'Others', 'DNV-ST0029', 'DNV-ST008', 'SIGTTO / LNG'
+  `topic` VARCHAR(255) NOT NULL,
+  `course_level` VARCHAR(100) DEFAULT 'Operational',
+  `course_id` CHAR(36) NOT NULL, -- Master Course ID
+  `active_course_id` CHAR(36) NOT NULL,
+  `candidate_id` CHAR(36) NOT NULL,
+  `trainer_id` CHAR(36) NOT NULL,
+  `location` VARCHAR(255) DEFAULT NULL,
+  `course_conduct` VARCHAR(50) DEFAULT NULL, -- 'ONL', 'ONS'
+  `status` TINYINT(1) DEFAULT 0, -- 0: Valid, 1: Invalid
+  `from_date` DATE DEFAULT NULL,
+  `to_date` DATE DEFAULT NULL,
+  `days` INT DEFAULT 0,
+  `issue_date` DATE DEFAULT NULL,
+  `added_date` DATE DEFAULT NULL,
+  `show_logo` TINYINT(1) DEFAULT 1,
+  `is_manual` TINYINT(1) DEFAULT 0,
+  `description1` TEXT,
+  `remarks` TEXT,
+  `subid` INT DEFAULT 0, -- For numeric increment in certificate number
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  FOREIGN KEY (`course_id`) REFERENCES `master_course` (`id`),
+  FOREIGN KEY (`active_course_id`) REFERENCES `courses` (`id`),
+  FOREIGN KEY (`candidate_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-24
+-- ---------------------------------------------------------
+-- Add is_hidden column to certificates table
+ALTER TABLE `certificates` ADD COLUMN `is_hidden` TINYINT(1) DEFAULT 0 AFTER `status`;
+

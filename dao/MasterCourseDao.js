@@ -30,8 +30,7 @@ class MasterCourseDao {
     return { id, ...data };
   }
 
-  static async getAll(search = "", page = 1, limit = 10) {
-    const offset = (page - 1) * limit;
+  static async getAll(search = "", page, limit) {
     let query = "SELECT * FROM master_course WHERE status = 1";
     let countQuery =
       "SELECT COUNT(*) as total FROM master_course WHERE status = 1";
@@ -43,17 +42,28 @@ class MasterCourseDao {
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
-    params.push(limit.toString(), offset.toString());
+    const [countResult] = await pool.execute(countQuery, params);
+    const total = countResult[0].total;
+
+    query += " ORDER BY created_at DESC";
+
+    let pageNum = page ? parseInt(page, 10) : null;
+    let limitNum = limit ? parseInt(limit, 10) : null;
+
+    if (pageNum && limitNum) {
+      const offset = (pageNum - 1) * limitNum;
+      query += " LIMIT ? OFFSET ?";
+      params.push(limitNum.toString(), offset.toString());
+    }
 
     const [rows] = await pool.execute(query, params);
-    const [countResult] = await pool.execute(countQuery, params.slice(0, -2));
 
     return {
       data: rows,
-      total: countResult[0].total,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      total,
+      page: pageNum || 1,
+      limit: limitNum || total,
+      totalPages: limitNum ? Math.ceil(total / limitNum) : 1,
     };
   }
 

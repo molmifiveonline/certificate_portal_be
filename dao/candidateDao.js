@@ -14,14 +14,12 @@ class CandidateDao {
 
     const params = [];
 
-    // Search filter (optional)
     if (filters.search) {
       baseQuery += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR cp.passport_no LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${filters.search}%`;
       params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
-    // Additional Filters
     if (filters.manager) {
       baseQuery += ` AND cp.manager = ?`;
       params.push(filters.manager);
@@ -42,7 +40,6 @@ class CandidateDao {
       params.push(filters.registration_type);
     }
 
-    // Status Filter Logic
     if (
       filters.status !== undefined &&
       filters.status !== "" &&
@@ -51,18 +48,14 @@ class CandidateDao {
       baseQuery += ` AND u.status = ?`;
       params.push(filters.status);
     } else if (filters.status === "all") {
-      // No status filter, show all
     } else {
-      // Default: Show only active candidates
       baseQuery += ` AND u.status = 1`;
     }
 
-    // Get total count for pagination
     const countQuery = `SELECT COUNT(*) as totalCount ${baseQuery}`;
     const [countResult] = await db.query(countQuery, params);
     const totalCount = countResult[0].totalCount;
 
-    // Build data query
     let dataQuery = `
       SELECT 
         u.id, u.first_name, u.last_name, u.email, u.mobile, u.status,
@@ -74,7 +67,6 @@ class CandidateDao {
       ${baseQuery}
     `;
 
-    // Sorting (optional)
     const allowedSortFields = {
       first_name: "u.first_name",
       last_name: "u.last_name",
@@ -90,7 +82,6 @@ class CandidateDao {
     const sortOrder = filters.sort_order === "asc" ? "ASC" : "DESC";
     dataQuery += ` ORDER BY ${sortBy} ${sortOrder}`;
 
-    // Pagination (optional)
     const dataParams = [...params];
     let page = null;
     let limit = null;
@@ -107,7 +98,7 @@ class CandidateDao {
 
     return {
       data: rows,
-      totalCount,
+      total: totalCount,
       page: page || 1,
       limit: limit || totalCount,
       totalPages: limit ? Math.ceil(totalCount / limit) : 1,
