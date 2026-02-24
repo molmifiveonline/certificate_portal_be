@@ -8,10 +8,11 @@ const { v4: uuidv4 } = require("uuid");
 
 exports.listCertificates = async (req, res) => {
   try {
-    const { search, status, active_course_id, page, limit } = req.query;
+    const { search, status, active_course_id, trainer_id, page, limit } =
+      req.query;
     const certificates = await CertificateDao.getAll(
       search,
-      { status, active_course_id },
+      { status, active_course_id, trainer_id },
       page,
       limit,
     );

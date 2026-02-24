@@ -329,3 +329,9 @@ CREATE TABLE IF NOT EXISTS `certificates` (
   FOREIGN KEY (`active_course_id`) REFERENCES `courses` (`id`),
   FOREIGN KEY (`candidate_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-02-24
+-- ---------------------------------------------------------
+-- Add is_hidden column to certificates table
+ALTER TABLE `certificates` ADD COLUMN `is_hidden` TINYINT(1) DEFAULT 0 AFTER `status`;
+

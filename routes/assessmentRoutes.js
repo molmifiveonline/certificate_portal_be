@@ -15,6 +15,7 @@ const {
   exportSubmittedAssessments,
   getAssessmentsByCourse,
   getAssessmentSubmissions,
+  getPaginatedSubmissions,
 } = require("../controllers/assessmentController");
 const verifyToken = require("../middleware/authMiddleware");
 
@@ -28,6 +29,7 @@ router.get("/questions/:courseId", verifyToken, getQuestionsByCourse);
 // Submitted Assessment routes
 router.get("/export-submitted", verifyToken, exportSubmittedAssessments);
 router.get("/submitted-courses", verifyToken, getSubmittedCourses);
+router.get("/all-submissions", verifyToken, getPaginatedSubmissions);
 router.get("/course/:courseId/submissions", verifyToken, getCourseSubmissions);
 router.get(
   "/course/:courseId/assessments",

@@ -25,16 +25,17 @@ class CertificateDao {
       description1,
       remarks,
       subid,
+      is_hidden,
     } = data;
 
     const query = `
       INSERT INTO certificates (
         id, certificate_no, type, topic, course_level, course_id, 
         active_course_id, candidate_id, trainer_id, location, 
-        course_conduct, status, from_date, to_date, days, 
+        course_conduct, status, is_hidden, from_date, to_date, days, 
         issue_date, show_logo, is_manual, 
         description1, remarks, subid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -50,6 +51,7 @@ class CertificateDao {
       location,
       course_conduct,
       status || 0,
+      is_hidden || 0,
       from_date,
       to_date,
       days,
@@ -90,6 +92,11 @@ class CertificateDao {
     if (filters.active_course_id) {
       baseQuery += ` AND c.active_course_id = ?`;
       values.push(filters.active_course_id);
+    }
+
+    if (filters.trainer_id) {
+      baseQuery += ` AND c.trainer_id = ?`;
+      values.push(filters.trainer_id);
     }
 
     // Get total count
@@ -173,6 +180,7 @@ class CertificateDao {
       "description1",
       "remarks",
       "subid",
+      "is_hidden",
     ];
 
     const filteredData = Object.keys(data)

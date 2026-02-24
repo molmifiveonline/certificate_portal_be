@@ -215,15 +215,16 @@ class AssessmentResultDao {
         u.first_name,
         u.last_name,
         u.email,
-        u.employee_id,
-        u.passport_no,
-        u.rank,
+        cp.employee_id,
+        cp.passport_no,
+        cp.rank,
         a.title as assessment_title,
         a.type_of_test,
         c.course_name,
         c.course_id as course_code
       FROM assessment_results ar
       LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN assessment a ON ar.assessment_id = a.id
       LEFT JOIN courses c ON ar.course_id = c.id
       ${baseWhere}
@@ -232,6 +233,83 @@ class AssessmentResultDao {
 
     const [rows] = await pool.execute(dataQuery, params);
     return rows;
+  }
+
+  /**
+   * Get all submissions paginated.
+   */
+  static async getAllSubmissionsPaginated(
+    search = "",
+    page = 1,
+    limit = 10,
+    type_of_test = null,
+  ) {
+    const offset = (page - 1) * limit;
+
+    let baseWhere = `WHERE ar.status = 'Completed'`;
+    const params = [];
+
+    if (type_of_test) {
+      baseWhere += ` AND a.type_of_test = ?`;
+      params.push(type_of_test);
+    }
+
+    if (search) {
+      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    const countQuery = `
+      SELECT COUNT(*) as totalCount
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      LEFT JOIN courses c ON ar.course_id = c.id
+      ${baseWhere}
+    `;
+    const [countResult] = await pool.execute(countQuery, params);
+    const totalCount = countResult[0].totalCount;
+
+    const dataQuery = `
+      SELECT 
+        ar.id as result_id,
+        ar.assessment_id,
+        ar.candidate_id,
+        ar.course_id,
+        ar.score,
+        ar.total_questions,
+        ar.correct_answers,
+        ar.attempt_number,
+        ar.created_at,
+        u.first_name,
+        u.last_name,
+        u.email,
+        cp.employee_id,
+        a.title as assessment_title,
+        a.type_of_test,
+        c.course_name,
+        c.course_id as course_code
+      FROM assessment_results ar
+      LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
+      LEFT JOIN assessment a ON ar.assessment_id = a.id
+      LEFT JOIN courses c ON ar.course_id = c.id
+      ${baseWhere}
+      ORDER BY ar.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const dataParams = [...params, limit.toString(), offset.toString()];
+    const [rows] = await pool.execute(dataQuery, dataParams);
+
+    return {
+      data: rows,
+      totalCount,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(totalCount / limit),
+    };
   }
 
   /**

@@ -1,9 +1,28 @@
 const ReportDao = require("../../dao/ReportDao");
 const xlsx = require("xlsx");
 
+exports.getFilterOptions = async (req, res) => {
+  try {
+    const [topics, managers, companies] = await Promise.all([
+      ReportDao.getDistinctTopics(),
+      ReportDao.getDistinctManagers(),
+      ReportDao.getDistinctCompanies(),
+    ]);
+    res.json({ topics, managers, companies });
+  } catch (error) {
+    console.error("Get Filter Options Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
 exports.exportFeedbackReport = async (req, res) => {
   try {
-    const { start_date, end_date } = req.body;
+    const { start_date, end_date, topic, manager } = req.body;
+    const filters = {};
+    if (topic) filters.topic = topic;
+    if (manager) filters.manager = manager;
 
     if (!start_date || !end_date) {
       return res
@@ -18,11 +37,9 @@ exports.exportFeedbackReport = async (req, res) => {
     );
 
     if (feedbackQuestionIds.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "No feedback data found for the specified date range.",
-        });
+      return res.status(404).json({
+        message: "No feedback data found for the specified date range.",
+      });
     }
 
     const questionsData =
@@ -84,6 +101,7 @@ exports.exportFeedbackReport = async (req, res) => {
     const allPairs = await ReportDao.getCandidateCoursePairs(
       start_date,
       end_date,
+      filters,
     );
     if (allPairs.length === 0) {
       return res.status(404).json({ message: "No feedback data found." });
@@ -292,21 +310,28 @@ exports.exportFeedbackReport = async (req, res) => {
 
 exports.exportCertificateReport = async (req, res) => {
   try {
-    const { start_date, end_date } = req.body;
+    const { start_date, end_date, topic, manager, company } = req.body;
     if (!start_date || !end_date) {
       return res
         .status(400)
         .json({ message: "Please provide both start and end dates." });
     }
 
-    const data = await ReportDao.getCertificateReport(start_date, end_date);
+    const filters = {};
+    if (topic) filters.topic = topic;
+    if (manager) filters.manager = manager;
+    if (company) filters.company = company;
+
+    const data = await ReportDao.getCertificateReport(
+      start_date,
+      end_date,
+      filters,
+    );
 
     if (data.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "No certificates found for the specified date range.",
-        });
+      return res.status(404).json({
+        message: "No certificates found for the specified date range.",
+      });
     }
 
     const headers = [

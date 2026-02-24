@@ -1,6 +1,24 @@
 const pool = require("../config/db");
 
 class ReportDao {
+  static async getDistinctTopics() {
+    const query = `SELECT DISTINCT topic FROM courses WHERE topic IS NOT NULL AND topic != '' ORDER BY topic ASC`;
+    const [rows] = await pool.execute(query);
+    return rows.map((r) => r.topic);
+  }
+
+  static async getDistinctManagers() {
+    const query = `SELECT DISTINCT manager FROM candidate_profiles WHERE manager IS NOT NULL AND manager != '' ORDER BY manager ASC`;
+    const [rows] = await pool.execute(query);
+    return rows.map((r) => r.manager);
+  }
+
+  static async getDistinctCompanies() {
+    const query = `SELECT DISTINCT manning_company FROM candidate_profiles WHERE manning_company IS NOT NULL AND manning_company != '' ORDER BY manning_company ASC`;
+    const [rows] = await pool.execute(query);
+    return rows.map((r) => r.manning_company);
+  }
+
   static async getFeedbackQuestionIds(startDate, endDate) {
     if (endDate.length === 10) endDate += " 23:59:59";
 
@@ -56,18 +74,36 @@ class ReportDao {
     return rows;
   }
 
-  static async getCandidateCoursePairs(startDate, endDate) {
+  static async getCandidateCoursePairs(startDate, endDate, filters = {}) {
     if (endDate.length === 10) endDate += " 23:59:59";
 
-    const query = `
-            SELECT candidate_id, active_course_id, MAX(created_at) as created_at 
-            FROM feedback_question_answer 
-            WHERE created_at >= ? AND created_at <= ? 
-            GROUP BY candidate_id, active_course_id 
-            ORDER BY created_at DESC
-        `;
+    let query = `
+            SELECT fqa.candidate_id, fqa.active_course_id, MAX(fqa.created_at) as created_at 
+            FROM feedback_question_answer fqa`;
+    const params = [];
 
-    const [rows] = await pool.execute(query, [startDate, endDate]);
+    if (filters.topic) {
+      query += ` JOIN courses ac ON fqa.active_course_id = ac.id`;
+    }
+    if (filters.manager) {
+      query += ` JOIN candidate_profiles cp ON fqa.candidate_id = cp.user_id`;
+    }
+
+    query += ` WHERE fqa.created_at >= ? AND fqa.created_at <= ?`;
+    params.push(startDate, endDate);
+
+    if (filters.topic) {
+      query += ` AND ac.topic = ?`;
+      params.push(filters.topic);
+    }
+    if (filters.manager) {
+      query += ` AND cp.manager = ?`;
+      params.push(filters.manager);
+    }
+
+    query += ` GROUP BY fqa.candidate_id, fqa.active_course_id ORDER BY MAX(fqa.created_at) DESC`;
+
+    const [rows] = await pool.execute(query, params);
     return rows;
   }
 
@@ -164,10 +200,10 @@ class ReportDao {
 
   // Retrieve full data for Certificate Report
   // This replicates the complex join from PHP logic but adapted for new schema (Users/Profiles)
-  static async getCertificateReport(startDate, endDate) {
+  static async getCertificateReport(startDate, endDate, filters = {}) {
     if (endDate.length === 10) endDate += " 23:59:59";
 
-    const query = `
+    let query = `
             SELECT 
                 c.id as certificate_id,
                 c.candidate_id,
@@ -205,25 +241,32 @@ class ReportDao {
                 tp.prefix as trainer_prefix
                 
             FROM certificates c
-            -- Join Candidate (User + Profile)
             LEFT JOIN users u_cand ON c.candidate_id = u_cand.id
             LEFT JOIN candidate_profiles curr_cp ON u_cand.id = curr_cp.user_id
-            
-            -- Join Active Course
             LEFT JOIN courses course ON c.active_course_id = course.id
-            
-            -- Join Master Course
             LEFT JOIN master_courses mc ON c.course_id = mc.id
-            
-            -- Join Trainer (User + Profile)
             LEFT JOIN users u_trainer ON c.trainer_id = u_trainer.id
             LEFT JOIN trainer_profiles tp ON u_trainer.id = tp.user_id
             
-            WHERE c.created_at >= ? AND c.created_at <= ?
-            ORDER BY c.created_at DESC
-        `;
+            WHERE c.created_at >= ? AND c.created_at <= ?`;
+    const params = [startDate, endDate];
 
-    const [rows] = await pool.execute(query, [startDate, endDate]);
+    if (filters.topic) {
+      query += ` AND c.topic = ?`;
+      params.push(filters.topic);
+    }
+    if (filters.manager) {
+      query += ` AND curr_cp.manager = ?`;
+      params.push(filters.manager);
+    }
+    if (filters.company) {
+      query += ` AND curr_cp.manning_company = ?`;
+      params.push(filters.company);
+    }
+
+    query += ` ORDER BY c.created_at DESC`;
+
+    const [rows] = await pool.execute(query, params);
     return rows;
   }
 }

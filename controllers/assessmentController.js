@@ -224,6 +224,29 @@ exports.getSubmittedCourses = async (req, res) => {
   }
 };
 
+exports.getPaginatedSubmissions = async (req, res) => {
+  try {
+    const { search, page, limit, type_of_test } = req.query;
+    const result = await AssessmentResultDao.getAllSubmissionsPaginated(
+      search,
+      page || 1,
+      limit || 10,
+      type_of_test,
+    );
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      totalCount: result.totalCount,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
+  } catch (error) {
+    console.error("Error fetching paginated submissions:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 exports.getCourseSubmissions = async (req, res) => {
   try {
     const { courseId } = req.params;

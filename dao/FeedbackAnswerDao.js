@@ -80,6 +80,11 @@ class FeedbackAnswerDao {
       params.push(filters.active_course_id);
     }
 
+    if (filters.trainer_id) {
+      whereClauses.push(`c.primary_trainer_id = ?`);
+      params.push(filters.trainer_id);
+    }
+
     if (whereClauses.length > 0) {
       baseQuery += ` WHERE ` + whereClauses.join(" AND ");
     }
@@ -100,11 +105,80 @@ class FeedbackAnswerDao {
     return rows;
   }
 
+  static async getFeedbackCourses(filters = {}) {
+    let baseQuery = `
+      SELECT 
+        c.id as active_course_id,
+        c.course_name as active_course_name,
+        c.start_date,
+        c.end_date,
+        c.course_id as active_course_code,
+        COUNT(DISTINCT fa.candidate_id) as total_candidates,
+        MAX(fa.created_at) as latest_feedback_date
+      FROM feedback_question_answer fa
+      JOIN courses c ON fa.active_course_id = c.id
+    `;
+
+    const params = [];
+    const whereClauses = [];
+
+    if (filters.search) {
+      whereClauses.push(`(c.course_name LIKE ? OR c.course_id LIKE ?)`);
+      const searchTerm = `%${filters.search}%`;
+      params.push(searchTerm, searchTerm);
+    }
+
+    if (filters.trainer_id) {
+      whereClauses.push(`c.primary_trainer_id = ?`);
+      params.push(filters.trainer_id);
+    }
+
+    if (whereClauses.length > 0) {
+      baseQuery += ` WHERE ` + whereClauses.join(" AND ");
+    }
+
+    baseQuery += ` GROUP BY c.id, c.course_name, c.start_date, c.end_date, c.course_id`;
+    baseQuery += ` ORDER BY latest_feedback_date DESC`;
+
+    // Pagination
+    if (filters.page && filters.limit) {
+      const page = Math.max(1, Number(filters.page));
+      const limit = Number(filters.limit);
+      const offset = (page - 1) * limit;
+      baseQuery += ` LIMIT ? OFFSET ?`;
+      params.push(limit, offset);
+    }
+
+    const [rows] = await db.query(baseQuery, params);
+
+    // Also get total count for pagination
+    let countQuery = `
+      SELECT COUNT(DISTINCT fa.active_course_id) as totalCount
+      FROM feedback_question_answer fa
+      JOIN courses c ON fa.active_course_id = c.id
+    `;
+
+    if (whereClauses.length > 0) {
+      countQuery += ` WHERE ` + whereClauses.join(" AND ");
+    }
+
+    const [countRows] = await db.query(
+      countQuery,
+      params.slice(0, params.length - (filters.page && filters.limit ? 2 : 0)),
+    );
+
+    return {
+      data: rows,
+      totalCount: countRows[0] ? countRows[0].totalCount : 0,
+    };
+  }
+
   static async countDistinctSubmissions(filters = {}) {
     let baseQuery = `
       SELECT COUNT(DISTINCT fa.candidate_id, fa.active_course_id) as totalCount
       FROM feedback_question_answer fa
       JOIN users u ON fa.candidate_id = u.id
+      LEFT JOIN courses c ON fa.active_course_id = c.id
     `;
     const params = [];
     const whereClauses = [];
@@ -120,6 +194,11 @@ class FeedbackAnswerDao {
     if (filters.active_course_id) {
       whereClauses.push(`fa.active_course_id = ?`);
       params.push(filters.active_course_id);
+    }
+
+    if (filters.trainer_id) {
+      whereClauses.push(`c.primary_trainer_id = ?`);
+      params.push(filters.trainer_id);
     }
 
     if (whereClauses.length > 0) {
