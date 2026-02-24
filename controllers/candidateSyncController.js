@@ -4,34 +4,43 @@ const CandidateDao = require("../dao/candidateDao");
 const LogDao = require("../dao/LogDao");
 
 const SYNC_CONFIG = {
-  tokenUrl:
-    "https://login.microsoftonline.com/6633b8c8-9272-45b0-9751-9f6098a25be5/oauth2/v2.0/token",
-  apiUrl: "https://prdapi.molshipmate.com/api/ShipmateWebService",
-  clientId: "40473385-351c-44d7-9f65-2dc152868172",
-  clientSecret: "2hb8Q~5kQmBdlqRew.CVKbf-YDRbCatzOAi9WdmH",
-  scope: "api://40473385-351c-44d7-9f65-2dc152868172/.default",
-  authKey: "MOLMI_SBNT",
+  tokenUrl: "https://apim-mts-prod.azure-api.net/MOLMI-Training/api/Token",
+  apiUrl:
+    "https://apim-mts-prod.azure-api.net/MOLMI-Training/api/ShipmateWebService",
+  username: "apiuser@sbntech.com",
+  password: "u$eR@apI123",
+  subscriptionKey: "d292c094732f423c8f5f7547aa98453a",
+  authKey: "MOLMI@AP1",
   serviceName: "PersonnelDetails_MOLMI",
 };
 
 const getAccessToken = async () => {
   const params = new URLSearchParams();
-  params.append("grant_type", "client_credentials");
-  params.append("client_id", SYNC_CONFIG.clientId);
-  params.append("client_secret", SYNC_CONFIG.clientSecret);
-  params.append("scope", SYNC_CONFIG.scope);
+  params.append("grant_type", "password");
+  params.append("username", SYNC_CONFIG.username);
+  params.append("Password", SYNC_CONFIG.password);
 
-  const response = await axios.post(SYNC_CONFIG.tokenUrl, params);
-  return response.data.access_token;
+  const response = await axios.post(SYNC_CONFIG.tokenUrl, params, {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+    },
+    httpsAgent: new https.Agent({
+      rejectUnauthorized: false, // Ignore SSL errors
+    }),
+  });
+  return response.data;
 };
 
 const importFromApi = async (req, res) => {
   try {
     const { date } = req.body; // Expecting date in YYYY-MM-DD
-    const token = await getAccessToken();
+    const tokenData = await getAccessToken();
+    const token = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token || "";
 
     const response = await axios.post(
-      SYNC_CONFIG.apiUrl + "?grant_type=refresh_token&refresh_token=",
+      `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
       JSON.stringify({
         ServiceName: SYNC_CONFIG.serviceName,
         AuthorizationKey: SYNC_CONFIG.authKey,
@@ -41,6 +50,7 @@ const importFromApi = async (req, res) => {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey, // Added for safety if required by APIM
         },
         httpsAgent: new https.Agent({
           rejectUnauthorized: false, // Ignore SSL errors
