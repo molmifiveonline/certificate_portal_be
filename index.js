@@ -137,12 +137,17 @@ app.get("/test-azure-token", async (req, res) => {
         httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       },
     );
-    res.json({ success: true, tokenKeys: Object.keys(response.data) });
+    res.json({
+      success: true,
+      tokenKeys: Object.keys(response.data),
+      headers: response.headers,
+    });
   } catch (error) {
     res.status(error.response?.status || 500).json({
       success: false,
       status: error.response?.status,
       data: error.response?.data,
+      responseHeaders: error.response?.headers,
       message: error.message,
     });
   }
