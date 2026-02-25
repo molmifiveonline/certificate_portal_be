@@ -106,53 +106,6 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-// TEMPORARY: Check outbound IP of this server
-app.get("/check-outbound-ip", async (req, res) => {
-  try {
-    const axios = require("axios");
-    const response = await axios.get("https://api.ipify.org?format=json");
-    res.json({ outboundIp: response.data.ip, inboundRequestIp: req.ip });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// TEMPORARY: Test Azure Token API from this server
-app.get("/test-azure-token", async (req, res) => {
-  try {
-    const axios = require("axios");
-    const https = require("https");
-    const params = new URLSearchParams();
-    params.append("grant_type", "password");
-    params.append("username", "apiuser@sbntech.com");
-    params.append("Password", "u$eR@apI123");
-    const response = await axios.post(
-      "https://apim-mts-prod.azure-api.net/MOLMI-Training/api/Token",
-      params,
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Ocp-Apim-Subscription-Key": "d292c094732f423c8f5f7547aa98453a",
-        },
-        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      },
-    );
-    res.json({
-      success: true,
-      tokenKeys: Object.keys(response.data),
-      headers: response.headers,
-    });
-  } catch (error) {
-    res.status(error.response?.status || 500).json({
-      success: false,
-      status: error.response?.status,
-      data: error.response?.data,
-      responseHeaders: error.response?.headers,
-      message: error.message,
-    });
-  }
-});
-
 app.get("/test-db", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT 1 + 1 AS solution");

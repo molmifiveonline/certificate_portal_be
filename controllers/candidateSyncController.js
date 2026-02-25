@@ -10,7 +10,7 @@ const SYNC_CONFIG = {
   username: "apiuser@sbntech.com",
   password: "u$eR@apI123",
   subscriptionKey: "d292c094732f423c8f5f7547aa98453a",
-  authKey: "MOLMI@AP1",
+  authKey: "MOLMI_SBNT",
   serviceName: "PersonnelDetails_MOLMI",
 };
 
