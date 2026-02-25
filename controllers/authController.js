@@ -126,7 +126,10 @@ const registerCandidate = async (req, res) => {
         const formattedDob = new Date(dob).toLocaleDateString("en-GB"); // dd-mm-yyyy
 
         // Generate Reset Link
-        const resetLink = `${process.env.FRONTEND_URL}/reset-password?id=${userId}`;
+        const frontendUrl = process.env.FRONTEND_URL
+          ? process.env.FRONTEND_URL.split(",")[0].trim()
+          : "http://localhost:3000";
+        const resetLink = `${frontendUrl}/reset-password?id=${userId}`;
 
         // Account Info Section based on registration type
         let accountInfoHtml = "";
@@ -146,7 +149,7 @@ const registerCandidate = async (req, res) => {
              <div class='info'>
                 <p><strong>Email Address:</strong> ${email}</p>
                 <p><strong>Password:</strong> (As set by Administrator)</p>
-                <p>You can login <a href='${process.env.FRONTEND_URL}/login'>here</a>.</p>
+                <p>You can login <a href='${frontendUrl}/login'>here</a>.</p>
              </div>
            `;
         }
@@ -328,7 +331,10 @@ const forgotPassword = async (req, res) => {
         .json({ message: "This email address does not exist." });
     }
 
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?id=${user.id}`;
+    const frontendUrl = process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(",")[0].trim()
+      : "http://localhost:3000";
+    const resetLink = `${frontendUrl}/reset-password?id=${user.id}`;
     const subject = "Reset Password Link";
     const html = `
       <div style="font-family: Arial, sans-serif;">
