@@ -110,32 +110,6 @@ class HotelDetailDao {
     );
     return result.affectedRows > 0;
   }
-
-  static async createHotelFile(fileData) {
-    const { hotel_id, file_name, file_type } = fileData;
-    const id = uuidv4();
-    await db.query(
-      "INSERT INTO hotel_files (id, hotel_id, file_name, file_type) VALUES (?, ?, ?, ?)",
-      [id, hotel_id, file_name, file_type],
-    );
-    return id;
-  }
-
-  static async getHotelFiles(hotelId) {
-    const [rows] = await db.query(
-      "SELECT * FROM hotel_files WHERE hotel_id = ? AND status = 1",
-      [hotelId],
-    );
-    return rows;
-  }
-
-  static async deleteHotelFile(fileId) {
-    const [result] = await db.query(
-      "UPDATE hotel_files SET status = 0 WHERE id = ?",
-      [fileId],
-    );
-    return result.affectedRows > 0;
-  }
 }
 
 module.exports = HotelDetailDao;
