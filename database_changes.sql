@@ -335,3 +335,28 @@ CREATE TABLE IF NOT EXISTS `certificates` (
 -- Add is_hidden column to certificates table
 ALTER TABLE `certificates` ADD COLUMN `is_hidden` TINYINT(1) DEFAULT 0 AFTER `status`;
 
+
+-- Date: 2026-02-27 - Start System Manual Module
+CREATE TABLE system_manuals (
+  id varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  title varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  document_type enum('file','url') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'file',
+  file_name varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  file_original_name varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  url_link varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  status tinyint(1) NOT NULL DEFAULT '1',
+  created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Date: 2026-03-02 - Admin Roles Module
+CREATE TABLE IF NOT EXISTS admin_roles (
+  id CHAR(36) NOT NULL,
+  role_name VARCHAR(255) NOT NULL,
+  description TEXT,
+  status TINYINT(1) DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

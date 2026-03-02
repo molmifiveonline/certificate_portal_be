@@ -3,7 +3,12 @@ dotenv.config();
 
 const express = require("express");
 const cors = require("cors");
-const db = require("./config/db");
+const path = require("path"); // Moved up from bottom
+const fs = require("fs"); // Added
+const db = require("./config/db"); // Kept original db import, assuming connectDB was a typo or different intent
+// const setupStaticFiles = require("./utils/setupStaticFiles"); // Not used in the snippet, so not adding
+
+// require("dotenv").config(); // Duplicate, removed
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -33,7 +38,9 @@ app.use(
   }),
 );
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
+
+const activityLogger = require("./middleware/activityLogger");
+app.use(activityLogger);
 
 // Routes
 const authRoutes = require("./routes/authRoutes");
@@ -48,10 +55,14 @@ const feedbackCategoryRoutes = require("./routes/feedbackCategoryRoutes");
 const feedbackQuestionRoutes = require("./routes/feedbackQuestionRoutes");
 const feedbackFormRoutes = require("./routes/feedbackFormRoutes");
 const questionBankRoutes = require("./routes/questionBankRoutes");
+const systemManualRoutes = require("./routes/systemManualRoutes");
+const adminUserRoutes = require("./routes/admin/adminUserRoutes");
+const adminRoleRoutes = require("./routes/adminRoleRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/admin", permissionRoutes);
+app.use("/api/admin-roles", adminRoleRoutes);
 app.use("/api/trainer", trainerRoutes);
 app.use("/api/log-history", logRoutes);
 app.use("/api/hotel-details", hotelDetailRoutes);
@@ -61,6 +72,8 @@ app.use("/api/feedback-categories", feedbackCategoryRoutes);
 app.use("/api/feedback-questions", feedbackQuestionRoutes);
 app.use("/api/feedback-forms", feedbackFormRoutes);
 app.use("/api/question-bank", questionBankRoutes);
+app.use("/api/system-manual", systemManualRoutes);
+app.use("/api/admin/users", adminUserRoutes);
 
 // Dummy Seeder Route for Testing
 app.use("/api/seed", require("./routes/seedRoutes"));
@@ -99,7 +112,6 @@ const certificateRoutes = require("./routes/certificateRoutes");
 app.use("/api/certificates", certificateRoutes);
 
 // Static files
-const path = require("path");
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/", (req, res) => {

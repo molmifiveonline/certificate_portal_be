@@ -411,3 +411,32 @@ exports.exportCertificateReport = async (req, res) => {
       .json({ message: "Internal Server Error", error: error.message });
   }
 };
+
+exports.getHotelReport = async (req, res) => {
+  try {
+    const { page, limit, hotel_name, employee, course_name } = req.query;
+    const filters = {
+      page: page || 1,
+      limit: limit || 10,
+      hotel_name,
+      employee,
+      course_name,
+    };
+
+    const data = await ReportDao.getHotelReport(filters);
+
+    return res.status(200).json({
+      message: "Hotel report fetched successfully",
+      data: data.data,
+      total: data.total,
+      page: data.page,
+      limit: data.limit,
+      totalPages: data.totalPages,
+    });
+  } catch (error) {
+    console.error("Get Hotel Report Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
