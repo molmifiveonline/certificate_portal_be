@@ -28,7 +28,7 @@ router.get(
 router.post(
   "/",
   verifyToken,
-  checkPermission("manage_hotel_details"),
+  checkPermission("create_hotel"),
   uploadField,
   addHotel,
 );
@@ -36,7 +36,7 @@ router.post(
 router.put(
   "/:id",
   verifyToken,
-  checkPermission("manage_hotel_details"),
+  checkPermission("edit_hotel"),
   uploadField,
   updateHotel,
 );
@@ -44,14 +44,14 @@ router.put(
 router.delete(
   "/:id",
   verifyToken,
-  checkPermission("manage_hotel_details"),
+  checkPermission("delete_hotel"),
   deleteHotel,
 );
 
 router.delete(
   "/file/:fileId",
   verifyToken,
-  checkPermission("manage_hotel_details"),
+  checkPermission("edit_hotel"),
   deleteFile,
 );
 

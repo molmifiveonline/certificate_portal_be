@@ -4,7 +4,14 @@ const { error } = require("../utils/responseHandler");
 const checkPermission = (requiredPermission) => {
   return async (req, res, next) => {
     try {
-      const roleId = req.user.roleId; // from authMiddleware (Updated to use ID)
+      const userRole = (req.user.role || "").toLowerCase();
+
+      // Superadmin and admin always have full access — skip DB check
+      if (userRole === "superadmin" || userRole === "admin") {
+        return next();
+      }
+
+      const roleId = req.user.roleId; // from authMiddleware
 
       // OPTIMIZATION: In a high-load app, cache this.
       // For now, DB query is fine for accuracy.

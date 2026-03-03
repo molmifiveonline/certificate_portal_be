@@ -30,15 +30,21 @@ const getAdminById = async (req, res) => {
 
 const createAdmin = async (req, res) => {
   try {
-    const { first_name, last_name, email, password, mobile, gender, status } =
-      req.body;
+    const {
+      first_name,
+      last_name,
+      email,
+      password,
+      mobile,
+      gender,
+      status,
+      admin_role_id,
+    } = req.body;
 
     if (!first_name || !email || !password || !mobile) {
-      return res
-        .status(400)
-        .json({
-          message: "First name, email, password, and mobile are required",
-        });
+      return res.status(400).json({
+        message: "First name, email, password, and mobile are required",
+      });
     }
 
     const existingUser = await AdminUserDao.findUserByEmail(email);
@@ -58,6 +64,7 @@ const createAdmin = async (req, res) => {
 
     const userId = await AdminUserDao.createAdmin({
       role_id: roleId,
+      admin_role_id: admin_role_id || null,
       first_name,
       last_name,
       email,
@@ -87,8 +94,16 @@ const createAdmin = async (req, res) => {
 const updateAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { first_name, last_name, email, password, mobile, gender, status } =
-      req.body;
+    const {
+      first_name,
+      last_name,
+      email,
+      password,
+      mobile,
+      gender,
+      status,
+      admin_role_id,
+    } = req.body;
 
     if (!first_name || !email || !mobile) {
       return res
@@ -116,6 +131,7 @@ const updateAdmin = async (req, res) => {
       mobile,
       gender,
       status: status !== undefined ? status : 1,
+      admin_role_id: admin_role_id || null,
     });
 
     if (!success) {

@@ -360,3 +360,42 @@ CREATE TABLE IF NOT EXISTS admin_roles (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-03-02 - Add admin_role_id to users table for Admin Role assignment
+ALTER TABLE users ADD COLUMN admin_role_id CHAR(36) NULL DEFAULT NULL AFTER role_id;
+
+-- Date: 2026-03-02 - Drop role_id FK from role_permissions to allow admin_roles UUIDs
+-- The role_permissions.role_id FK previously pointed only to the `roles` table.
+-- Since admin_roles are now also stored in role_permissions, remove the FK constraint.
+ALTER TABLE role_permissions DROP FOREIGN KEY role_permissions_ibfk_1;
+
+-- Date: 2026-03-03 - Pre-Active Course Module
+-- Add is_pre_active flag to courses table
+ALTER TABLE courses ADD COLUMN is_pre_active TINYINT(1) DEFAULT 0 AFTER status;
+
+-- Add approval workflow columns to courses_enrollment table
+ALTER TABLE courses_enrollment 
+  ADD COLUMN nominator_id CHAR(36) NULL DEFAULT NULL AFTER candidate_email_status,
+  ADD COLUMN candidate_approval_status VARCHAR(50) DEFAULT 'Pending' AFTER nominator_id,
+  ADD COLUMN candidate_remark TEXT NULL DEFAULT NULL AFTER candidate_approval_status,
+  ADD COLUMN admin_approval_status VARCHAR(50) DEFAULT 'Pending' AFTER candidate_remark,
+  ADD COLUMN admin_remark TEXT NULL DEFAULT NULL AFTER admin_approval_status,
+  ADD COLUMN admin_action_date DATETIME NULL DEFAULT NULL AFTER admin_remark;
+
+-- Create course_tokens table for public nominator and candidate URLs
+CREATE TABLE IF NOT EXISTS course_tokens (
+  id CHAR(36) NOT NULL,
+  course_id CHAR(36) NOT NULL,
+  entity_id CHAR(36) NOT NULL,
+  entity_type VARCHAR(50) NOT NULL, -- 'Nominator' or 'Candidate'
+  token VARCHAR(100) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  status TINYINT(1) DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY course_tokens_course_id (course_id),
+  KEY course_tokens_entity_id (entity_id),
+  KEY course_tokens_token (token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+

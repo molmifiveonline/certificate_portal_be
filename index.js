@@ -107,6 +107,10 @@ app.use("/api/reports", reportRoutes);
 const nominatorRoutes = require("./routes/nominatorRoutes");
 app.use("/api/nominators", nominatorRoutes);
 
+// Pre-Active Courses
+const preActiveCourseRoutes = require("./routes/preActiveCourseRoutes");
+app.use("/api/pre-active", preActiveCourseRoutes);
+
 // Certificates
 const certificateRoutes = require("./routes/certificateRoutes");
 app.use("/api/certificates", certificateRoutes);

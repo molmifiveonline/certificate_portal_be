@@ -4,9 +4,10 @@ const { v4: uuidv4 } = require("uuid");
 class AdminUserDao {
   static async getAllAdmins(page, limit, search) {
     let query = `
-      SELECT u.id, u.first_name, u.last_name, u.email, u.mobile, u.gender, u.status, r.name as role 
+      SELECT u.id, u.first_name, u.last_name, u.email, u.mobile, u.gender, u.status, r.name as role, u.admin_role_id, ar.role_name as admin_role_name
       FROM users u 
       JOIN roles r ON u.role_id = r.id 
+      LEFT JOIN admin_roles ar ON u.admin_role_id = ar.id
       WHERE r.name IN ('admin', 'superadmin')
     `;
     const params = [];
@@ -60,9 +61,10 @@ class AdminUserDao {
   static async getAdminById(id) {
     const [rows] = await db.query(
       `
-      SELECT u.id, u.first_name, u.last_name, u.email, u.mobile, u.gender, u.status, u.role_id, r.name as role
+      SELECT u.id, u.first_name, u.last_name, u.email, u.mobile, u.gender, u.status, u.role_id, r.name as role, u.admin_role_id, ar.role_name as admin_role_name
       FROM users u
       JOIN roles r ON u.role_id = r.id
+      LEFT JOIN admin_roles ar ON u.admin_role_id = ar.id
       WHERE u.id = ? AND r.name IN ('admin', 'superadmin')
     `,
       [id],
@@ -84,6 +86,7 @@ class AdminUserDao {
   static async createAdmin(adminData) {
     const {
       role_id,
+      admin_role_id = null,
       first_name,
       last_name,
       email,
@@ -94,10 +97,11 @@ class AdminUserDao {
     } = adminData;
     const userId = uuidv4();
     await db.query(
-      "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, gender, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO users (id, role_id, admin_role_id, first_name, last_name, email, password, mobile, gender, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         userId,
         role_id,
+        admin_role_id,
         first_name,
         last_name,
         email,
@@ -111,11 +115,27 @@ class AdminUserDao {
   }
 
   static async updateAdmin(id, adminData) {
-    const { first_name, last_name, email, mobile, gender, status, password } =
-      adminData;
+    const {
+      first_name,
+      last_name,
+      email,
+      mobile,
+      gender,
+      status,
+      password,
+      admin_role_id,
+    } = adminData;
     let query =
-      "UPDATE users SET first_name = ?, last_name = ?, email = ?, mobile = ?, gender = ?, status = ?";
-    const params = [first_name, last_name, email, mobile, gender, status];
+      "UPDATE users SET first_name = ?, last_name = ?, email = ?, mobile = ?, gender = ?, status = ?, admin_role_id = ?";
+    const params = [
+      first_name,
+      last_name,
+      email,
+      mobile,
+      gender,
+      status,
+      admin_role_id || null,
+    ];
 
     if (password) {
       query += ", password = ?";

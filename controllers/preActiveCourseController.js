@@ -1,0 +1,403 @@
+const PreActiveCourseDao = require("../dao/PreActiveCourseDao");
+const NominatorDao = require("../dao/nominatorDao");
+const CourseEnrollmentDao = require("../dao/CourseEnrollmentDao");
+const emailService = require("../utils/emailService");
+
+// ==========================================
+// Pre-Active Course Management
+// ==========================================
+
+exports.createCourse = async (req, res) => {
+  try {
+    const course = await PreActiveCourseDao.createPreActiveCourse(req.body);
+    if (course) {
+      res
+        .status(201)
+        .json({ message: "Pre-Active course created", data: course });
+    } else {
+      res.status(400).json({ message: "Failed to create course" });
+    }
+  } catch (error) {
+    console.error("Error creating pre-active course:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getAllCourses = async (req, res) => {
+  try {
+    const { search, page, limit, status, from_date, to_date } = req.query;
+    const filters = { status, from_date, to_date };
+    const result = await PreActiveCourseDao.getAllPreActiveCourses(
+      search,
+      page,
+      limit,
+      filters,
+    );
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error fetching pre-active courses:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getCourseById = async (req, res) => {
+  try {
+    const course = await PreActiveCourseDao.getPreActiveCourseById(
+      req.params.id,
+    );
+    if (!course) return res.status(404).json({ message: "Course not found" });
+    res.status(200).json(course);
+  } catch (error) {
+    console.error("Error fetching course:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.updateCourse = async (req, res) => {
+  try {
+    const updatedCourse = await PreActiveCourseDao.updatePreActiveCourse(
+      req.params.id,
+      req.body,
+    );
+    if (!updatedCourse)
+      return res
+        .status(404)
+        .json({ message: "Course not found or update failed" });
+    res
+      .status(200)
+      .json({ message: "Course updated successfully", data: updatedCourse });
+  } catch (error) {
+    console.error("Error updating course:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.deleteCourse = async (req, res) => {
+  try {
+    const success = await PreActiveCourseDao.deletePreActiveCourse(
+      req.params.id,
+    );
+    if (!success) return res.status(404).json({ message: "Course not found" });
+    res.status(200).json({ message: "Course deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting course:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+// ==========================================
+// Nominator Notification & Portal
+// ==========================================
+
+exports.notifyNominators = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    // Get nominators
+    const nominators = await NominatorDao.getAllNominators(null, null, null); // all
+    let sentCount = 0;
+
+    for (const nominator of nominators) {
+      if (nominator.email) {
+        const token = await PreActiveCourseDao.createToken(
+          courseId,
+          nominator.id,
+          "Nominator",
+        );
+
+        // Assuming frontend runs on same host but different port, usually configured in env
+        // We'll construct a generic portal link. The client should configure FRONTEND_URL
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const portalLink = `${frontendUrl}/nominate/${token}`;
+
+        const subject = `Nomination Request for Course: ${course.course_name}`;
+        const html = `
+                    <h3>Dear ${nominator.name},</h3>
+                    <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
+                    <p><strong>Start Date:</strong> ${course.start_date}</p>
+                    <p><strong>End Date:</strong> ${course.end_date}</p>
+                    <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
+                    <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
+                    <br><br>
+                    <p>Link expires in 7 days.</p>
+                `;
+
+        await emailService.sendEmail(nominator.email, subject, html);
+        sentCount++;
+      }
+    }
+
+    res
+      .status(200)
+      .json({ message: `Emails sent to ${sentCount} nominators.` });
+  } catch (error) {
+    console.error("Error notifying nominators:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getCourseByToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const details = await PreActiveCourseDao.getTokenDetails(token);
+    if (!details)
+      return res.status(401).json({ message: "Invalid or expired token" });
+
+    const course = await PreActiveCourseDao.getPreActiveCourseById(
+      details.course_id,
+    );
+    if (!course)
+      return res.status(404).json({ message: "Course no longer available" });
+
+    res.status(200).json({
+      course,
+      entity_type: details.entity_type,
+      entity_id: details.entity_id,
+    });
+  } catch (error) {
+    console.error("Error validating token:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.nominatorAddCandidate = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const candidateData = req.body;
+
+    const details = await PreActiveCourseDao.getTokenDetails(token);
+    if (!details || details.entity_type !== "Nominator") {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
+    const enrollmentId = await PreActiveCourseDao.enrollCandidateByNominator(
+      details.course_id,
+      details.entity_id,
+      candidateData,
+    );
+
+    res
+      .status(201)
+      .json({ message: "Candidate nominated successfully", enrollmentId });
+  } catch (error) {
+    console.error("Error nominating candidate:", error);
+    res.status(400).json({ message: error.message });
+  }
+};
+
+exports.getEnrolledCandidates = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const enrollments =
+      await CourseEnrollmentDao.getEnrolledCandidates(courseId);
+    res.status(200).json(enrollments);
+  } catch (error) {
+    console.error("Error fetching enrolled candidates:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+// ==========================================
+// Candidate Notification & Approval
+// ==========================================
+
+exports.notifyCandidates = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const enrollments =
+      await CourseEnrollmentDao.getEnrolledCandidates(courseId);
+    let sentCount = 0;
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
+    for (const candidate of enrollments) {
+      // Only send to pending candidates
+      if (
+        candidate.email &&
+        candidate.candidate_approval_status === "Pending"
+      ) {
+        const token = await PreActiveCourseDao.createToken(
+          courseId,
+          candidate.candidate_id,
+          "Candidate",
+        );
+        const portalLink = `${frontendUrl}/candidate-approval/${token}`;
+
+        const subject = `Course Nomination Approval - ${course.course_name}`;
+        const html = `
+                    <h3>Dear ${candidate.candidate_name},</h3>
+                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
+                    <p><strong>Start Date:</strong> ${course.start_date}</p>
+                    <p><strong>End Date:</strong> ${course.end_date}</p>
+                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
+                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
+                    <br><br>
+                    <p>Link expires in 7 days.</p>
+                `;
+
+        await emailService.sendEmail(candidate.email, subject, html);
+        sentCount++;
+      }
+    }
+
+    res
+      .status(200)
+      .json({ message: `Emails sent to ${sentCount} pending candidates.` });
+  } catch (error) {
+    console.error("Error notifying candidates:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.candidateApproval = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { status, remark } = req.body; // 'Approved' or 'Rejected'
+
+    const details = await PreActiveCourseDao.getTokenDetails(token);
+    if (!details || details.entity_type !== "Candidate") {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
+    const success = await PreActiveCourseDao.updateCandidateApproval(
+      details.course_id,
+      details.entity_id,
+      status,
+      remark,
+    );
+
+    if (success) {
+      // Revoke token after use
+      await PreActiveCourseDao.revokeToken(token);
+      res.status(200).json({ message: `Nomination ${status} successfully.` });
+    } else {
+      res.status(400).json({ message: "Failed to update approval." });
+    }
+  } catch (error) {
+    console.error("Error in candidate approval:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+// ==========================================
+// Admin Actions & Report
+// ==========================================
+
+exports.getPendingAdminApprovals = async (req, res) => {
+  try {
+    const rows = await PreActiveCourseDao.getPendingAdminApprovals(
+      req.params.id,
+    );
+    res.status(200).json(rows);
+  } catch (error) {
+    console.error("Error fetching admin approvals:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.adminApproval = async (req, res) => {
+  try {
+    const { enrollmentId } = req.params;
+    const { status, remark } = req.body; // 'Approved' or 'Rejected'
+
+    const success = await PreActiveCourseDao.updateAdminApproval(
+      enrollmentId,
+      status,
+      remark,
+    );
+    if (success) {
+      res.status(200).json({ message: `Candidate ${status} by Admin.` });
+    } else {
+      res.status(400).json({ message: "Failed to update admin approval." });
+    }
+  } catch (error) {
+    console.error("Error in admin approval:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.convertToActiveCourse = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
+
+    if (!course)
+      return res.status(404).json({ message: "Pre-Active course not found." });
+
+    // Barrier: We can close pre-active course 1 day prior and not after that.
+    // E.g. start_date is 2026-03-05. Today is <= 2026-03-04.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startDateLine = new Date(course.start_date);
+    startDateLine.setHours(0, 0, 0, 0);
+    startDateLine.setDate(startDateLine.getDate() - 1);
+
+    if (today > startDateLine) {
+      return res.status(400).json({
+        message:
+          "Cannot convert course. The deadline (1 day prior to start date) has passed.",
+      });
+    }
+
+    const success = await PreActiveCourseDao.convertToActiveCourse(courseId);
+
+    if (success) {
+      res
+        .status(200)
+        .json({ message: "Course converted to Active Course successfully." });
+    } else {
+      res.status(400).json({ message: "Failed to convert course." });
+    }
+  } catch (error) {
+    console.error("Error converting course:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getAdminRemarksReport = async (req, res) => {
+  try {
+    const filters = {
+      course_id: req.query.course_id,
+      candidate_id: req.query.candidate_id,
+    };
+    const rows = await PreActiveCourseDao.getAdminRemarksReport(filters);
+    res.status(200).json(rows);
+  } catch (error) {
+    console.error("Error getting admin remarks report:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};

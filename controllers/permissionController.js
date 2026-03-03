@@ -1,5 +1,6 @@
 const permissionDao = require("../dao/permissionDao");
 const roleDao = require("../dao/roleDao");
+const adminRoleDao = require("../dao/adminRoleDao");
 const LogDao = require("../dao/LogDao");
 const { ok, error } = require("../utils/responseHandler");
 
@@ -16,8 +17,8 @@ const getAllPermissions = async (req, res) => {
 
 const getAllRoles = async (req, res) => {
   try {
-    const { page, limit } = req.query;
-    const roles = await roleDao.getAllRoles(page, limit);
+    // Return admin_roles instead of static roles (trainer/candidate removed)
+    const roles = await adminRoleDao.getAllAdminRoles();
     return ok(res, "Roles fetched successfully", roles);
   } catch (err) {
     console.error("Get All Roles Error:", err);
@@ -60,7 +61,9 @@ const updateRolePermissions = async (req, res) => {
 
     return ok(res, "Role permissions updated successfully");
   } catch (err) {
-    console.error("Update Role Permissions Error:", err);
+    console.error("Update Role Permissions Error CODE:", err.code);
+    console.error("Update Role Permissions Error MSG:", err.message);
+    console.error("Update Role Permissions Error SQL:", err.sql);
     return error(res, 500, "Internal server error");
   }
 };

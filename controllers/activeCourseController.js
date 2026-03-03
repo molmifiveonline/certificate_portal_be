@@ -10,7 +10,7 @@ const path = require("path");
 
 exports.createCourse = async (req, res) => {
   try {
-    const { topic: topicId, start_date, type_of_course } = req.body;
+    const { topic: topicId, start_date, end_date, type_of_course } = req.body;
 
     // Fetch Master Course to get the Topic Name
     const masterCourse = await MasterCourseDao.getById(topicId);
@@ -19,11 +19,11 @@ exports.createCourse = async (req, res) => {
     }
     const topicName = masterCourse.topic;
 
-    // Generate Course ID using Topic Name
+    // Generate Course ID using Topic Name (format: Topic/Year/Number)
     const year = new Date().getFullYear();
     const count = await ActiveCourseDao.getLastCourseId(topicName);
     const nextId = (count + 1).toString().padStart(3, "0");
-    const course_id = `${topicName}-${year}-${nextId}`;
+    const course_id = `${topicName}/${year}/${nextId}`;
 
     req.body.course_id = course_id;
     req.body.topic = topicName; // Store Name in DB, not UUID
@@ -33,6 +33,16 @@ exports.createCourse = async (req, res) => {
     // Map type_of_course to course_type if present
     if (type_of_course) {
       req.body.course_type = type_of_course;
+    }
+
+    // Auto-calculate no_of_days from start_date and end_date
+    if (start_date && end_date) {
+      const diffMs = new Date(end_date) - new Date(start_date);
+      const diffDays = Math.max(
+        0,
+        Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1,
+      );
+      req.body.no_of_days = diffDays;
     }
 
     const newCourse = await ActiveCourseDao.create(req.body);
@@ -67,6 +77,21 @@ exports.getCourseById = async (req, res) => {
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
+
+    // Auto-progress status: If status is 'Initiated' and start_date <= today, change to 'Course Started'
+    if (course.status === "Initiated") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDate = new Date(course.start_date);
+      startDate.setHours(0, 0, 0, 0);
+      if (startDate <= today) {
+        await ActiveCourseDao.update(req.params.id, {
+          status: "Course Started",
+        });
+        course.status = "Course Started";
+      }
+    }
+
     res.status(200).json(course);
   } catch (error) {
     console.error("Error fetching course:", error);
@@ -94,6 +119,18 @@ exports.updateCourse = async (req, res) => {
           req.body.master_course_name = masterCourse.master_course_name;
         }
       }
+    }
+
+    // Auto-calculate no_of_days from start_date and end_date
+    const start = req.body.start_date;
+    const end = req.body.end_date;
+    if (start && end) {
+      const diffMs = new Date(end) - new Date(start);
+      const diffDays = Math.max(
+        0,
+        Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1,
+      );
+      req.body.no_of_days = diffDays;
     }
 
     const updatedCourse = await ActiveCourseDao.update(req.params.id, req.body);
@@ -636,6 +673,12 @@ exports.sendAssessmentEmail = async (req, res) => {
 
     const pool = require("../config/db");
 
+    // Auto-progress status to 'Assessment Initiated'
+    const course = await ActiveCourseDao.getById(id);
+    if (course && ["Initiated", "Course Started"].includes(course.status)) {
+      await ActiveCourseDao.update(id, { status: "Assessment Initiated" });
+    }
+
     const [candidateRows] = await pool.execute(
       "SELECT u.first_name, u.last_name, u.email FROM users u WHERE u.id = ?",
       [candidateId],
@@ -844,6 +887,20 @@ exports.generateCertificate = async (req, res) => {
       candidateId,
       newCertificate.id,
     );
+
+    // Auto-progress status to 'Certificate Generated'
+    if (
+      [
+        "Initiated",
+        "Course Started",
+        "Assessment Initiated",
+        "Feedback Generated",
+      ].includes(course.status)
+    ) {
+      await ActiveCourseDao.update(activeCourseId, {
+        status: "Certificate Generated",
+      });
+    }
 
     res.status(200).json({
       success: true,

@@ -19,17 +19,17 @@ router.get(
 );
 router.post(
   "/",
-  checkPermission("manage_location"),
+  checkPermission("create_location"),
   locationController.createLocation,
 );
 router.put(
   "/:id",
-  checkPermission("manage_location"),
+  checkPermission("edit_location"),
   locationController.updateLocation,
 );
 router.delete(
   "/:id",
-  checkPermission("manage_location"),
+  checkPermission("delete_location"),
   locationController.deleteLocation,
 );
 
