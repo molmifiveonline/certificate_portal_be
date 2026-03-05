@@ -65,7 +65,7 @@ class UserDao {
     const profileId = uuidv4();
     const [result] = await db.query(
       `INSERT INTO candidate_profiles 
-      (id, user_id, middle_name, prefix, gender, dob, nationality, passport_no, employee_id, manager, other_manager, rank, other_rank, whatsapp_number, alternate_mobile, indos_number, registration_type, designation, vessel_type, last_vessel_name, next_vessel_name, manning_company, sign_on_date, sign_off_date, officer, seaman_book_no, profile_image) 
+      (id, user_id, middle_name, prefix, gender, dob, nationality, passport_no, employee_id, manager, other_manager, \`rank\`, other_rank, whatsapp_number, alternate_mobile, indos_number, registration_type, designation, vessel_type, last_vessel_name, next_vessel_name, manning_company, sign_on_date, sign_off_date, officer, seaman_book_no, profile_image) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         profileId,
@@ -104,7 +104,7 @@ class UserDao {
     const { user_id, rank, specialization } = profileData;
     const profileId = uuidv4();
     const [result] = await db.query(
-      "INSERT INTO trainer_profiles (id, user_id, rank, specialization) VALUES (?, ?, ?, ?)",
+      "INSERT INTO trainer_profiles (id, user_id, `rank`, specialization) VALUES (?, ?, ?, ?)",
       [profileId, user_id, rank, specialization],
     );
     return profileId;

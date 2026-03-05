@@ -273,7 +273,7 @@ const login = async (req, res) => {
     ]);
     const roleName = roles[0]?.name || "unknown";
 
-    // Fetch User Permissions
+    // Fetch User Permissions (linked to their base role in `roles` table)
     const [permissions] = await db.query(
       `SELECT p.slug FROM permissions p
        JOIN role_permissions rp ON p.id = rp.permission_id
@@ -281,6 +281,20 @@ const login = async (req, res) => {
       [user.role_id],
     );
     const permissionSlugs = permissions.map((p) => p.slug);
+
+    // Fetch Admin Role Permissions if the user has an admin_role_id assigned
+    let adminRolePermissions = null;
+    const isSuperAdmin = roleName.toLowerCase() === "superadmin";
+
+    if (!isSuperAdmin && user.admin_role_id) {
+      const [adminRolePerms] = await db.query(
+        `SELECT p.slug FROM permissions p
+         JOIN role_permissions rp ON p.id = rp.permission_id
+         WHERE rp.role_id = ?`,
+        [user.admin_role_id],
+      );
+      adminRolePermissions = adminRolePerms.map((p) => p.slug);
+    }
 
     const token = jwt.sign(
       { id: user.id, role: roleName, roleId: user.role_id, email: user.email },
@@ -298,7 +312,9 @@ const login = async (req, res) => {
         email: user.email,
         role: roleName,
         permissions: permissionSlugs,
-        permissions: permissionSlugs,
+        // null means no restriction (superadmin or admin without assigned role)
+        // array means restricted to these slugs
+        adminRolePermissions,
       },
     });
 

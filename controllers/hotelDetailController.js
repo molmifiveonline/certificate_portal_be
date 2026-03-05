@@ -26,8 +26,11 @@ const getHotel = async (req, res) => {
     if (!hotel) {
       return error(res, 404, "Hotel not found");
     }
-    const files = await HotelDetailDao.getHotelFiles(id);
-    hotel.files = files;
+
+    // Hotel details do not have files in the current requirement
+    // const files = await HotelDetailDao.getHotelFiles(id);
+    // hotel.files = files;
+
     return ok(res, "Hotel fetched successfully", hotel);
   } catch (err) {
     console.error("Get Hotel Error:", err);
@@ -54,13 +57,14 @@ const addHotel = async (req, res) => {
 
     // Handle files if uploaded
     if (req.files && req.files.hotel_files) {
-      for (const file of req.files.hotel_files) {
-        await HotelDetailDao.createHotelFile({
-          hotel_id: hotelId,
-          file_name: file.filename,
-          file_type: file.mimetype,
-        });
-      }
+      // Temporarily disabled since hotel_files is used for candidate course enrollment
+      // for (const file of req.files.hotel_files) {
+      //   await HotelDetailDao.createHotelFile({
+      //     hotel_id: hotelId,
+      //     file_name: file.filename,
+      //     file_type: file.mimetype,
+      //   });
+      // }
     }
 
     // Log the action
@@ -93,13 +97,14 @@ const updateHotel = async (req, res) => {
 
     // Handle new files if uploaded
     if (req.files && req.files.hotel_files) {
-      for (const file of req.files.hotel_files) {
-        await HotelDetailDao.createHotelFile({
-          hotel_id: id,
-          file_name: file.filename,
-          file_type: file.mimetype,
-        });
-      }
+      // Temporarily disabled since hotel_files is used for candidate course enrollment
+      // for (const file of req.files.hotel_files) {
+      //   await HotelDetailDao.createHotelFile({
+      //     hotel_id: id,
+      //     file_name: file.filename,
+      //     file_type: file.mimetype,
+      //   });
+      // }
     }
 
     // Log the action
@@ -149,10 +154,12 @@ const deleteHotel = async (req, res) => {
 const deleteFile = async (req, res) => {
   try {
     const { fileId } = req.params;
-    const deleted = await HotelDetailDao.deleteHotelFile(fileId);
-    if (!deleted) {
-      return error(res, 404, "File not found");
-    }
+
+    // Temporarily disabled since hotel_files is used for candidate course enrollment
+    // const deleted = await HotelDetailDao.deleteHotelFile(fileId);
+    // if (!deleted) {
+    //   return error(res, 404, "File not found");
+    // }
 
     return ok(res, "File deleted successfully");
   } catch (err) {

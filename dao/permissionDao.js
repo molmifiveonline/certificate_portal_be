@@ -68,13 +68,21 @@ const updateRolePermissions = async (roleId, permissionIds) => {
       roleId,
     ]);
 
-    // Insert new permissions
+    // Insert new permissions, filtering out any IDs that don't exist in the permissions table
     if (permissionIds && permissionIds.length > 0) {
-      const values = permissionIds.map((permId) => [roleId, permId]);
-      await connection.query(
-        "INSERT INTO role_permissions (role_id, permission_id) VALUES ?",
-        [values],
+      const [existingPerms] = await connection.query(
+        `SELECT id FROM permissions WHERE id IN (${permissionIds.map(() => "?").join(",")})`,
+        permissionIds,
       );
+      const validIds = existingPerms.map((p) => p.id);
+
+      if (validIds.length > 0) {
+        const values = validIds.map((permId) => [roleId, permId]);
+        await connection.query(
+          "INSERT INTO role_permissions (role_id, permission_id) VALUES ?",
+          [values],
+        );
+      }
     }
 
     await connection.commit();

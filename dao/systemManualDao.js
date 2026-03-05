@@ -1,16 +1,15 @@
 const db = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 
-class HotelDetailDao {
-  static async getAllHotels(filters = {}) {
-    let baseQuery = " FROM hotel_details WHERE status = 1";
+class SystemManualDao {
+  static async getAllSystemManuals(filters = {}) {
+    let baseQuery = " FROM system_manuals WHERE status = 1";
     const params = [];
 
     if (filters.search) {
-      baseQuery +=
-        " AND (venue_name LIKE ? OR venue_address LIKE ? OR email LIKE ?)";
+      baseQuery += " AND (title LIKE ?)";
       const searchTerm = `%${filters.search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm);
     }
 
     // Get total count for pagination
@@ -25,7 +24,12 @@ class HotelDetailDao {
     const sortBy = filters.sort_by || "created_at";
     const sortOrder = filters.sort_order === "asc" ? "ASC" : "DESC";
     // Whitelist sortable columns to prevent SQL injection
-    const allowedSortColumns = ["venue_name", "created_at", "updated_at"];
+    const allowedSortColumns = [
+      "title",
+      "document_type",
+      "created_at",
+      "updated_at",
+    ];
     if (allowedSortColumns.includes(sortBy)) {
       dataQuery += ` ORDER BY ${sortBy} ${sortOrder}`;
     } else {
@@ -55,31 +59,31 @@ class HotelDetailDao {
     };
   }
 
-  static async getHotelById(id) {
-    const query = "SELECT * FROM hotel_details WHERE id = ? AND status = 1";
+  static async getSystemManualById(id) {
+    const query = "SELECT * FROM system_manuals WHERE id = ? AND status = 1";
     const [rows] = await db.query(query, [id]);
     return rows[0];
   }
 
-  static async createHotel(hotelData) {
-    const { venue_name, venue_address, venue_contact, venue_map_link, email } =
-      hotelData;
+  static async createSystemManual(data) {
+    const { title, document_type, file_name, file_original_name, url_link } =
+      data;
     const id = uuidv4();
     await db.query(
-      `INSERT INTO hotel_details (id, venue_name, venue_address, venue_contact, venue_map_link, email) 
+      `INSERT INTO system_manuals (id, title, document_type, file_name, file_original_name, url_link) 
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, venue_name, venue_address, venue_contact, venue_map_link, email],
+      [id, title, document_type, file_name, file_original_name, url_link],
     );
     return id;
   }
 
-  static async updateHotel(id, updateData) {
+  static async updateSystemManual(id, updateData) {
     const fields = [
-      "venue_name",
-      "venue_address",
-      "venue_contact",
-      "venue_map_link",
-      "email",
+      "title",
+      "document_type",
+      "file_name",
+      "file_original_name",
+      "url_link",
       "status",
     ];
     const updates = [];
@@ -95,7 +99,7 @@ class HotelDetailDao {
     if (updates.length > 0) {
       params.push(id);
       const [result] = await db.query(
-        `UPDATE hotel_details SET ${updates.join(", ")} WHERE id = ?`,
+        `UPDATE system_manuals SET ${updates.join(", ")} WHERE id = ?`,
         params,
       );
       return result.affectedRows > 0;
@@ -103,13 +107,13 @@ class HotelDetailDao {
     return false;
   }
 
-  static async deleteHotel(id) {
+  static async deleteSystemManual(id) {
     const [result] = await db.query(
-      "UPDATE hotel_details SET status = 0 WHERE id = ?",
+      "UPDATE system_manuals SET status = 0 WHERE id = ?",
       [id],
     );
     return result.affectedRows > 0;
   }
 }
 
-module.exports = HotelDetailDao;
+module.exports = SystemManualDao;

@@ -7,5 +7,7 @@ const ReportController = require("../../controllers/admin/ReportController");
 router.get("/filter-options", ReportController.getFilterOptions);
 router.post("/feedback/export", ReportController.exportFeedbackReport);
 router.post("/certificate/export", ReportController.exportCertificateReport);
+router.get("/hotel", ReportController.getHotelReport);
+
 
 module.exports = router;

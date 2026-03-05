@@ -269,6 +269,69 @@ class ReportDao {
     const [rows] = await pool.execute(query, params);
     return rows;
   }
+
+  static async getHotelReport(filters = {}) {
+    let query = `
+      SELECT 
+        ce.id as enrollment_id,
+        ce.venue_name as hotel_name,
+        c.course_name,
+        c.start_date,
+        c.end_date,
+        c.course_type,
+        u.id as candidate_id,
+        u.first_name,
+        u.last_name,
+        cp.employee_id
+      FROM courses_enrollment ce
+      JOIN users u ON ce.candidate_id = u.id
+      JOIN candidate_profiles cp ON u.id = cp.user_id
+      JOIN courses c ON ce.course_id = c.id
+      WHERE ce.venue_name IS NOT NULL AND ce.venue_name != ''
+    `;
+    const params = [];
+
+    if (filters.hotel_name) {
+      query += ` AND ce.venue_name LIKE ?`;
+      params.push(`%${filters.hotel_name}%`);
+    }
+
+    if (filters.employee) {
+      query += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
+      params.push(`%${filters.employee}%`, `%${filters.employee}%`, `%${filters.employee}%`);
+    }
+
+    if (filters.course_name) {
+      query += ` AND c.course_name LIKE ?`;
+      params.push(`%${filters.course_name}%`);
+    }
+
+    // Get total count for pagination
+    const countQuery = `SELECT COUNT(*) as totalCount FROM (${query}) as subquery`;
+    const [countResult] = await pool.execute(countQuery, params);
+    const totalCount = countResult[0].totalCount;
+
+    query += ` ORDER BY ce.created_at DESC`;
+
+    let page = null;
+    let limit = null;
+
+    if (filters.page && filters.limit) {
+      page = Math.max(1, Number(filters.page));
+      limit = Number(filters.limit);
+      const offset = (page - 1) * limit;
+      query += ` LIMIT ${limit} OFFSET ${offset}`;
+    }
+
+    const [rows] = await pool.execute(query, params);
+    return {
+      data: rows,
+      total: totalCount,
+      page: page || 1,
+      limit: limit || totalCount,
+      totalPages: limit ? Math.ceil(totalCount / limit) : 1,
+    };
+  }
 }
 
 module.exports = ReportDao;

@@ -15,6 +15,7 @@ const {
   uploadProfileImage,
 } = require("../controllers/candidateProfileUploadController");
 const verifyToken = require("../middleware/authMiddleware");
+const checkPermission = require("../middleware/permissionMiddleware");
 const candidateUpload = require("../middleware/candidateUploadMiddleware");
 const multer = require("multer");
 const path = require("path");
@@ -32,18 +33,44 @@ const upload = multer({ storage });
 
 // Protected routes
 router.get("/", verifyToken, getAllCandidates);
-router.get("/export", verifyToken, exportCandidates);
+router.get(
+  "/export",
+  verifyToken,
+  checkPermission("export_candidates"),
+  exportCandidates,
+);
 router.get("/:id", verifyToken, getCandidateById);
-router.put("/update/:id", verifyToken, updateCandidate);
-router.delete("/delete/:id", verifyToken, deleteCandidate);
+router.put(
+  "/update/:id",
+  verifyToken,
+  checkPermission("edit_candidate"),
+  updateCandidate,
+);
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  checkPermission("delete_candidate"),
+  deleteCandidate,
+);
 
 // Bulk operations
-router.post("/upload", verifyToken, upload.single("csv"), uploadCandidates);
+router.post(
+  "/upload",
+  verifyToken,
+  checkPermission("create_candidate"),
+  upload.single("csv"),
+  uploadCandidates,
+);
 router.post(
   "/upload-profile-image",
   candidateUpload.single("image"),
   uploadProfileImage,
 );
-router.post("/import-api", verifyToken, importFromApi);
+router.post(
+  "/import-api",
+  verifyToken,
+  checkPermission("create_candidate"),
+  importFromApi,
+);
 
 module.exports = router;

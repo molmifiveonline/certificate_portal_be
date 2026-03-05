@@ -35,7 +35,7 @@ class TrainerDao {
       const profileId = uuidv4();
       await connection.query(
         `INSERT INTO trainer_profiles 
-        (id, user_id, prefix, designation, nationality, rank, digital_signature, profile_photo, officer, other_officer) 
+        (id, user_id, prefix, designation, nationality, \`rank\`, digital_signature, profile_photo, officer, other_officer) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           profileId,
@@ -161,7 +161,7 @@ class TrainerDao {
 
       userFields.forEach((field) => {
         if (updateData[field] !== undefined) {
-          userUpdates.push(`${field} = ?`);
+          userUpdates.push(`\`${field}\` = ?`);
           userpParams.push(updateData[field]);
         }
       });
@@ -191,7 +191,7 @@ class TrainerDao {
 
       profileFields.forEach((field) => {
         if (updateData[field] !== undefined) {
-          profileUpdates.push(`${field} = ?`);
+          profileUpdates.push(`\`${field}\` = ?`);
           profileParams.push(updateData[field]);
         }
       });

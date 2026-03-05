@@ -22,7 +22,7 @@ const uploadFields = upload.fields([
 router.post(
   "/create",
   verifyToken,
-  checkPermission("create_user"),
+  checkPermission("create_trainer"),
   uploadFields,
   createTrainer,
 );
@@ -30,7 +30,7 @@ router.post(
 router.put(
   "/update/:id",
   verifyToken,
-  // checkPermission("update_user"), // Uncomment if permission exists
+  checkPermission("edit_trainer"),
   uploadFields,
   updateTrainer,
 );
@@ -38,12 +38,17 @@ router.put(
 router.delete(
   "/delete/:id",
   verifyToken,
-  // checkPermission("delete_user"), // Uncomment if permission exists
+  checkPermission("delete_trainer"),
   deleteTrainer,
 );
 
 router.get("/", verifyToken, getAllTrainers);
-router.get("/export", verifyToken, exportTrainers); // Place before /:id to avoid conflict
+router.get(
+  "/export",
+  verifyToken,
+  checkPermission("export_trainers"),
+  exportTrainers,
+); // Place before /:id to avoid conflict
 router.get("/:id", verifyToken, getTrainerById);
 
 module.exports = router;
