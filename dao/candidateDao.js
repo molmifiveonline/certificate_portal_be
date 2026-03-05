@@ -148,7 +148,7 @@ class CandidateDao {
 
       for (const field of userFields) {
         if (updateData[field] !== undefined) {
-          userUpdates.push(`${field} = ?`);
+          userUpdates.push(`\`${field}\` = ?`);
           userParams.push(updateData[field]);
         }
       }
@@ -199,7 +199,7 @@ class CandidateDao {
 
       profileFields.forEach((field) => {
         if (updateData[field] !== undefined) {
-          profileUpdates.push(`${field} = ?`);
+          profileUpdates.push(`\`${field}\` = ?`);
           profileParams.push(updateData[field]);
         }
       });
@@ -307,7 +307,7 @@ class CandidateDao {
             await connection.query(
               `UPDATE candidate_profiles SET 
                 middle_name = ?, prefix = ?, gender = ?, dob = ?, nationality = ?, 
-                passport_no = ?, employee_id = ?, manager = ?, rank = ?, 
+                passport_no = ?, employee_id = ?, manager = ?, \`rank\` = ?, 
                 whatsapp_number = ?, alternate_mobile = ?, indos_number = ?, 
                 registration_type = ?, manager_last_served = ?, rank_last_served = ? 
               WHERE user_id = ?`,
@@ -335,7 +335,7 @@ class CandidateDao {
             await connection.query(
               `INSERT INTO candidate_profiles 
                 (id, user_id, middle_name, prefix, gender, dob, nationality, 
-                passport_no, employee_id, manager, rank, whatsapp_number, 
+                passport_no, employee_id, manager, \`rank\`, whatsapp_number, 
                 alternate_mobile, indos_number, registration_type, manager_last_served, rank_last_served) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
@@ -385,7 +385,7 @@ class CandidateDao {
           await connection.query(
             `INSERT INTO candidate_profiles 
               (id, user_id, middle_name, prefix, gender, dob, nationality, 
-              passport_no, employee_id, manager, rank, whatsapp_number, 
+              passport_no, employee_id, manager, \`rank\`, whatsapp_number, 
               alternate_mobile, indos_number, registration_type, manager_last_served, rank_last_served) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
