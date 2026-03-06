@@ -142,12 +142,15 @@ class AssessmentResultDao {
         u.first_name,
         u.last_name,
         u.email,
+        cp.employee_id,
+        cp.rank,
         a.title as assessment_title,
         a.type_of_test,
         c.course_name,
         c.course_id as course_code
       FROM assessment_results ar
       LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN assessment a ON ar.assessment_id = a.id
       LEFT JOIN courses c ON ar.course_id = c.id
       WHERE ar.id = ?
@@ -243,6 +246,7 @@ class AssessmentResultDao {
     page = 1,
     limit = 10,
     type_of_test = null,
+    course_id = null,
   ) {
     const offset = (page - 1) * limit;
 
@@ -252,6 +256,11 @@ class AssessmentResultDao {
     if (type_of_test) {
       baseWhere += ` AND a.type_of_test = ?`;
       params.push(type_of_test);
+    }
+
+    if (course_id) {
+      baseWhere += ` AND ar.course_id = ?`;
+      params.push(course_id);
     }
 
     if (search) {
@@ -264,6 +273,7 @@ class AssessmentResultDao {
       SELECT COUNT(*) as totalCount
       FROM assessment_results ar
       LEFT JOIN users u ON ar.candidate_id = u.id
+      LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN assessment a ON ar.assessment_id = a.id
       LEFT JOIN courses c ON ar.course_id = c.id
       ${baseWhere}

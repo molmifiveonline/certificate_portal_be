@@ -389,6 +389,7 @@ exports.convertToActiveCourse = async (req, res) => {
 exports.getAdminRemarksReport = async (req, res) => {
   try {
     const filters = {
+      search: req.query.search,
       course_id: req.query.course_id,
       candidate_id: req.query.candidate_id,
     };
