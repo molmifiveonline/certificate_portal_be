@@ -86,7 +86,7 @@ exports.exportFeedbackReport = async (req, res) => {
       // OR follow the PHP logic blindly if IDs are consistent.
       // Let's include them if they exist in the questionsData or just append all non-rating questions found.
       // PHP Logic specific filter:
-      if (q.feedback_category_id == 23) {
+      if (q.category_id == 23) {
         // Assuming 23 is specific category
         // Find category name
         // Since we don't have category name in `allQuestions.nonRatings` easily without join,
@@ -117,13 +117,15 @@ exports.exportFeedbackReport = async (req, res) => {
     let trainerIds = [];
     courses.forEach((c) => {
       if (c.primary_trainer_id) trainerIds.push(c.primary_trainer_id);
-      if (c.secondary_trainer_ids) {
-        // Remove brackets/quotes if stored as JSON string "['id']" or just split if comma separated
-        // ActiveCourseDao saves it as simple array or string?
-        // In DAO: secondary_trainer_ids param.
-        // Let's assume it's a string comma separated or we handle both.
-        const ids = c.secondary_trainer_ids.split(","); // simple assumption based on PHP
-        trainerIds = [...trainerIds, ...ids];
+      if (
+        c.secondary_trainer_ids &&
+        typeof c.secondary_trainer_ids === "string"
+      ) {
+        const ids = c.secondary_trainer_ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id);
+        trainerIds.push(...ids);
       }
     });
     trainerIds = [...new Set(trainerIds)];
@@ -196,8 +198,14 @@ exports.exportFeedbackReport = async (req, res) => {
 
       // Secondary Trainers
       let secondaryTrainerNames = [];
-      if (course.secondary_trainer_ids) {
-        const sIds = course.secondary_trainer_ids.split(",");
+      if (
+        course.secondary_trainer_ids &&
+        typeof course.secondary_trainer_ids === "string"
+      ) {
+        const sIds = course.secondary_trainer_ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id);
         sIds.forEach((id) => {
           const t = trainersMap[id];
           if (t) {

@@ -399,3 +399,39 @@ CREATE TABLE IF NOT EXISTS course_tokens (
   KEY course_tokens_token (token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- Date: 2026-03-09 - Active Course Features & Certificate Enhancements
+-- Add is_hidden flag to certificates table
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS is_hidden TINYINT(1) DEFAULT 0;
+
+-- Add cancellation and completion reasons to courses table
+ALTER TABLE courses 
+  ADD COLUMN IF NOT EXISTS cancelation_reason TEXT NULL,
+  ADD COLUMN IF NOT EXISTS completion_reason TEXT NULL;
+
+-- Add acknowledgment columns to courses_enrollment table
+ALTER TABLE courses_enrollment 
+  ADD COLUMN IF NOT EXISTS ack_token VARCHAR(100) NULL,
+  ADD COLUMN IF NOT EXISTS ack_status VARCHAR(50) DEFAULT 'Pending',
+  ADD COLUMN IF NOT EXISTS ack_date DATETIME NULL,
+  ADD COLUMN IF NOT EXISTS ack_remark TEXT NULL;
+
+-- Add venue details for offline/manual welcome letters to courses_enrollment table
+ALTER TABLE courses_enrollment 
+  ADD COLUMN IF NOT EXISTS venue_name VARCHAR(255) NULL,
+  ADD COLUMN IF NOT EXISTS venue_address TEXT NULL,
+  ADD COLUMN IF NOT EXISTS venue_contact VARCHAR(100) NULL,
+  ADD COLUMN IF NOT EXISTS venue_map_link TEXT NULL,
+  ADD COLUMN IF NOT EXISTS venue_email VARCHAR(255) NULL,
+  ADD COLUMN IF NOT EXISTS offline_date DATE NULL,
+  ADD COLUMN IF NOT EXISTS remarks TEXT NULL;
+
+-- Create table for venue hotel files
+CREATE TABLE IF NOT EXISTS hotel_files (
+  id CHAR(36) NOT NULL,
+  ce_id INT NOT NULL,
+  candidate_id INT NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_type VARCHAR(100),
+  uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

@@ -124,7 +124,7 @@ class CourseEnrollmentDao {
     // Note: The previous query used role name which is safer if IDs change, but standardizing.
     // Reverting to role name join for safety as per previous snippet.
     const safeQuery = `
-        SELECT u.id, u.first_name, u.last_name, cp.rank, cp.employee_id as empId
+        SELECT u.id, u.first_name, u.last_name, cp.rank, cp.employee_id as empId, cp.passport_no as cdc_passport, cp.seaman_book_no, cp.manning_company as manager
         FROM users u
         JOIN candidate_profiles cp ON u.id = cp.user_id
         JOIN roles r ON u.role_id = r.id
@@ -133,6 +133,18 @@ class CourseEnrollmentDao {
         AND u.id NOT IN (SELECT candidate_id FROM courses_enrollment WHERE course_id = ?)
     `;
     const [rows] = await pool.execute(safeQuery, [courseId]);
+    return rows;
+  }
+
+  static async getAllActiveCandidates() {
+    const query = `
+        SELECT u.id
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE r.name = 'candidate'
+        AND u.status = 1
+    `;
+    const [rows] = await pool.execute(query);
     return rows;
   }
 
@@ -375,6 +387,7 @@ class CourseEnrollmentDao {
       SELECT 
         ce.candidate_id, ce.is_present, ce.holidays, 
         ce.certficate_generated, ce.generated_date, ce.active,
+        cert.id as certificate_id, cert.is_hidden,
         u.first_name, u.last_name,
         cp.employee_id as empId,
         CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
@@ -383,11 +396,13 @@ class CourseEnrollmentDao {
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
+      LEFT JOIN certificates cert ON ce.candidate_id = cert.candidate_id AND ce.course_id = cert.active_course_id
       LEFT JOIN (
-        SELECT ar.candidate_id, ar.score
+        SELECT ar.candidate_id, ar.score, ar.attempt_number
         FROM assessment_results ar
         JOIN assessment a ON ar.assessment_id = a.id
         WHERE ar.course_id = ? AND a.type_of_test = 'Post' AND ar.status = 'Completed'
+        ORDER BY ar.attempt_number DESC LIMIT 1
       ) post_res ON ce.candidate_id = post_res.candidate_id
       LEFT JOIN (
         SELECT DISTINCT candidate_id FROM feedback_question_answer WHERE active_course_id = ?
@@ -411,6 +426,14 @@ class CourseEnrollmentDao {
     const [result] = await pool.execute(
       "UPDATE courses_enrollment SET active = ? WHERE course_id = ? AND candidate_id = ?",
       [value, courseId, candidateId],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async updateCertificateHide(certificateId, value) {
+    const [result] = await pool.execute(
+      "UPDATE certificates SET is_hidden = ? WHERE id = ?",
+      [value, certificateId],
     );
     return result.affectedRows > 0;
   }

@@ -141,7 +141,7 @@ class AssessmentDao {
   // Get questions for a master course
   static async getQuestionsByMasterCourse(masterCourseId, typeOfTest = null) {
     let query = `
-      SELECT id, question, master_course_id, type_of_test
+      SELECT id, question, option_a, option_b, option_c, option_d, image, opt_img_a, opt_img_b, opt_img_c, opt_img_d, master_course_id, type_of_test
       FROM question_bank
       WHERE master_course_id = ? AND status = 1
     `;

@@ -32,7 +32,7 @@ class ReportDao {
   }
 
   static async getAllFeedbackQuestionsCombined(status = 1) {
-    let query = `SELECT * FROM feedback_question`;
+    let query = `SELECT * FROM feedback_questions`;
     const params = [];
     if (status) {
       query += ` WHERE status = ?`;
@@ -64,9 +64,9 @@ class ReportDao {
     // Dynamic placeholders for IN clause
     const placeholders = questionIds.map(() => "?").join(",");
     const query = `
-            SELECT fq.id, fq.question, fq.feedback_category_id, fq.question_format, fc.name as category_name 
-            FROM feedback_question fq 
-            LEFT JOIN feedback_category fc ON fq.feedback_category_id = fc.id 
+            SELECT fq.id, fq.question, fq.category_id, fq.type as question_format, fc.name as category_name 
+            FROM feedback_questions fq 
+            LEFT JOIN feedback_categories fc ON fq.category_id = fc.id 
             WHERE fq.id IN (${placeholders})
         `;
 
@@ -180,7 +180,7 @@ class ReportDao {
     // ActiveCourseDao: req.body.topic = topicName; // Store Name in DB, not UUID
     // But let's check MasterCourseDao if possible.
     // For now, assuming we select by ID if names are IDs, or generic SELECT * FROM master_courses
-    const query = `SELECT * FROM master_courses WHERE id IN (${placeholders})`;
+    const query = `SELECT * FROM master_course WHERE id IN (${placeholders})`;
     const [rows] = await pool.execute(query, names);
     return rows;
   }
@@ -244,7 +244,7 @@ class ReportDao {
             LEFT JOIN users u_cand ON c.candidate_id = u_cand.id
             LEFT JOIN candidate_profiles curr_cp ON u_cand.id = curr_cp.user_id
             LEFT JOIN courses course ON c.active_course_id = course.id
-            LEFT JOIN master_courses mc ON c.course_id = mc.id
+            LEFT JOIN master_course mc ON c.course_id = mc.id
             LEFT JOIN users u_trainer ON c.trainer_id = u_trainer.id
             LEFT JOIN trainer_profiles tp ON u_trainer.id = tp.user_id
             
@@ -298,7 +298,11 @@ class ReportDao {
 
     if (filters.employee) {
       query += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
-      params.push(`%${filters.employee}%`, `%${filters.employee}%`, `%${filters.employee}%`);
+      params.push(
+        `%${filters.employee}%`,
+        `%${filters.employee}%`,
+        `%${filters.employee}%`,
+      );
     }
 
     if (filters.course_name) {
