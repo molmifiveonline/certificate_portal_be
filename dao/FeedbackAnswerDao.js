@@ -214,10 +214,14 @@ class FeedbackAnswerDao {
       SELECT 
         fa.*,
         fq.question,
-        fq.type
+        fq.type,
+        COALESCE(fcq.name, fca.name) as category_name
       FROM feedback_question_answer fa
       JOIN feedback_questions fq ON fa.feedback_question_id = fq.id
+      LEFT JOIN feedback_categories fcq ON fq.category_id = fcq.id
+      LEFT JOIN feedback_categories fca ON fa.feedback_category_id = fca.id
       WHERE fa.candidate_id = ? AND fa.active_course_id = ?
+      ORDER BY fa.created_at ASC, fa.id ASC
     `;
     const [rows] = await db.query(query, [candidate_id, active_course_id]);
     return rows;
