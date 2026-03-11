@@ -222,6 +222,35 @@ class TrainerDao {
     );
     return result.affectedRows > 0;
   }
+
+  static async getDashboardStats(trainerId) {
+    // 1. Total Active Courses (where trainer is primary)
+    const [coursesCount] = await db.query(
+      "SELECT COUNT(*) as count FROM courses WHERE primary_trainer_id = ? AND status != 'Deleted' AND status != 'Course Completed' AND status != 'Cancelled'",
+      [trainerId],
+    );
+
+    // 2. Total Candidates (enrolled in those courses)
+    const [candidatesCount] = await db.query(
+      `SELECT COUNT(DISTINCT ce.candidate_id) as count 
+       FROM courses_enrollment ce
+       JOIN courses c ON ce.course_id = c.id
+       WHERE c.primary_trainer_id = ? AND c.status != 'Deleted'`,
+      [trainerId],
+    );
+
+    // 3. Certificates Issued
+    const [certificatesCount] = await db.query(
+      "SELECT COUNT(*) as count FROM certificates WHERE trainer_id = ?",
+      [trainerId],
+    );
+
+    return {
+      activeCourses: coursesCount[0].count,
+      totalCandidates: candidatesCount[0].count,
+      certificatesIssued: certificatesCount[0].count,
+    };
+  }
 }
 
 module.exports = TrainerDao;

@@ -229,6 +229,17 @@ const exportTrainers = async (req, res) => {
   }
 };
 
+const getTrainerDashboardStats = async (req, res) => {
+  try {
+    const trainerId = req.user.id;
+    const stats = await TrainerDao.getDashboardStats(trainerId);
+    res.status(200).json(stats);
+  } catch (error) {
+    console.error("Get Trainer Dashboard Stats Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   createTrainer,
   getAllTrainers,
@@ -236,4 +247,5 @@ module.exports = {
   updateTrainer,
   deleteTrainer,
   exportTrainers,
+  getTrainerDashboardStats,
 };

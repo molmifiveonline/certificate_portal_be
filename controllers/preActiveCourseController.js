@@ -179,24 +179,63 @@ exports.getCourseByToken = async (req, res) => {
 exports.nominatorAddCandidate = async (req, res) => {
   try {
     const { token } = req.params;
-    const candidateData = req.body;
+    const { candidates } = req.body;
 
     const details = await PreActiveCourseDao.getTokenDetails(token);
     if (!details || details.entity_type !== "Nominator") {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    const enrollmentId = await PreActiveCourseDao.enrollCandidateByNominator(
-      details.course_id,
-      details.entity_id,
-      candidateData,
-    );
+    const courseId = details.course_id;
+    const nominatorId = details.entity_id;
+    const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
 
-    res
-      .status(201)
-      .json({ message: "Candidate nominated successfully", enrollmentId });
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const enrollmentIds = [];
+
+    for (const candidateData of candidates) {
+      const enrollmentId = await PreActiveCourseDao.enrollCandidateByNominator(
+        courseId,
+        nominatorId,
+        candidateData,
+      );
+      enrollmentIds.push(enrollmentId);
+
+      // Automatically notify the candidate
+      // We need candidate_id which is determined inside enrollCandidateByNominator
+      // Let's fetch the enrollment to get the candidate_id for token generation
+      const enrollment = await CourseEnrollmentDao.getEnrollmentById(enrollmentId);
+      if (enrollment && enrollment.email) {
+        const candidateToken = await PreActiveCourseDao.createToken(
+          courseId,
+          enrollment.candidate_id,
+          "Candidate",
+        );
+        const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
+
+        const subject = `Course Nomination Approval - ${course.course_name}`;
+        const html = `
+                    <h3>Dear ${enrollment.first_name},</h3>
+                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
+                    <p><strong>Start Date:</strong> ${course.start_date}</p>
+                    <p><strong>End Date:</strong> ${course.end_date}</p>
+                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
+                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
+                    <br><br>
+                    <p>Link expires in 7 days.</p>
+                `;
+
+        await emailService.sendEmail(enrollment.email, subject, html);
+      }
+    }
+
+    res.status(201).json({
+      message: "Candidates nominated and notified successfully",
+      enrollmentIds,
+    });
   } catch (error) {
-    console.error("Error nominating candidate:", error);
+    console.error("Error nominating candidates:", error);
     res.status(400).json({ message: error.message });
   }
 };

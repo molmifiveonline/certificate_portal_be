@@ -75,11 +75,11 @@ const fetchExternalPreview = async (req, res) => {
       days: item.duration || 0,
       type_of_location: item.location || "Onsite",
       location_id: item.loc_id || null,
-      course_type: item.course_type || "Offline",
+      course_type: item.course_type || "In house", // Default to one of the requested types
       description: item.description || "",
       remarks: item.remarks || "",
       master_course_name: item.course_name || "",
-      topic: item.location === "ONLINE" ? "Online" : "General",
+      topic: item.topic || (item.location === "ONLINE" ? "Online" : "General"),
     }));
 
     // Check which ones already exist
