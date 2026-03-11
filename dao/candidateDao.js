@@ -256,6 +256,26 @@ class CandidateDao {
       if (roles.length === 0) throw new Error("Candidate role not found");
       const roleId = roles[0].id;
 
+      // Extract all emails to check existence in one go
+      const emails = candidates
+        .map((c) => c.email)
+        .filter((e) => e && e.trim() !== "");
+      if (emails.length === 0) return stats;
+
+      // Fetch all existing users with these emails
+      const [existingUsersRows] = await connection.query(
+        "SELECT id, email FROM users WHERE email IN (?)",
+        [emails],
+      );
+
+      const existingUsersMap = new Map(
+        existingUsersRows.map((u) => [u.email.toLowerCase(), u.id]),
+      );
+
+      // Pre-hash one password for all new users to save time
+      const tempPassword = crypto.randomBytes(8).toString("hex");
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
       for (const candidate of candidates) {
         const {
           email,
@@ -282,25 +302,21 @@ class CandidateDao {
           continue;
         }
 
-        // Check if user exists
-        const [existingUsers] = await connection.query(
-          "SELECT id FROM users WHERE email = ?",
-          [email],
-        );
+        const normalizedEmail = email.toLowerCase();
+        const existingUserId = existingUsersMap.get(normalizedEmail);
 
-        if (existingUsers.length > 0) {
-          const userId = existingUsers[0].id;
+        if (existingUserId) {
           // Update User
           await connection.query(
             "UPDATE users SET first_name = ?, last_name = ?, mobile = ? WHERE id = ?",
-            [first_name, last_name, mobile, userId],
+            [first_name, last_name, mobile, existingUserId],
           );
 
-          // Update Profile
-          // Using IGNORE or check if profile exists
+          // Update/Insert Profile (using INSERT ... ON DUPLICATE KEY UPDATE might be better if we had a unique constraint on user_id, 
+          // but sticking to current logic of checking first to be safe with existing schema)
           const [profiles] = await connection.query(
             "SELECT id FROM candidate_profiles WHERE user_id = ?",
-            [userId],
+            [existingUserId],
           );
 
           if (profiles.length > 0) {
@@ -325,9 +341,9 @@ class CandidateDao {
                 alternate_mobile,
                 indos_number,
                 registration_type,
-                manager, // Using manager for manager_last_served as well
-                rank, // Using rank for rank_last_served as well
-                userId,
+                manager,
+                rank,
+                existingUserId,
               ],
             );
           } else {
@@ -340,7 +356,7 @@ class CandidateDao {
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 profileId,
-                userId,
+                existingUserId,
                 middle_name,
                 prefix,
                 gender,
@@ -363,9 +379,6 @@ class CandidateDao {
         } else {
           // Insert New User
           const userId = uuidv4();
-          const tempPassword = crypto.randomBytes(8).toString("hex");
-          const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
           await connection.query(
             "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [

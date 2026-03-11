@@ -99,6 +99,11 @@ class ActiveCourseDao {
       whereParams.push(filters.to_date);
     }
 
+    if (filters.trainer_id) {
+      whereClause += " AND primary_trainer_id = ?";
+      whereParams.push(filters.trainer_id);
+    }
+
     const countQuery = `SELECT COUNT(*) as total FROM courses ${whereClause}`;
     const [countResult] = await pool.execute(countQuery, whereParams);
     const total = countResult[0].total;

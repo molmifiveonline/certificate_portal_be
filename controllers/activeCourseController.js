@@ -85,6 +85,12 @@ exports.getAllCourses = async (req, res) => {
   try {
     const { search, page, limit, status, from_date, to_date } = req.query;
     const filters = { status, from_date, to_date };
+
+    // Trainer login should only see own courses (legacy PHP parity).
+    if (req.user?.role && req.user.role.toLowerCase() === "trainer") {
+      filters.trainer_id = req.user.id;
+    }
+
     const result = await ActiveCourseDao.getAll(search, page, limit, filters);
     res.status(200).json(result);
   } catch (error) {

@@ -32,105 +32,121 @@ const getAccessToken = async () => {
   return response.data;
 };
 
+let isSyncing = false;
+
 const importFromApi = async (req, res) => {
   try {
-    const { date } = req.body; // Expecting date in YYYY-MM-DD
-    const tokenData = await getAccessToken();
-    const token = tokenData.access_token;
-    const refreshToken = tokenData.refresh_token || "";
-
-    const response = await axios.post(
-      `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
-      JSON.stringify({
-        ServiceName: SYNC_CONFIG.serviceName,
-        AuthorizationKey: SYNC_CONFIG.authKey,
-        FromUTCDateTime: date || "1970-01-01",
-      }),
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey, // Added for safety if required by APIM
-        },
-        httpsAgent: new https.Agent({
-          rejectUnauthorized: false, // Ignore SSL errors
-        }),
-      },
-    );
-
-    const apiData = response.data;
-    const personnel = apiData.data?.PersonnelDetails_MOLMI || [];
-
-    if (personnel.length === 0) {
-      return res.status(200).json({
-        message: "No new data found in API",
-        stats: { inserted: 0, updated: 0, errors: 0 },
+    if (isSyncing) {
+      return res.status(429).json({
+        message: "An import is already in progress. Please wait.",
       });
     }
 
-    const candidates = personnel.map((item) => {
-      return {
-        first_name: item["First Name"] || "",
-        last_name: item["Surname"] || "",
-        email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
-        mobile: item["Mobile"] || "",
-        middle_name: item["Middle Name"] || "",
-        prefix: item["title"] || "",
-        gender:
-          item["Gender"] === "M"
-            ? "Male"
-            : item["Gender"] === "F"
-              ? "Female"
-              : null,
-        dob: item["Birth Date"] || null,
-        nationality: item["Country"] || "",
-        passport_no: item["Passport No"] || "",
-        employee_id: item["Employee No"] || "",
-        manager: item["Manager"] || "",
-        rank: item["Position"] || "",
-        whatsapp_number: item["Mobile"] || "",
-        alternate_mobile: item["Mobile 1"] || "",
-        indos_number: "", // API doesn't seem to provide it directly in the same field names
-        registration_type: "Other",
-      };
+    const { date } = req.body;
+    const userId = req.user.id;
+    const userIp = req.ip;
+    const userAgent = req.get("User-Agent");
+
+    // Return immediate response
+    res.status(202).json({
+      message: "Import started in the background. You can check the logs or refresh the candidate list in a few minutes.",
     });
 
-    const stats = await CandidateDao.bulkUpsert(candidates);
+    // Start background process
+    (async () => {
+      isSyncing = true;
+      console.log(`[Background Sync] Started for date: ${date || "1970-01-01"}`);
+      
+      try {
+        const tokenData = await getAccessToken();
+        const token = tokenData.access_token;
+        const refreshToken = tokenData.refresh_token || "";
 
-    await LogDao.createLog({
-      user_id: req.user.id,
-      action: "API_IMPORT_CANDIDATES",
-      details: `Imported ${stats.inserted} new and updated ${stats.updated} candidates from API.`,
-      ip_address: req.ip,
-      user_agent: req.get("User-Agent"),
-    });
+        const response = await axios.post(
+          `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
+          JSON.stringify({
+            ServiceName: SYNC_CONFIG.serviceName,
+            AuthorizationKey: SYNC_CONFIG.authKey,
+            FromUTCDateTime: date || "1970-01-01",
+          }),
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+            },
+            httpsAgent: new https.Agent({
+              rejectUnauthorized: false,
+            }),
+            timeout: 60000, // 60 seconds timeout for the API call
+          },
+        );
 
-    res.status(200).json({
-      message: "API Import completed successfully",
-      stats,
-    });
+        const apiData = response.data;
+        const personnel = apiData.data?.PersonnelDetails_MOLMI || [];
+
+        if (personnel.length === 0) {
+          console.log("[Background Sync] No new data found in API");
+          return;
+        }
+
+        const candidates = personnel.map((item) => {
+          return {
+            first_name: item["First Name"] || "",
+            last_name: item["Surname"] || "",
+            email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
+            mobile: item["Mobile"] || "",
+            middle_name: item["Middle Name"] || "",
+            prefix: item["title"] || "",
+            gender:
+              item["Gender"] === "M"
+                ? "Male"
+                : item["Gender"] === "F"
+                  ? "Female"
+                  : null,
+            dob: item["Birth Date"] || null,
+            nationality: item["Country"] || "",
+            passport_no: item["Passport No"] || "",
+            employee_id: item["Employee No"] || "",
+            manager: item["Manager"] || "",
+            rank: item["Position"] || "",
+            whatsapp_number: item["Mobile"] || "",
+            alternate_mobile: item["Mobile 1"] || "",
+            indos_number: "",
+            registration_type: "Other",
+          };
+        });
+
+        const stats = await CandidateDao.bulkUpsert(candidates);
+
+        await LogDao.createLog({
+          user_id: userId,
+          action: "API_IMPORT_CANDIDATES",
+          details: `Imported ${stats.inserted} new and updated ${stats.updated} candidates from API.`,
+          ip_address: userIp,
+          user_agent: userAgent,
+        });
+
+        console.log(`[Background Sync] Completed: ${stats.inserted} inserted, ${stats.updated} updated.`);
+      } catch (bgError) {
+        console.error("[Background Sync] Error:", bgError.message);
+        await LogDao.createLog({
+          user_id: userId,
+          action: "API_IMPORT_ERROR",
+          details: `Background import failed: ${bgError.message}`,
+          ip_address: userIp,
+          user_agent: userAgent,
+        });
+      } finally {
+        isSyncing = false;
+      }
+    })();
+
   } catch (error) {
-    console.error("API Import error details:", {
-      message: error.message,
-      response: error.response?.data,
-      stack: error.stack,
-    });
-
-    if (error.response?.status === 403) {
-      return res.status(403).json({
-        message: "Access Forbidden by WAF (Azure Front Door)",
-        error:
-          "Your IP address is likely blocked by the external API firewall.",
-        resolution:
-          "Please use a VPN with a whitelisted IP or run this feature on the staging server.",
-        details: error.response?.data,
-      });
-    }
-
+    console.error("API Import trigger error:", error.message);
     res.status(500).json({
-      message: "Error importing from API",
-      error: error.response?.data || error.message,
-      details: error.stack,
+      message: "Error starting background import",
+      error: error.message,
     });
   }
 };
