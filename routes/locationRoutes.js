@@ -9,7 +9,7 @@ router.use(verifyToken);
 
 router.get(
   "/",
-  checkPermission("view_location"),
+  checkPermission("view_location", ["trainer"]),
   locationController.getLocations,
 );
 router.get(

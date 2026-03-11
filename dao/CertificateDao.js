@@ -73,7 +73,9 @@ class CertificateDao {
       LEFT JOIN users u ON c.candidate_id = u.id
       LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN users t ON c.trainer_id = t.id
+      LEFT JOIN trainer_profiles tp ON t.id = tp.user_id
       LEFT JOIN master_course mc ON c.course_id = mc.id
+      LEFT JOIN courses ac ON c.active_course_id = ac.id
       WHERE 1=1
     `;
     const values = [];
@@ -107,11 +109,19 @@ class CertificateDao {
     // Build data query
     let dataQuery = `
       SELECT c.*, 
-             CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+             COALESCE(c.from_date, ac.start_date) as from_date,
+             COALESCE(c.to_date, ac.end_date) as to_date,
+             CONCAT_WS(' ', u.first_name, u.last_name) as candidate_name,
              u.email as candidate_email,
              cp.employee_id as empId,
+             cp.dob,
+             cp.nationality,
+             cp.prefix as caprefix,
              t.first_name as trainer_first_name,
              t.last_name as trainer_last_name,
+             CONCAT_WS(' ', t.first_name, t.last_name) as trainer_name,
+             tp.prefix as tprefix,
+             tp.digital_signature,
              mc.master_course_name
       ${baseQuery}
       ORDER BY c.created_at DESC
@@ -141,16 +151,26 @@ class CertificateDao {
   static async getById(id) {
     const query = `
       SELECT c.*, 
-             CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+             COALESCE(c.from_date, ac.start_date) as from_date,
+             COALESCE(c.to_date, ac.end_date) as to_date,
+             CONCAT_WS(' ', u.first_name, u.last_name) as candidate_name,
              cp.employee_id as empId,
+             cp.dob,
+             cp.nationality,
+             cp.prefix as caprefix,
              t.first_name as trainer_first_name,
              t.last_name as trainer_last_name,
+             CONCAT_WS(' ', t.first_name, t.last_name) as trainer_name,
+             tp.prefix as tprefix,
+             tp.digital_signature,
              mc.master_course_name
       FROM certificates c
       LEFT JOIN users u ON c.candidate_id = u.id
       LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN users t ON c.trainer_id = t.id
+      LEFT JOIN trainer_profiles tp ON t.id = tp.user_id
       LEFT JOIN master_course mc ON c.course_id = mc.id
+      LEFT JOIN courses ac ON c.active_course_id = ac.id
       WHERE c.id = ?
     `;
     const [rows] = await pool.execute(query, [id]);

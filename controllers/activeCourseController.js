@@ -46,6 +46,30 @@ exports.createCourse = async (req, res) => {
     }
 
     const newCourse = await ActiveCourseDao.create(req.body);
+
+    // Auto-populate candidates for Pre-Active courses
+    if (req.body.course_type === "Pre-Active") {
+      try {
+        const allCandidates =
+          await CourseEnrollmentDao.getAllActiveCandidates();
+        if (allCandidates && allCandidates.length > 0) {
+          const candidateIds = allCandidates.map((c) => c.id);
+          const trainerId = req.body.primary_trainer_id; // Use primary trainer for initial enrollment
+          await CourseEnrollmentDao.enrollCandidates(
+            newCourse.id, // Assuming ActiveCourseDao.create returns an object with the new insertId mapped to `id` (or similar)
+            candidateIds,
+            trainerId,
+          );
+        }
+      } catch (enrollErr) {
+        console.error(
+          "Error auto-populating candidates for Pre-Active course:",
+          enrollErr,
+        );
+        // We log the error but still return success for course creation
+      }
+    }
+
     res
       .status(201)
       .json({ message: "Course created successfully", data: newCourse });
@@ -61,6 +85,12 @@ exports.getAllCourses = async (req, res) => {
   try {
     const { search, page, limit, status, from_date, to_date } = req.query;
     const filters = { status, from_date, to_date };
+
+    // Trainer login should only see own courses (legacy PHP parity).
+    if (req.user?.role && req.user.role.toLowerCase() === "trainer") {
+      filters.trainer_id = req.user.id;
+    }
+
     const result = await ActiveCourseDao.getAll(search, page, limit, filters);
     res.status(200).json(result);
   } catch (error) {
@@ -336,7 +366,7 @@ exports.emailPrimaryTrainer = async (req, res) => {
     const course = await ActiveCourseDao.getById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    const trainer = await trainerDao.getById(course.primary_trainer_id);
+    const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);
     if (!trainer)
       return res.status(404).json({ message: "Primary Trainer not found" });
 
@@ -366,7 +396,7 @@ exports.emailPrimaryTrainer = async (req, res) => {
         .filter((id) => id);
       for (const secId of secondaryIds) {
         try {
-          const secTrainer = await TrainerDao.getById(secId);
+          const secTrainer = await trainerDao.getTrainerById(secId);
           if (secTrainer && secTrainer.email) {
             const secHtml = html
               .replace(
@@ -401,6 +431,7 @@ exports.emailCandidate = async (req, res) => {
   try {
     const { id: courseId, candidateId } = req.params;
     const { type } = req.body; // 'online' or 'offline'
+    const crypto = require("crypto");
 
     const course = await ActiveCourseDao.getById(courseId);
     const enrollment =
@@ -416,6 +447,27 @@ exports.emailCandidate = async (req, res) => {
     let subject = `Course Welcome Letter - ${course.course_name}`;
     let html = "";
     let attachments = [];
+
+    // Generate Acknowledgment Token
+    const ackToken = crypto.randomBytes(32).toString("hex");
+    await CourseEnrollmentDao.saveAcknowledgmentToken(
+      courseId,
+      candidateId,
+      ackToken,
+    );
+
+    // TODO: Replace with dynamic portal URL if configurable
+    const portalUrl = "http://localhost:3000";
+    const approveLink = `${portalUrl}/acknowledge?token=${ackToken}&action=approve`;
+    const rejectLink = `${portalUrl}/acknowledge?token=${ackToken}&action=reject`;
+
+    const acknowledgmentHtml = `
+      <p>Please acknowledge your attendance by clicking one of the links below:</p>
+      <p>
+        <a href="${approveLink}" style="padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">Approve</a>
+        <a href="${rejectLink}" style="padding: 10px 20px; background-color: #f44336; color: white; text-decoration: none; border-radius: 5px;">Reject</a>
+      </p>
+    `;
 
     if (type === "offline") {
       const venueParams = await CourseEnrollmentDao.getCandidateVenueDetails(
@@ -444,6 +496,7 @@ exports.emailCandidate = async (req, res) => {
         <p><strong>Contact:</strong> ${venueParams.venue_contact || ""}</p>
         <p><strong>Map:</strong> <a href="${venueParams.venue_map_link}">View on Map</a></p>
         <p>Please find attached details.</p>
+        ${acknowledgmentHtml}
       `;
 
       if (files && files.length > 0) {
@@ -461,6 +514,7 @@ exports.emailCandidate = async (req, res) => {
         <p><strong>Zoom Link:</strong> <a href="${course.zoom_link}">${course.zoom_link}</a></p>
         <p><strong>Start Date:</strong> ${course.start_date}</p>
         <p><strong>Time:</strong> ${course.start_time || "N/A"}</p>
+        ${acknowledgmentHtml}
       `;
     }
 
@@ -485,6 +539,36 @@ exports.emailCandidate = async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to send email", error: error.message });
+  }
+};
+
+exports.acknowledgeEnrollment = async (req, res) => {
+  try {
+    const { token, action, remark } = req.body;
+
+    if (!token || !action) {
+      return res.status(400).json({ message: "Token and action are required" });
+    }
+
+    if (!["approve", "reject"].includes(action)) {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+
+    const status = action === "approve" ? "approved" : "rejected";
+
+    await CourseEnrollmentDao.updateAcknowledgmentStatus(
+      token,
+      status,
+      remark || null,
+    );
+
+    res.status(200).json({ message: "Acknowledgment submitted successfully" });
+  } catch (error) {
+    console.error("Error acknowledging enrollment:", error);
+    res.status(500).json({
+      message: "Failed to submit acknowledgment",
+      error: error.message,
+    });
   }
 };
 
@@ -741,6 +825,94 @@ exports.sendAssessmentEmail = async (req, res) => {
   }
 };
 
+exports.generateTrainingReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const PDFDocument = require("pdfkit");
+
+    // Fetch course details
+    const course = await ActiveCourseDao.getById(id);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    // Fetch assessment scores
+    const scores = await CourseEnrollmentDao.getAssessmentScores(id);
+
+    // Build PDF
+    const doc = new PDFDocument({ margin: 50 });
+
+    // Set headers for download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=Training_Report_${course.topic.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`,
+    );
+
+    doc.pipe(res);
+
+    // Title
+    doc.fontSize(20).text("Training Report", { align: "center" });
+    doc.moveDown();
+
+    // Course Details
+    doc.fontSize(12).text(`Course: ${course.topic || "N/A"}`);
+    doc.text(`Level: ${course.course_level || "N/A"}`);
+    doc.text(
+      `Dates: ${new Date(course.start_date).toLocaleDateString()} to ${new Date(course.end_date).toLocaleDateString()}`,
+    );
+    doc.text(`Location: ${course.type_of_location || "N/A"}`);
+    doc.moveDown(2);
+
+    // Candidates Table Header
+    doc.fontSize(14).text("Candidate Assessment Results", { underline: true });
+    doc.moveDown(0.5);
+
+    const tableTop = doc.y;
+    doc.fontSize(10);
+    doc.text("Emp ID", 50, tableTop);
+    doc.text("Name", 150, tableTop);
+    doc.text("Pre-Score", 350, tableTop);
+    doc.text("Post-Score", 450, tableTop);
+    doc
+      .moveTo(50, tableTop + 15)
+      .lineTo(550, tableTop + 15)
+      .stroke();
+
+    let yPosition = tableTop + 20;
+
+    // Table Rows
+    scores.forEach((c) => {
+      // Add new page if needed
+      if (yPosition > 700) {
+        doc.addPage();
+        yPosition = 50;
+      }
+
+      doc.text(c.empId || "-", 50, yPosition);
+      doc.text(c.candidate_name || "-", 150, yPosition);
+
+      const preScoreText =
+        c.pre_score !== null ? `${c.pre_score}/${c.pre_total}` : "-";
+      doc.text(preScoreText, 350, yPosition);
+
+      const postScoreText =
+        c.post_score !== null ? `${c.post_score}/${c.post_total}` : "-";
+      doc.text(postScoreText, 450, yPosition);
+
+      yPosition += 20;
+    });
+
+    doc.end();
+  } catch (error) {
+    console.error("Error generating training report PDF:", error);
+    res.status(500).json({
+      message: "Failed to generate training report",
+      error: error.message,
+    });
+  }
+};
+
 // ==========================================
 // Feedback Tab
 // ==========================================
@@ -947,6 +1119,36 @@ exports.updateCertificateActive = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update certificate status",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateCertificateHide = async (req, res) => {
+  try {
+    const { certificateId } = req.params;
+    const { value } = req.body;
+
+    // We already passed certificateId from the frontend
+    const result = await CourseEnrollmentDao.updateCertificateHide(
+      certificateId,
+      value,
+    );
+
+    if (result) {
+      res
+        .status(200)
+        .json({ success: true, message: "Certificate hide status updated" });
+    } else {
+      res
+        .status(400)
+        .json({ success: false, message: "Failed to update hide status" });
+    }
+  } catch (error) {
+    console.error("Error updating certificate hide status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update certificate hide status",
       error: error.message,
     });
   }

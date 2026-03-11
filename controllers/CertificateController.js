@@ -128,7 +128,7 @@ exports.generateCertificate = async (req, res) => {
       from_date: course.start_date,
       to_date: course.end_date,
       days: course.no_of_days,
-      issue_date: generationDate,
+      issue_date: generationDate || new Date(),
       show_logo: 1,
       is_manual: 0,
       description1: masterCourse.description,
@@ -220,25 +220,29 @@ exports.createManualCertificate = async (req, res) => {
 
       // For manual certificates, we might need to generate the certificate number if not provided
       if (!certData.certificate_no) {
-        const year = new Date(certData.issue_date || new Date()).getFullYear();
-        let subid = 0;
         if (
-          certData.type === "Others" ||
-          certData.type === "DNV-ST0029" ||
-          certData.type === "DNV-ST008"
+          certData.sample_cert === 1 ||
+          certData.sample_cert === "1" ||
+          certData.sample_cert === true
         ) {
-          subid = await CertificateDao.getNextSubId(certData.topic, year);
+          certData.certificate_no = "0001";
+          certData.subid = 1;
+        } else {
+          const year = new Date(
+            certData.issue_date || new Date(),
+          ).getFullYear();
+          let subid = await CertificateDao.getNextSubId(certData.topic, year);
           const subidStr = subid.toString().padStart(4, "0");
           const shortDate =
-            new Date(certData.issue_date).toISOString().slice(2, 4) +
-            new Date(certData.issue_date).toISOString().slice(5, 7);
-          certData.certificate_no = `${certData.topic.toUpperCase()}/${shortDate}/${subidStr}`;
-        } else {
-          subid = await CertificateDao.getNextSubIdByType(certData.type);
-          const subidStr = subid.toString().padStart(4, "0");
-          certData.certificate_no = `MANUAL-${certData.type}-${year}-${subidStr}`;
+            new Date(certData.issue_date || new Date())
+              .toISOString()
+              .slice(2, 4) +
+            new Date(certData.issue_date || new Date())
+              .toISOString()
+              .slice(5, 7);
+          certData.certificate_no = `${(certData.topic || "UNKNOWN").toUpperCase()}/${shortDate}/${subidStr}`;
+          certData.subid = subid;
         }
-        certData.subid = subid;
       }
 
       certData.is_manual = 1;

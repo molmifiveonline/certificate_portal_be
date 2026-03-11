@@ -131,8 +131,8 @@ class AssessmentDao {
     const query = `
       SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) AS candidate_name, u.email
       FROM users u
-      INNER JOIN course_enrollments ce ON u.id = ce.candidate_id
-      WHERE ce.course_id = ? AND ce.status = 1
+      INNER JOIN courses_enrollment ce ON u.id = ce.candidate_id
+      WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
     `;
     const [rows] = await pool.execute(query, [courseId]);
     return rows;
@@ -141,7 +141,7 @@ class AssessmentDao {
   // Get questions for a master course
   static async getQuestionsByMasterCourse(masterCourseId, typeOfTest = null) {
     let query = `
-      SELECT id, question, master_course_id, type_of_test
+      SELECT id, question, option_a, option_b, option_c, option_d, image, opt_img_a, opt_img_b, opt_img_c, opt_img_d, master_course_id, type_of_test
       FROM question_bank
       WHERE master_course_id = ? AND status = 1
     `;
@@ -157,12 +157,13 @@ class AssessmentDao {
   }
 
   // Get active courses (optionally filtered by test type)
-  static async getActiveCourses(typeOfTest = null) {
+  static async getActiveCourses(typeOfTest = null, excludeAssessmentId = null) {
     let query = `
       SELECT c.id, c.course_id AS course_code, c.course_name, c.master_course_name, c.master_course_id
       FROM courses c
       WHERE c.status = 'Initiated' OR c.status = 'Course started'
     `;
+    const params = [];
 
     if (typeOfTest && typeOfTest !== "3") {
       // For pre/post, exclude courses that already have an assessment of this type
@@ -170,12 +171,20 @@ class AssessmentDao {
         AND c.id NOT IN (
           SELECT course_id FROM assessment
           WHERE type_of_test = ? AND status = 1
+      `;
+      params.push(typeOfTest);
+
+      if (excludeAssessmentId) {
+        query += ` AND id != ?`;
+        params.push(excludeAssessmentId);
+      }
+
+      query += `
         )
       `;
     }
 
     query += " ORDER BY c.id DESC";
-    const params = typeOfTest && typeOfTest !== "3" ? [typeOfTest] : [];
     const [rows] = await pool.execute(query, params);
     return rows;
   }
@@ -197,6 +206,34 @@ class AssessmentDao {
 
     query += " ORDER BY a.created_at DESC";
     const [rows] = await pool.execute(query, params);
+    return rows;
+  }
+
+  // Get assessment details for a candidate to play
+  static async getAssessmentDetailsForPlay(id) {
+    const query = `
+      SELECT a.*, c.master_course_id, c.master_course_name
+      FROM assessment a
+      LEFT JOIN courses c ON a.course_id = c.id
+      WHERE a.id = ? AND a.status = 1
+    `;
+    const [rows] = await pool.execute(query, [id]);
+    return rows[0];
+  }
+
+  // Get specific questions by their IDs
+  static async getQuestionsByIds(questionIds) {
+    if (!questionIds || questionIds.length === 0) return [];
+
+    // Create placeholders ?, ?, ? for the IN clause
+    const placeholders = questionIds.map(() => "?").join(",");
+    const query = `
+      SELECT id, question, option_a, option_b, option_c, option_d, image, opt_img_a, opt_img_b, opt_img_c, opt_img_d
+      FROM question_bank
+      WHERE id IN (${placeholders}) AND status = 1
+    `;
+
+    const [rows] = await pool.execute(query, questionIds);
     return rows;
   }
 }

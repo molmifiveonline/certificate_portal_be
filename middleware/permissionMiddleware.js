@@ -1,13 +1,21 @@
 const permissionDao = require("../dao/permissionDao");
 const { error } = require("../utils/responseHandler");
 
-const checkPermission = (requiredPermission) => {
+const checkPermission = (requiredPermission, allowRoles = []) => {
   return async (req, res, next) => {
     try {
       const userRole = (req.user.role || "").toLowerCase();
 
       // Superadmin and admin always have full access — skip DB check
       if (userRole === "superadmin" || userRole === "admin") {
+        return next();
+      }
+
+      // Optional role-level bypass for specific endpoints (read-only utility calls, etc.)
+      const normalizedAllowRoles = (allowRoles || []).map((r) =>
+        String(r).toLowerCase(),
+      );
+      if (normalizedAllowRoles.includes(userRole)) {
         return next();
       }
 

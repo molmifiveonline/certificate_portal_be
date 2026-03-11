@@ -1,5 +1,8 @@
 const FeedbackAnswerDao = require("../dao/FeedbackAnswerDao");
 const CandidateDao = require("../dao/candidateDao");
+const ActiveCourseDao = require("../dao/ActiveCourseDao");
+const MasterCourseDao = require("../dao/MasterCourseDao");
+const TrainerDao = require("../dao/trainerDao");
 
 class FeedbackAnswerController {
   static async submitFeedback(req, res) {
@@ -118,17 +121,18 @@ class FeedbackAnswerController {
 
   static async getSubmissionDetails(req, res) {
     try {
-      const { candidateId, activeCourseId } = req.params;
+      const { candidateId, activeCourseId, courseId } = req.params;
+      const resolvedActiveCourseId = activeCourseId || courseId;
 
       const answers = await FeedbackAnswerDao.getSubmissionDetails(
         candidateId,
-        activeCourseId,
+        resolvedActiveCourseId,
       );
       const candidate = await CandidateDao.getCandidateById(candidateId);
 
       res.json({
         candidate,
-        active_course_id: activeCourseId,
+        active_course_id: resolvedActiveCourseId,
         answers,
       });
     } catch (error) {
@@ -149,8 +153,29 @@ class FeedbackAnswerController {
         activeCourseId,
       );
       const candidate = await CandidateDao.getCandidateById(candidateId);
+      const courseDetails = await ActiveCourseDao.getById(activeCourseId);
+      let trainerName = "N/A";
+      let masterCourseName = "N/A";
 
-      // Create PDF definition
+      if (courseDetails) {
+        if (courseDetails.primary_trainer_id) {
+          const trainer = await TrainerDao.getTrainerById(
+            courseDetails.primary_trainer_id,
+          );
+          if (trainer) {
+            trainerName = `${trainer.first_name} ${trainer.last_name}`;
+          }
+        }
+        if (courseDetails.master_course_id) {
+          const masterCourse = await MasterCourseDao.getById(
+            courseDetails.master_course_id,
+          );
+          if (masterCourse) {
+            masterCourseName = masterCourse.master_course_name;
+          }
+        }
+      }
+
       const fonts = {
         Helvetica: {
           normal: "Helvetica",
@@ -163,7 +188,47 @@ class FeedbackAnswerController {
       const pdfmake = require("pdfmake");
       pdfmake.setFonts(fonts);
 
-      // Prepare feedback rows
+      const formatDate = (dateStr) => {
+        if (!dateStr) return "N/A";
+        const date = new Date(dateStr);
+        return isNaN(date.getTime())
+          ? "N/A"
+          : date.toLocaleDateString("en-GB").replace(/\//g, "-");
+      };
+
+      const getFallbackText = (value, fallback = "N/A") =>
+        value && String(value).trim() !== "" ? String(value) : fallback;
+
+      const stripHtml = (value) =>
+        String(value ?? "")
+          .replace(/<[^>]*>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/&lt;/gi, "<")
+          .replace(/&gt;/gi, ">")
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      // Add soft break points for very long tokens so text doesn't get clipped in narrow cells.
+      const softWrapLongTokens = (text, tokenLength = 18) =>
+        String(text).replace(
+          new RegExp(`(\\S{${tokenLength}})(?=\\S)`, "g"),
+          `$1\u200B`,
+        );
+
+      const getPdfText = (value, fallback = "N/A") =>
+        softWrapLongTokens(getFallbackText(stripHtml(value), fallback));
+
+      const buildLabeledValue = (label, value, fallback = "N/A") => ({
+        text: [
+          { text: `${label}: `, bold: true },
+          getPdfText(value, fallback),
+        ],
+        margin: [0, 0, 0, 8],
+      });
+
       const feedbackRows = [
         [
           { text: "#", style: "tableHeader" },
@@ -175,78 +240,111 @@ class FeedbackAnswerController {
 
       if (answers && answers.length > 0) {
         answers.forEach((ans, index) => {
-          const answerText =
-            ans.answer || ans.feedback_question_option_text || "No Answer";
+          const answerText = getPdfText(
+            ans.answer || ans.feedback_question_option_text,
+            "No Answer",
+          );
 
           feedbackRows.push([
-            (index + 1).toString(),
-            ans.question || "Unknown Question",
-            ans.type || "NA",
-            answerText,
+            { text: (index + 1).toString(), style: "tableCell" },
+            {
+              text: getPdfText(ans.question, "Unknown Question"),
+              style: "tableCell",
+            },
+            {
+              text: getPdfText(ans.category_name, "NA"),
+              style: "tableCell",
+            },
+            { text: answerText, style: "answerCell" },
           ]);
         });
       } else {
         feedbackRows.push([
-          { colSpan: 4, text: "No feedback submitted.", alignment: "center" },
+          {
+            colSpan: 4,
+            text: "No feedback submitted.",
+            alignment: "center",
+            color: "#6c757d",
+            style: "tableCell",
+          },
           "",
           "",
           "",
         ]);
       }
 
+      const candidateName = getFallbackText(
+        [candidate?.first_name, candidate?.last_name].filter(Boolean).join(" "),
+        "Unknown Candidate",
+      );
+
       const docDefinition = {
+        pageMargins: [60, 44, 60, 44],
         defaultStyle: {
           font: "Helvetica",
+          fontSize: 13,
         },
         content: [
           {
-            text: "Submitted Feedback Report",
+            text: "Feedback Report",
             style: "header",
             alignment: "center",
-            margin: [0, 0, 0, 20],
+            margin: [0, 0, 0, 28],
           },
+          buildLabeledValue("Employee ID", candidate?.employee_id),
+          buildLabeledValue("Candidate", candidateName, "Unknown Candidate"),
+          buildLabeledValue("Active Course ID", courseDetails?.course_id),
+          buildLabeledValue("Course Name", masterCourseName, "Unknown Course"),
+          buildLabeledValue("Rank", candidate?.rank),
+          buildLabeledValue("Trainer Name", trainerName),
+          buildLabeledValue("Course Date", formatDate(courseDetails?.start_date)),
+          buildLabeledValue("Course Location", courseDetails?.type_of_location),
+          buildLabeledValue("Name of Manager (last served)", candidate?.manager),
           {
-            columns: [
-              {
-                width: "50%",
-                text: [
-                  { text: "Candidate Details\n", style: "subheader" },
-                  `Name: ${candidate.first_name} ${candidate.last_name}\n`,
-                  `Email: ${candidate.email}\n`,
-                  `Employee ID: ${candidate.employee_id || candidate.passport_no || "N/A"}\n`,
-                  `Rank: ${candidate.rank || "N/A"}\n`,
-                ],
-              },
-            ],
-            margin: [0, 0, 0, 20],
-          },
-          {
-            text: "Feedback Responses",
+            text: "Feedback Details",
             style: "subheader",
-            margin: [0, 0, 0, 10],
+            margin: [0, 30, 0, 10],
           },
           {
             table: {
               headerRows: 1,
-              widths: ["auto", "*", "auto", "auto"],
+              widths: [26, "*", 125, 102],
               body: feedbackRows,
             },
-            layout: "lightHorizontalLines",
+            layout: {
+              hLineWidth: () => 1,
+              vLineWidth: () => 1,
+              hLineColor: () => "#dee2e6",
+              vLineColor: () => "#dee2e6",
+              paddingLeft: () => 6,
+              paddingRight: () => 6,
+              paddingTop: () => 6,
+              paddingBottom: () => 6,
+            },
           },
         ],
         styles: {
           header: {
-            fontSize: 18,
+            fontSize: 46,
             bold: true,
           },
           subheader: {
-            fontSize: 14,
+            fontSize: 15,
             bold: true,
-            margin: [0, 5, 0, 5],
           },
           tableHeader: {
             bold: true,
-            fillColor: "#f3f4f6",
+            fillColor: "#343a40",
+            color: "white",
+            alignment: "center",
+          },
+          tableCell: {
+            fontSize: 12,
+            noWrap: false,
+          },
+          answerCell: {
+            fontSize: 12,
+            noWrap: false,
           },
         },
       };
@@ -267,12 +365,10 @@ class FeedbackAnswerController {
         .catch((err) => {
           console.error("PDF Buffer Error:", err);
           if (!res.headersSent) {
-            res
-              .status(500)
-              .json({
-                message: "Error generating PDF buffer",
-                error: err.message,
-              });
+            res.status(500).json({
+              message: "Error generating PDF buffer",
+              error: err.message,
+            });
           }
         });
     } catch (error) {

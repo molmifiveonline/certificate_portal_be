@@ -81,6 +81,11 @@ router.get(
   activeCourseController.getAvailableCandidates,
 );
 
+router.post(
+  "/acknowledge-enrollment",
+  activeCourseController.acknowledgeEnrollment,
+);
+
 // Email Operations
 router.post(
   "/:id/email-primary-trainer",
@@ -137,6 +142,12 @@ router.get(
   authorize("Admin", "SuperAdmin", "Trainer"),
   activeCourseController.getAssessmentScores,
 );
+router.get(
+  "/:id/training-report",
+  protect,
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  activeCourseController.generateTrainingReport,
+);
 router.post(
   "/:id/email/assessment",
   protect,
@@ -170,6 +181,12 @@ router.put(
   protect,
   authorize("Admin", "SuperAdmin"),
   activeCourseController.updateCertificateActive,
+);
+router.put(
+  "/:id/certificates/:certificateId/hide",
+  protect,
+  authorize("Admin", "SuperAdmin"),
+  activeCourseController.updateCertificateHide,
 );
 
 module.exports = router;

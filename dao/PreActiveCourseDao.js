@@ -400,7 +400,7 @@ const getAdminRemarksReport = async (filters = {}) => {
         FROM courses_enrollment ce
         JOIN courses c ON ce.course_id = c.id
         JOIN users u ON ce.candidate_id = u.id
-        WHERE c.is_pre_active = 1 OR ce.admin_remark IS NOT NULL
+        WHERE (c.is_pre_active = 1 OR ce.admin_remark IS NOT NULL)
     `;
   const params = [];
 
@@ -411,6 +411,12 @@ const getAdminRemarksReport = async (filters = {}) => {
   if (filters.candidate_id) {
     query += " AND ce.candidate_id = ?";
     params.push(filters.candidate_id);
+  }
+  if (filters.search) {
+    query +=
+      " AND (c.course_name LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
+    const searchParam = `%${filters.search}%`;
+    params.push(searchParam, searchParam, searchParam, searchParam);
   }
 
   query += " ORDER BY ce.admin_action_date DESC";

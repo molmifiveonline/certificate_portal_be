@@ -1,5 +1,12 @@
 const ReportDao = require("../../dao/ReportDao");
 const xlsx = require("xlsx");
+const archiver = require("archiver");
+const pdfmake = require("pdfmake");
+const FeedbackAnswerDao = require("../../dao/FeedbackAnswerDao");
+const CandidateDao = require("../../dao/candidateDao");
+const ActiveCourseDao = require("../../dao/ActiveCourseDao");
+const MasterCourseDao = require("../../dao/MasterCourseDao");
+const TrainerDao = require("../../dao/trainerDao");
 
 exports.getFilterOptions = async (req, res) => {
   try {
@@ -86,7 +93,7 @@ exports.exportFeedbackReport = async (req, res) => {
       // OR follow the PHP logic blindly if IDs are consistent.
       // Let's include them if they exist in the questionsData or just append all non-rating questions found.
       // PHP Logic specific filter:
-      if (q.feedback_category_id == 23) {
+      if (q.category_id == 23) {
         // Assuming 23 is specific category
         // Find category name
         // Since we don't have category name in `allQuestions.nonRatings` easily without join,
@@ -117,13 +124,15 @@ exports.exportFeedbackReport = async (req, res) => {
     let trainerIds = [];
     courses.forEach((c) => {
       if (c.primary_trainer_id) trainerIds.push(c.primary_trainer_id);
-      if (c.secondary_trainer_ids) {
-        // Remove brackets/quotes if stored as JSON string "['id']" or just split if comma separated
-        // ActiveCourseDao saves it as simple array or string?
-        // In DAO: secondary_trainer_ids param.
-        // Let's assume it's a string comma separated or we handle both.
-        const ids = c.secondary_trainer_ids.split(","); // simple assumption based on PHP
-        trainerIds = [...trainerIds, ...ids];
+      if (
+        c.secondary_trainer_ids &&
+        typeof c.secondary_trainer_ids === "string"
+      ) {
+        const ids = c.secondary_trainer_ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id);
+        trainerIds.push(...ids);
       }
     });
     trainerIds = [...new Set(trainerIds)];
@@ -196,8 +205,14 @@ exports.exportFeedbackReport = async (req, res) => {
 
       // Secondary Trainers
       let secondaryTrainerNames = [];
-      if (course.secondary_trainer_ids) {
-        const sIds = course.secondary_trainer_ids.split(",");
+      if (
+        course.secondary_trainer_ids &&
+        typeof course.secondary_trainer_ids === "string"
+      ) {
+        const sIds = course.secondary_trainer_ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id);
         sIds.forEach((id) => {
           const t = trainersMap[id];
           if (t) {
@@ -409,6 +424,277 @@ exports.exportCertificateReport = async (req, res) => {
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
+exports.bulkDownloadFeedbackPDFs = async (req, res) => {
+  try {
+    const { start_date, end_date, topic, manager } = req.body;
+    const filters = {};
+    if (topic) filters.topic = topic;
+    if (manager) filters.manager = manager;
+
+    if (!start_date || !end_date) {
+      return res
+        .status(400)
+        .json({ message: "Please provide both start and end dates." });
+    }
+
+    const allPairs = await ReportDao.getCandidateCoursePairs(
+      start_date,
+      end_date,
+      filters,
+    );
+
+    if (allPairs.length === 0) {
+      return res.status(404).json({ message: "No feedback data found." });
+    }
+
+    const archive = archiver("zip", {
+      zlib: { level: 9 }, // Sets the compression level.
+    });
+
+    res.attachment("Feedback_PDFs.zip");
+    archive.pipe(res);
+
+    const fonts = {
+      Helvetica: {
+        normal: "Helvetica",
+        bold: "Helvetica-Bold",
+        italics: "Helvetica-Oblique",
+        bolditalics: "Helvetica-BoldOblique",
+      },
+    };
+    pdfmake.setFonts(fonts);
+
+    const candidatesMap = {};
+    const coursesMap = {};
+    const trainersMap = {};
+    const masterCoursesMap = {};
+
+    const formatDate = (dateStr) => {
+      if (!dateStr) return "N/A";
+      const date = new Date(dateStr);
+      return isNaN(date.getTime())
+        ? "N/A"
+        : date.toLocaleDateString("en-GB").replace(/\//g, "-");
+    };
+
+    for (const pair of allPairs) {
+      const { candidate_id, active_course_id } = pair;
+
+      const answers = await FeedbackAnswerDao.getSubmissionDetails(
+        candidate_id,
+        active_course_id,
+      );
+
+      let candidate = candidatesMap[candidate_id];
+      if (!candidate) {
+        candidate = await CandidateDao.getCandidateById(candidate_id);
+        candidatesMap[candidate_id] = candidate;
+      }
+
+      if (!candidate) {
+        console.warn(`Candidate not found for ID: ${candidate_id}, skipping.`);
+        continue;
+      }
+
+      let courseDetails = coursesMap[active_course_id];
+      if (!courseDetails) {
+        courseDetails = await ActiveCourseDao.getById(active_course_id);
+        coursesMap[active_course_id] = courseDetails;
+      }
+
+      let trainerName = "N/A";
+      let masterCourseName = "N/A";
+
+      if (courseDetails) {
+        if (courseDetails.primary_trainer_id) {
+          if (!trainersMap[courseDetails.primary_trainer_id]) {
+            const trainer = await TrainerDao.getTrainerById(
+              courseDetails.primary_trainer_id,
+            );
+            trainersMap[courseDetails.primary_trainer_id] = trainer
+              ? `${trainer.first_name} ${trainer.last_name}`
+              : "N/A";
+          }
+          trainerName = trainersMap[courseDetails.primary_trainer_id];
+        }
+
+        if (courseDetails.master_course_id) {
+          if (!masterCoursesMap[courseDetails.master_course_id]) {
+            const masterCourse = await MasterCourseDao.getById(
+              courseDetails.master_course_id,
+            );
+            masterCoursesMap[courseDetails.master_course_id] = masterCourse
+              ? masterCourse.master_course_name
+              : "N/A";
+          }
+          masterCourseName = masterCoursesMap[courseDetails.master_course_id];
+        }
+      }
+
+      const feedbackRows = [
+        [
+          { text: "#", style: "tableHeader" },
+          { text: "Question", style: "tableHeader" },
+          { text: "Category", style: "tableHeader" },
+          { text: "Answer", style: "tableHeader" },
+        ],
+      ];
+
+      if (answers && answers.length > 0) {
+        answers.forEach((ans, index) => {
+          const answerText =
+            ans.answer || ans.feedback_question_option_text || "No Answer";
+          feedbackRows.push([
+            (index + 1).toString(),
+            ans.question || "Unknown Question",
+            ans.category_name || ans.type || "NA",
+            { text: answerText, alignment: "left" },
+          ]);
+        });
+      } else {
+        feedbackRows.push([
+          { colSpan: 4, text: "No feedback submitted.", alignment: "center" },
+          "",
+          "",
+          "",
+        ]);
+      }
+
+      const docDefinition = {
+        defaultStyle: {
+          font: "Helvetica",
+          fontSize: 10,
+        },
+        content: [
+          {
+            text: "Feedback Report",
+            style: "header",
+            alignment: "center",
+            margin: [0, 0, 0, 10],
+          },
+          {
+            table: {
+              widths: ["auto", "*", "auto", "*"],
+              body: [
+                [
+                  { text: "Employee ID:", bold: true },
+                  candidate.employee_id || candidate.passport_no || "N/A",
+                  { text: "Candidate:", bold: true },
+                  `${candidate.first_name} ${candidate.last_name}`,
+                ],
+                [
+                  { text: "Active Course ID:", bold: true },
+                  courseDetails?.course_id || "N/A",
+                  { text: "Course Name:", bold: true },
+                  masterCourseName,
+                ],
+                [
+                  { text: "Rank:", bold: true },
+                  candidate.rank || "N/A",
+                  { text: "Trainer Name:", bold: true },
+                  trainerName,
+                ],
+                [
+                  { text: "Course Date:", bold: true },
+                  formatDate(courseDetails?.start_date),
+                  { text: "Course Location:", bold: true },
+                  courseDetails?.type_of_location || "N/A",
+                ],
+                [
+                  {
+                    text: "Name of Manager (last served):",
+                    bold: true,
+                    colSpan: 2,
+                  },
+                  "",
+                  { text: candidate.manager || "N/A", colSpan: 2 },
+                  "",
+                ],
+              ],
+            },
+            layout: "noBorders",
+            margin: [0, 0, 0, 20],
+          },
+          {
+            text: "Feedback Details",
+            style: "subheader",
+            margin: [0, 0, 0, 10],
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths: [20, "*", 80, 80],
+              body: feedbackRows,
+            },
+            layout: {
+              hLineWidth: function (i, node) {
+                return 1;
+              },
+              vLineWidth: function (i, node) {
+                return 1;
+              },
+              hLineColor: function (i, node) {
+                return "#dee2e6";
+              },
+              vLineColor: function (i, node) {
+                return "#dee2e6";
+              },
+              paddingLeft: function (i, node) {
+                return 4;
+              },
+              paddingRight: function (i, node) {
+                return 4;
+              },
+              paddingTop: function (i, node) {
+                return 4;
+              },
+              paddingBottom: function (i, node) {
+                return 4;
+              },
+            },
+          },
+        ],
+        styles: {
+          header: {
+            fontSize: 18,
+            bold: true,
+          },
+          subheader: {
+            fontSize: 12,
+            bold: true,
+            margin: [0, 5, 0, 5],
+          },
+          tableHeader: {
+            bold: true,
+            fillColor: "#343a40",
+            color: "white",
+          },
+        },
+      };
+
+      const pdfDoc = pdfmake.createPdf(docDefinition);
+      const buffer = await pdfDoc.getBuffer();
+
+      const fileName = `Feedback_${candidate.first_name}_${candidate.last_name}_${active_course_id}.pdf`;
+      archive.append(buffer, { name: fileName });
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    console.error("Bulk Download Feedback Error:", error);
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json({ message: "Internal Server Error", error: error.message });
+    } else {
+      // If headers sent, we must destroy the archive to avoid hanging the connection
+      console.error("Headers already sent, destroying archive.");
+      archive.abort(); // or finalize if appropriate, but abort is safer for error
+      res.end();
+    }
   }
 };
 

@@ -17,14 +17,21 @@ const createAdminRole = async (data) => {
   return id;
 };
 
-const getAllAdminRoles = async (page, limit) => {
-  let query = "SELECT * FROM admin_roles";
+const getAllAdminRoles = async (search, page, limit) => {
+  let query = "SELECT * FROM admin_roles WHERE 1=1";
+  let countQuery = "SELECT COUNT(*) as total FROM admin_roles WHERE 1=1";
   const params = [];
+  const countParams = [];
+
+  if (search) {
+    query += " AND role_name LIKE ?";
+    countQuery += " AND role_name LIKE ?";
+    params.push(`%${search}%`);
+    countParams.push(`%${search}%`);
+  }
 
   if (page && limit) {
-    const [countResult] = await pool.query(
-      "SELECT COUNT(*) as total FROM admin_roles",
-    );
+    const [countResult] = await pool.query(countQuery, countParams);
     const total = countResult[0].total;
 
     const offset = (page - 1) * limit;
@@ -43,7 +50,7 @@ const getAllAdminRoles = async (page, limit) => {
     };
   }
 
-  const [rows] = await pool.query(query);
+  const [rows] = await pool.query(query, params);
   return rows;
 };
 

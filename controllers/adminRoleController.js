@@ -29,8 +29,8 @@ const createAdminRole = async (req, res) => {
 
 const getAllAdminRoles = async (req, res) => {
   try {
-    const { page, limit } = req.query;
-    const result = await adminRoleDao.getAllAdminRoles(page, limit);
+    const { search, page, limit } = req.query;
+    const result = await adminRoleDao.getAllAdminRoles(search, page, limit);
 
     if (page && limit) {
       res.status(200).json({

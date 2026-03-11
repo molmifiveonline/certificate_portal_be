@@ -20,6 +20,20 @@ exports.createAssessment = async (req, res) => {
       });
     }
 
+    // Check if Pre/Post assessment already exists for the course
+    if (type_of_test === "1" || type_of_test === "2") {
+      const existingAssessments = await AssessmentDao.getAssessmentsByCourseId(
+        course_id,
+        type_of_test,
+      );
+      if (existingAssessments.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `A ${type_of_test === "1" ? "Pre" : "Post"} Course assessment already exists for this course.`,
+        });
+      }
+    }
+
     // For pre/post tests, auto-populate candidates from course
     let finalCandidateIds = candidate_ids;
     if (type_of_test === "1" || type_of_test === "2") {
@@ -94,6 +108,21 @@ exports.updateAssessment = async (req, res) => {
       question_ids,
     } = req.body;
 
+    // Check if Pre/Post assessment already exists for the course (excluding current one)
+    if (type_of_test === "1" || type_of_test === "2") {
+      const existingAssessments = await AssessmentDao.getAssessmentsByCourseId(
+        course_id,
+        type_of_test,
+      );
+      const conflict = existingAssessments.find((a) => a.id !== id);
+      if (conflict) {
+        return res.status(400).json({
+          success: false,
+          message: `A ${type_of_test === "1" ? "Pre" : "Post"} Course assessment already exists for this course.`,
+        });
+      }
+    }
+
     // For pre/post tests, auto-populate candidates from course
     let finalCandidateIds = candidate_ids;
     if (type_of_test === "1" || type_of_test === "2") {
@@ -146,8 +175,11 @@ exports.deleteAssessment = async (req, res) => {
 
 exports.getActiveCourses = async (req, res) => {
   try {
-    const { type_of_test } = req.query;
-    const courses = await AssessmentDao.getActiveCourses(type_of_test || null);
+    const { type_of_test, assessment_id } = req.query;
+    const courses = await AssessmentDao.getActiveCourses(
+      type_of_test || null,
+      assessment_id || null,
+    );
     res.status(200).json({ success: true, data: courses });
   } catch (error) {
     console.error("Error fetching courses:", error);
@@ -184,7 +216,7 @@ exports.getQuestionsByCourse = async (req, res) => {
         .json({ success: false, message: "Course not found" });
     }
 
-    const masterCourseId = courseRows[0].master_course_name;
+    const masterCourseId = courseRows[0].master_course_id;
     const questions = await AssessmentDao.getQuestionsByMasterCourse(
       masterCourseId,
       type_of_test,
@@ -226,12 +258,13 @@ exports.getSubmittedCourses = async (req, res) => {
 
 exports.getPaginatedSubmissions = async (req, res) => {
   try {
-    const { search, page, limit, type_of_test } = req.query;
+    const { search, page, limit, type_of_test, course_id } = req.query;
     const result = await AssessmentResultDao.getAllSubmissionsPaginated(
       search,
       page || 1,
       limit || 10,
       type_of_test,
+      course_id,
     );
     res.status(200).json({
       success: true,
@@ -323,6 +356,281 @@ exports.getAssessmentSubmissions = async (req, res) => {
   } catch (error) {
     console.error("Error fetching assessment submissions:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getPlayAssessmentQuestions = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Fetch assessment details
+    const assessment = await AssessmentDao.getAssessmentDetailsForPlay(id);
+    if (!assessment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Assessment not found or inactive" });
+    }
+
+    const {
+      questions_choice,
+      question_ids,
+      num_of_questions,
+      master_course_id,
+      type_of_test,
+    } = assessment;
+
+    let questions = [];
+
+    // 2. Fetch questions based on 'auto' or 'manual' mode
+    if (questions_choice === "auto") {
+      // Fetch all questions from the Master course for this test type
+      questions = await AssessmentDao.getQuestionsByMasterCourse(
+        master_course_id,
+        type_of_test,
+      );
+    } else if (questions_choice === "manual") {
+      // Decode the saved comma-separated question IDs
+      if (question_ids) {
+        const idsArray = question_ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean);
+        questions = await AssessmentDao.getQuestionsByIds(idsArray);
+      }
+    }
+
+    if (!questions || questions.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No questions found for this assessment.",
+      });
+    }
+
+    // 3. Robust Shuffle Array algorithm (Fisher-Yates)
+    for (let i = questions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questions[i], questions[j]] = [questions[j], questions[i]];
+    }
+
+    // 4. Limit questions exactly to `num_of_questions`
+    const finalQuestions = questions.slice(0, num_of_questions || 10);
+
+    // Return randomized questions
+    res.status(200).json({
+      success: true,
+      assessment: {
+        id: assessment.id,
+        title: assessment.title,
+        num_of_questions: finalQuestions.length,
+        type_of_test: assessment.type_of_test,
+        master_course_name: assessment.master_course_name,
+      },
+      data: finalQuestions,
+    });
+  } catch (error) {
+    console.error("Error fetching play assessment questions:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.downloadSubmissionById = async (req, res) => {
+  try {
+    const { resultId } = req.params;
+    const detail = await AssessmentResultDao.getSubmissionDetail(resultId);
+
+    if (!detail) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Submission not found" });
+    }
+
+    const PDFDocument = require("pdfkit");
+    const { result, answers } = detail;
+
+    const typeLabel =
+      { 1: "Pre Course", 2: "Post Course", 3: "Daily" }[result.type_of_test] ||
+      result.type_of_test ||
+      "N/A";
+
+    const percentage =
+      result.total_questions > 0
+        ? ((result.correct_answers / result.total_questions) * 100).toFixed(1)
+        : 0;
+    const resultStatus = percentage >= 50 ? "PASS" : "FAIL";
+
+    const formattedDate = result.created_at
+      ? new Date(result.created_at).toLocaleString("en-GB")
+      : "N/A";
+
+    const candidateName =
+      `${result.first_name || ""} ${result.last_name || ""}`.trim() ||
+      "Candidate";
+    const fileNameCandidate = candidateName.replace(/ /g, "_");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `Assessment_Result_${fileNameCandidate}_${dateStr}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+
+    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    doc.pipe(res);
+
+    // Header band
+    doc.rect(40, 40, doc.page.width - 80, 60).fill("#1a237e");
+    doc
+      .fillColor("#ffffff")
+      .font("Helvetica-Bold")
+      .fontSize(16)
+      .text("MOLMI - Assessment Result", 55, 55);
+    doc
+      .fillColor("#c5cae9")
+      .font("Helvetica")
+      .fontSize(10)
+      .text(result.assessment_title || "Assessment", 55, 75);
+    doc
+      .fillColor(resultStatus === "PASS" ? "#a5d6a7" : "#ef9a9a")
+      .font("Helvetica-Bold")
+      .fontSize(20)
+      .text(resultStatus, doc.page.width - 120, 58, {
+        width: 80,
+        align: "right",
+      });
+
+    doc.moveDown(3.5);
+
+    // Info section
+    const infoY = doc.y;
+    const colW = (doc.page.width - 80) / 4;
+    const infoItems = [
+      ["Candidate", candidateName],
+      ["Employee ID", result.employee_id || "N/A"],
+      ["Rank", result.rank || "N/A"],
+      ["Email", result.email || "N/A"],
+      ["Course", result.course_name || "N/A"],
+      ["Type", typeLabel],
+      [
+        "Score",
+        `${result.correct_answers ?? 0} / ${result.total_questions ?? 0} (${percentage}%)`,
+      ],
+      ["Date", formattedDate],
+    ];
+
+    infoItems.forEach(([label, value], i) => {
+      const col = i % 4;
+      const row = Math.floor(i / 4);
+      const x = 40 + col * colW;
+      const y = infoY + row * 44;
+      const bgColor = row % 2 === 0 ? "#f0f3fa" : "#ffffff";
+      doc.rect(x, y, colW, 44).fill(bgColor).stroke("#dde1e7");
+      doc
+        .fillColor("#555")
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(label, x + 4, y + 6, { width: colW - 8 });
+      doc
+        .fillColor("#222")
+        .font("Helvetica")
+        .fontSize(8)
+        .text(value, x + 4, y + 20, { width: colW - 8 });
+    });
+
+    doc.y = infoY + Math.ceil(infoItems.length / 4) * 44 + 16;
+
+    // Q&A section heading
+    doc
+      .fillColor("#1a237e")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text(
+        `Questions & Answers (${answers.length} question${answers.length !== 1 ? "s" : ""})`,
+        40,
+        doc.y,
+        { underline: true, width: doc.page.width - 80 },
+      );
+    doc.moveDown(0.5);
+
+    const optionKeys = ["option_a", "option_b", "option_c", "option_d"];
+    const optionLabels = ["A", "B", "C", "D"];
+
+    if (answers && answers.length > 0) {
+      answers.forEach((ans, idx) => {
+        if (doc.y > doc.page.height - 120) doc.addPage();
+
+        doc
+          .fillColor("#1a237e")
+          .font("Helvetica-Bold")
+          .fontSize(10)
+          .text(`Q${idx + 1}.  ${ans.question || ""}`, 40, doc.y, {
+            width: doc.page.width - 80,
+          });
+        doc.moveDown(0.3);
+
+        optionKeys.forEach((key, i) => {
+          const optText = ans[key];
+          if (!optText) return;
+
+          const isCorrect = ans.correct_option === key;
+          const isSelected = ans.selected_option === key;
+
+          let bgColor = "#f9f9f9";
+          let textColor = "#333";
+          let suffix = "";
+
+          if (isCorrect && isSelected) {
+            bgColor = "#d4edda";
+            textColor = "#155724";
+            suffix = "  Correct";
+          } else if (isSelected && !isCorrect) {
+            bgColor = "#f8d7da";
+            textColor = "#721c24";
+            suffix = "  Wrong";
+          } else if (isCorrect && !isSelected) {
+            bgColor = "#d4edda";
+            textColor = "#155724";
+            suffix = "  (Correct Answer)";
+          }
+
+          const optY = doc.y;
+          doc
+            .rect(40, optY, doc.page.width - 80, 18)
+            .fill(bgColor)
+            .stroke("#e0e0e0");
+          doc
+            .fillColor(textColor)
+            .font("Helvetica")
+            .fontSize(9)
+            .text(`${optionLabels[i]}.  ${optText}${suffix}`, 46, optY + 4, {
+              width: doc.page.width - 92,
+            });
+          doc.y = optY + 20;
+        });
+
+        doc.moveDown(0.4);
+
+        if (idx < answers.length - 1) {
+          doc
+            .moveTo(40, doc.y)
+            .lineTo(doc.page.width - 40, doc.y)
+            .strokeColor("#e0e0e0")
+            .lineWidth(0.5)
+            .stroke();
+          doc.moveDown(0.4);
+        }
+      });
+    } else {
+      doc
+        .fillColor("#888")
+        .font("Helvetica-Oblique")
+        .fontSize(10)
+        .text("No answers recorded for this submission.");
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error("Download Submission PDF Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
