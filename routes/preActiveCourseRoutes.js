@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const controller = require("../controllers/preActiveCourseController");
+const syncController = require("../controllers/preActiveCourseSyncController");
 const verifyToken = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 
@@ -24,6 +25,16 @@ router.get(
   "/",
   checkPermission("view_pre_active_courses"),
   controller.getAllCourses,
+);
+router.post(
+  "/fetch-external-preview",
+  checkPermission("create_pre_active_course"),
+  syncController.fetchExternalPreview,
+);
+router.post(
+  "/confirm-bulk-import",
+  checkPermission("create_pre_active_course"),
+  syncController.confirmBulkImport,
 );
 router.get(
   "/report/admin-remarks",

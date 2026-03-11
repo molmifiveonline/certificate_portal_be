@@ -425,6 +425,114 @@ const getAdminRemarksReport = async (filters = {}) => {
   return rows;
 };
 
+const getExistingCourseIds = async (courseIds) => {
+  if (!courseIds || courseIds.length === 0) return [];
+  const [rows] = await pool.query(
+    "SELECT course_id FROM courses WHERE course_id IN (?)",
+    [courseIds],
+  );
+  return rows.map((r) => String(r.course_id));
+};
+
+const bulkUpsert = async (courses) => {
+  const connection = await pool.getConnection();
+  const stats = { inserted: 0, updated: 0, errors: 0 };
+
+  try {
+    await connection.beginTransaction();
+
+    const courseIds = courses.map((c) => String(c.course_id)).filter((id) => id);
+    if (courseIds.length === 0) return stats;
+
+    const [existingRows] = await connection.query(
+      "SELECT id, course_id FROM courses WHERE course_id IN (?)",
+      [courseIds],
+    );
+
+    const existingMap = new Map(
+      existingRows.map((r) => [String(r.course_id), r.id]),
+    );
+
+    for (const courseData of courses) {
+      if (!courseData.course_id) {
+        stats.errors++;
+        continue;
+      }
+
+      const cid = String(courseData.course_id);
+      const existingId = existingMap.get(cid);
+
+      if (existingId) {
+        // Update
+        const updateQuery = `
+          UPDATE courses SET 
+            course_name = ?, 
+            start_date = ?, 
+            end_date = ?, 
+            no_of_days = ?, 
+            type_of_location = ?, 
+            location_id = ?, 
+            course_type = ?, 
+            description = ?, 
+            remarks = ?,
+            master_course_name = ?,
+            topic = ?
+          WHERE id = ?
+        `;
+        await connection.execute(updateQuery, [
+          courseData.course_name || null,
+          courseData.start_date || null,
+          courseData.end_date || null,
+          courseData.days || 0,
+          courseData.type_of_location || "Onsite",
+          courseData.location_id || null,
+          courseData.course_type || "Offline",
+          courseData.description || "",
+          courseData.remarks || "",
+          courseData.master_course_name || null,
+          courseData.topic || null,
+          existingId,
+        ]);
+        stats.updated++;
+      } else {
+        // Insert
+        const id = uuidv4();
+        const insertQuery = `
+          INSERT INTO courses (
+            id, course_id, course_name, start_date, end_date, no_of_days, 
+            type_of_location, location_id, course_type, description, 
+            remarks, master_course_name, topic, status, is_pre_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pre-Active', 1)
+        `;
+        await connection.execute(insertQuery, [
+          id,
+          cid,
+          courseData.course_name || null,
+          courseData.start_date || null,
+          courseData.end_date || null,
+          courseData.days || 0,
+          courseData.type_of_location || "Onsite",
+          courseData.location_id || null,
+          courseData.course_type || "Offline",
+          courseData.description || "",
+          courseData.remarks || "",
+          courseData.master_course_name || null,
+          courseData.topic || null,
+        ]);
+        stats.inserted++;
+      }
+    }
+
+    await connection.commit();
+    return stats;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 module.exports = {
   createPreActiveCourse,
   getAllPreActiveCourses,
@@ -441,4 +549,6 @@ module.exports = {
   getPendingAdminApprovals,
   convertToActiveCourse,
   getAdminRemarksReport,
+  getExistingCourseIds,
+  bulkUpsert,
 };
