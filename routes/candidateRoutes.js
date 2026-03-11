@@ -10,7 +10,11 @@ const {
 const {
   uploadCandidates,
 } = require("../controllers/candidateUploadController");
-const { importFromApi } = require("../controllers/candidateSyncController");
+const {
+  importFromApi,
+  fetchExternalPreview,
+  confirmBulkImport,
+} = require("../controllers/candidateSyncController");
 const {
   uploadProfileImage,
 } = require("../controllers/candidateProfileUploadController");

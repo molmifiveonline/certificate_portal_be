@@ -434,6 +434,15 @@ class CandidateDao {
       connection.release();
     }
   }
+
+  static async getExistingEmails(emails) {
+    if (!emails || emails.length === 0) return [];
+    const [rows] = await db.query(
+      "SELECT email FROM users WHERE email IN (?)",
+      [emails],
+    );
+    return rows.map((r) => r.email.toLowerCase());
+  }
 }
 
 module.exports = CandidateDao;

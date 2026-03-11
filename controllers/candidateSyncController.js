@@ -34,121 +34,123 @@ const getAccessToken = async () => {
 
 let isSyncing = false;
 
-const importFromApi = async (req, res) => {
+/**
+ * Step 1: Fetch data from external API and return for preview
+ */
+const fetchExternalPreview = async (req, res) => {
   try {
-    if (isSyncing) {
-      return res.status(429).json({
-        message: "An import is already in progress. Please wait.",
-      });
+    const { date } = req.body;
+    const tokenData = await getAccessToken();
+    const token = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token || "";
+
+    const response = await axios.post(
+      `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
+      JSON.stringify({
+        ServiceName: SYNC_CONFIG.serviceName,
+        AuthorizationKey: SYNC_CONFIG.authKey,
+        FromUTCDateTime: date || "1970-01-01",
+      }),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+        },
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: false,
+        }),
+        timeout: 60000,
+      },
+    );
+
+    const apiData = response.data;
+    const personnel = apiData.data?.PersonnelDetails_MOLMI || [];
+
+    if (personnel.length === 0) {
+      return res.json({ data: [], message: "No data found for the selected date." });
     }
 
-    const { date } = req.body;
+    // Map to our candidate format
+    const candidates = personnel.map((item) => ({
+      first_name: item["First Name"] || "",
+      last_name: item["Surname"] || "",
+      email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
+      mobile: item["Mobile"] || "",
+      middle_name: item["Middle Name"] || "",
+      prefix: item["title"] || "",
+      gender: item["Gender"] === "M" ? "Male" : item["Gender"] === "F" ? "Female" : null,
+      dob: item["Birth Date"] || null,
+      nationality: item["Country"] || "",
+      passport_no: item["Passport No"] || "",
+      employee_id: item["Employee No"] || "",
+      manager: item["Manager"] || "",
+      rank: item["Position"] || "",
+      whatsapp_number: item["Mobile"] || "",
+      alternate_mobile: item["Mobile 1"] || "",
+      indos_number: "",
+      registration_type: "MOLMI Employee",
+    }));
+
+    // Check which ones already exist
+    const emails = candidates.map(c => c.email).filter(e => e);
+    const existingEmails = await CandidateDao.getExistingEmails(emails);
+    
+    const dataWithStatus = candidates.map(c => ({
+      ...c,
+      isExisting: existingEmails.includes(c.email.toLowerCase())
+    }));
+
+    res.json({ data: dataWithStatus, total: dataWithStatus.length });
+  } catch (error) {
+    console.error("Fetch external preview error:", error.message);
+    res.status(500).json({ message: "Error fetching data from external API", error: error.message });
+  }
+};
+
+/**
+ * Step 2: Confirm and perform bulk import
+ */
+const confirmBulkImport = async (req, res) => {
+  try {
+    if (isSyncing) {
+      return res.status(429).json({ message: "An import is already in progress." });
+    }
+
+    const { candidates } = req.body;
+    if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
+      return res.status(400).json({ message: "No candidates provided for import." });
+    }
+
+    isSyncing = true;
     const userId = req.user.id;
     const userIp = req.ip;
     const userAgent = req.get("User-Agent");
 
-    // Return immediate response
-    res.status(202).json({
-      message: "Import started in the background. You can check the logs or refresh the candidate list in a few minutes.",
+    const stats = await CandidateDao.bulkUpsert(candidates);
+
+    await LogDao.createLog({
+      user_id: userId,
+      action: "API_IMPORT_CANDIDATES",
+      details: `Imported ${stats.inserted} new and updated ${stats.updated} candidates from API confirm.`,
+      ip_address: userIp,
+      user_agent: userAgent,
     });
 
-    // Start background process
-    (async () => {
-      isSyncing = true;
-      console.log(`[Background Sync] Started for date: ${date || "1970-01-01"}`);
-      
-      try {
-        const tokenData = await getAccessToken();
-        const token = tokenData.access_token;
-        const refreshToken = tokenData.refresh_token || "";
-
-        const response = await axios.post(
-          `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
-          JSON.stringify({
-            ServiceName: SYNC_CONFIG.serviceName,
-            AuthorizationKey: SYNC_CONFIG.authKey,
-            FromUTCDateTime: date || "1970-01-01",
-          }),
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-              "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
-            },
-            httpsAgent: new https.Agent({
-              rejectUnauthorized: false,
-            }),
-            timeout: 60000, // 60 seconds timeout for the API call
-          },
-        );
-
-        const apiData = response.data;
-        const personnel = apiData.data?.PersonnelDetails_MOLMI || [];
-
-        if (personnel.length === 0) {
-          console.log("[Background Sync] No new data found in API");
-          return;
-        }
-
-        const candidates = personnel.map((item) => {
-          return {
-            first_name: item["First Name"] || "",
-            last_name: item["Surname"] || "",
-            email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
-            mobile: item["Mobile"] || "",
-            middle_name: item["Middle Name"] || "",
-            prefix: item["title"] || "",
-            gender:
-              item["Gender"] === "M"
-                ? "Male"
-                : item["Gender"] === "F"
-                  ? "Female"
-                  : null,
-            dob: item["Birth Date"] || null,
-            nationality: item["Country"] || "",
-            passport_no: item["Passport No"] || "",
-            employee_id: item["Employee No"] || "",
-            manager: item["Manager"] || "",
-            rank: item["Position"] || "",
-            whatsapp_number: item["Mobile"] || "",
-            alternate_mobile: item["Mobile 1"] || "",
-            indos_number: "",
-            registration_type: "Other",
-          };
-        });
-
-        const stats = await CandidateDao.bulkUpsert(candidates);
-
-        await LogDao.createLog({
-          user_id: userId,
-          action: "API_IMPORT_CANDIDATES",
-          details: `Imported ${stats.inserted} new and updated ${stats.updated} candidates from API.`,
-          ip_address: userIp,
-          user_agent: userAgent,
-        });
-
-        console.log(`[Background Sync] Completed: ${stats.inserted} inserted, ${stats.updated} updated.`);
-      } catch (bgError) {
-        console.error("[Background Sync] Error:", bgError.message);
-        await LogDao.createLog({
-          user_id: userId,
-          action: "API_IMPORT_ERROR",
-          details: `Background import failed: ${bgError.message}`,
-          ip_address: userIp,
-          user_agent: userAgent,
-        });
-      } finally {
-        isSyncing = false;
-      }
-    })();
-
+    res.json({ message: "Import completed successfully", stats });
   } catch (error) {
-    console.error("API Import trigger error:", error.message);
-    res.status(500).json({
-      message: "Error starting background import",
-      error: error.message,
-    });
+    console.error("Confirm bulk import error:", error.message);
+    res.status(500).json({ message: "Error performing bulk import", error: error.message });
+  } finally {
+    isSyncing = false;
   }
 };
 
-module.exports = { importFromApi };
+const importFromApi = async (req, res) => {
+  // Keeping this for legacy/automated background sync if needed
+  // ... (original logic or just use confirmBulkImport)
+  res.status(400).json({ message: "Use fetch-external-preview and confirm-bulk-import for two-step flow." });
+};
+
+module.exports = { importFromApi, fetchExternalPreview, confirmBulkImport };
+
