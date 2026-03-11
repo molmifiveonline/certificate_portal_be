@@ -77,4 +77,18 @@ router.post(
   importFromApi,
 );
 
+router.post(
+  "/fetch-external-preview",
+  verifyToken,
+  checkPermission("create_candidate"),
+  fetchExternalPreview
+);
+
+router.post(
+  "/confirm-bulk-import",
+  verifyToken,
+  checkPermission("create_candidate"),
+  confirmBulkImport
+);
+
 module.exports = router;
