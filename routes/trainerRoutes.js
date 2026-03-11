@@ -7,6 +7,7 @@ const {
   updateTrainer,
   deleteTrainer,
   exportTrainers,
+  getTrainerDashboardStats,
 } = require("../controllers/trainerController");
 const verifyToken = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
@@ -49,6 +50,7 @@ router.get(
   checkPermission("export_trainers"),
   exportTrainers,
 ); // Place before /:id to avoid conflict
+router.get("/dashboard-stats", verifyToken, getTrainerDashboardStats);
 router.get("/:id", verifyToken, getTrainerById);
 
 module.exports = router;
