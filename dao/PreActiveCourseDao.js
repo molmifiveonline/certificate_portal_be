@@ -127,8 +127,8 @@ const getAllPreActiveCourses = async (
     query += " LIMIT ? OFFSET ?";
     params.push(parseInt(limit), parseInt(offset));
 
-    const [countResult] = await pool.execute(countQuery, countParams);
-    const [rows] = await pool.execute(query, params);
+    const [countResult] = await pool.query(countQuery, countParams);
+    const [rows] = await pool.query(query, params);
 
     return {
       data: rows,
@@ -136,11 +136,11 @@ const getAllPreActiveCourses = async (
         total: countResult[0].total,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(countResult[0].total / limit),
+        totalPages: Math.ceil(countResult[0].total / (parseInt(limit) || 10)),
       },
     };
   } else {
-    const [rows] = await pool.execute(query, params);
+    const [rows] = await pool.query(query, params);
     return rows;
   }
 };
