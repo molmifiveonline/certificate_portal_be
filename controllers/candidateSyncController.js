@@ -147,9 +147,81 @@ const confirmBulkImport = async (req, res) => {
 };
 
 const importFromApi = async (req, res) => {
-  // Keeping this for legacy/automated background sync if needed
-  // ... (original logic or just use confirmBulkImport)
-  res.status(400).json({ message: "Use fetch-external-preview and confirm-bulk-import for two-step flow." });
+  try {
+    if (isSyncing) {
+      return res.status(429).json({ message: "An import is already in progress." });
+    }
+
+    const { date } = req.body;
+    const tokenData = await getAccessToken();
+    const token = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token || "";
+
+    const response = await axios.post(
+      `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
+      JSON.stringify({
+        ServiceName: SYNC_CONFIG.serviceName,
+        AuthorizationKey: SYNC_CONFIG.authKey,
+        FromUTCDateTime: date || "1970-01-01",
+      }),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+        },
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: false,
+        }),
+        timeout: 60000,
+      },
+    );
+
+    const personnel = response.data?.data?.PersonnelDetails_MOLMI || [];
+    if (personnel.length === 0) {
+      return res.json({ message: "No data found to import.", stats: { inserted: 0, updated: 0 } });
+    }
+
+    // Map to our candidate format
+    const candidates = personnel.map((item) => ({
+      first_name: item["First Name"] || "",
+      last_name: item["Surname"] || "",
+      email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
+      mobile: item["Mobile"] || "",
+      middle_name: item["Middle Name"] || "",
+      prefix: item["title"] || "",
+      gender: item["Gender"] === "M" ? "Male" : item["Gender"] === "F" ? "Female" : null,
+      dob: item["Birth Date"] || null,
+      nationality: item["Country"] || "",
+      passport_no: item["Passport No"] || "",
+      employee_id: item["Employee No"] || "",
+      manager: item["Manager"] || "",
+      rank: item["Position"] || "",
+      whatsapp_number: item["Mobile"] || "",
+      alternate_mobile: item["Mobile 1"] || "",
+      indos_number: "",
+      registration_type: "MOLMI Employee",
+    }));
+
+    isSyncing = true;
+    const stats = await CandidateDao.bulkUpsert(candidates);
+
+    // Optional: Log the background/direct sync
+    await LogDao.createLog({
+      user_id: req.user?.id || 1, // Default to admin if triggered externally/automated
+      action: "API_DIRECT_IMPORT",
+      details: `Direct import: ${stats.inserted} new, ${stats.updated} updated via import-api endpoint.`,
+      ip_address: req.ip,
+      user_agent: req.get("User-Agent"),
+    });
+
+    res.json({ message: "Direct import completed successfully", stats });
+  } catch (error) {
+    console.error("Direct import error:", error.message);
+    res.status(500).json({ message: "Error performing direct import", error: error.message });
+  } finally {
+    isSyncing = false;
+  }
 };
 
 module.exports = { importFromApi, fetchExternalPreview, confirmBulkImport };
