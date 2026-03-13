@@ -213,6 +213,14 @@ class FeedbackFormDao {
     );
     return result.affectedRows > 0;
   }
+
+  static async getByCourseType(typeOfCourse) {
+    const query =
+      "SELECT id FROM feedback_forms WHERE type_of_course = ? AND status = 1 LIMIT 1";
+    const [rows] = await db.query(query, [typeOfCourse]);
+    if (rows.length === 0) return null;
+    return this.getById(rows[0].id);
+  }
 }
 
 module.exports = FeedbackFormDao;

@@ -4,6 +4,17 @@ const FeedbackAnswerController = require("../controllers/FeedbackAnswerControlle
 const protect = require("../middleware/authMiddleware");
 
 router.post("/submit", FeedbackAnswerController.submitFeedback);
+router.get(
+  "/status/:courseId",
+  protect,
+  FeedbackAnswerController.getCandidateFeedbackStatus,
+);
+router.post(
+  "/candidate-submit",
+  protect,
+  FeedbackAnswerController.submitCandidateFeedback,
+);
+
 router.get("/courses", protect, FeedbackAnswerController.getFeedbackCourses);
 router.get("/submissions", protect, FeedbackAnswerController.getSubmissions);
 router.get(

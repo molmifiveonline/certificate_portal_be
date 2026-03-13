@@ -75,40 +75,47 @@ class ActiveCourseDao {
   }
 
   static async getAll(search = "", page, limit, filters = {}) {
-    let whereClause = 'WHERE status != "Deleted"';
+    let whereClause = 'WHERE c.status != "Deleted"';
     const whereParams = [];
+
+    let joinClause = "";
+    if (filters.candidate_id) {
+      joinClause +=
+        " JOIN courses_enrollment ce ON c.id = ce.course_id AND ce.candidate_id = ?";
+      whereParams.push(filters.candidate_id);
+    }
 
     if (search) {
       whereClause +=
-        " AND (course_name LIKE ? OR topic LIKE ? OR course_id LIKE ?)";
+        " AND (c.course_name LIKE ? OR c.topic LIKE ? OR c.course_id LIKE ?)";
       whereParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     if (filters.status) {
-      whereClause += " AND status = ?";
+      whereClause += " AND c.status = ?";
       whereParams.push(filters.status);
     }
 
     if (filters.from_date) {
-      whereClause += " AND start_date >= ?";
+      whereClause += " AND c.start_date >= ?";
       whereParams.push(filters.from_date);
     }
 
     if (filters.to_date) {
-      whereClause += " AND end_date <= ?";
+      whereClause += " AND c.end_date <= ?";
       whereParams.push(filters.to_date);
     }
 
     if (filters.trainer_id) {
-      whereClause += " AND primary_trainer_id = ?";
+      whereClause += " AND c.primary_trainer_id = ?";
       whereParams.push(filters.trainer_id);
     }
 
-    const countQuery = `SELECT COUNT(*) as total FROM courses ${whereClause}`;
+    const countQuery = `SELECT COUNT(*) as total FROM courses c ${joinClause} ${whereClause}`;
     const [countResult] = await pool.execute(countQuery, whereParams);
     const total = countResult[0].total;
 
-    let query = `SELECT * FROM courses ${whereClause} ORDER BY created_at DESC`;
+    let query = `SELECT c.* FROM courses c ${joinClause} ${whereClause} ORDER BY c.created_at DESC`;
 
     let pageNum = page ? parseInt(page, 10) : null;
     let limitNum = limit ? parseInt(limit, 10) : null;
@@ -132,7 +139,12 @@ class ActiveCourseDao {
   }
 
   static async getById(id) {
-    const query = "SELECT * FROM courses WHERE id = ?";
+    const query = `
+      SELECT c.*, mc.certificate_type 
+      FROM courses c
+      LEFT JOIN master_course mc ON c.master_course_id = mc.id
+      WHERE c.id = ?
+    `;
     const [rows] = await pool.execute(query, [id]);
     return rows[0];
   }

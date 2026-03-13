@@ -18,6 +18,8 @@ const {
   getAssessmentSubmissions,
   getPaginatedSubmissions,
   getPlayAssessmentQuestions,
+  getCandidateAssessmentsByCourse,
+  submitAssessment,
 } = require("../controllers/assessmentController");
 const verifyToken = require("../middleware/authMiddleware");
 
@@ -50,8 +52,14 @@ router.get(
 );
 router.get("/submission/:resultId", verifyToken, getSubmissionDetail);
 
-// Candidate endpoint
+// Candidate endpoints
 router.get("/:id/play-questions", verifyToken, getPlayAssessmentQuestions);
+router.get(
+  "/course/:courseId/candidate-list",
+  verifyToken,
+  getCandidateAssessmentsByCourse,
+);
+router.post("/submit", verifyToken, submitAssessment);
 
 router.get("/:id", verifyToken, getAssessmentById);
 router.put("/update/:id", verifyToken, updateAssessment);

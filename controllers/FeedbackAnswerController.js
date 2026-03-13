@@ -373,10 +373,91 @@ class FeedbackAnswerController {
         });
     } catch (error) {
       console.error("PDF Generation Error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          message: "Error generating PDF",
+          error: error.message,
+        });
+      }
+    }
+  }
+  static async getCandidateFeedbackStatus(req, res) {
+    try {
+      const { courseId } = req.params;
+      const candidateId = req.user.id;
+
+      const existingAnswers = await FeedbackAnswerDao.getSubmissionDetails(
+        candidateId,
+        courseId,
+      );
+
+      const hasSubmitted = existingAnswers && existingAnswers.length > 0;
+
+      const course = await ActiveCourseDao.getById(courseId);
+      if (!course) {
+        return res.status(404).json({ message: "Course not found" });
+      }
+
+      const FeedbackFormDao = require("../dao/FeedbackFormDao");
+      const form = await FeedbackFormDao.getByCourseType(course.course_type);
+
+      res.json({
+        hasSubmitted,
+        submittedDate: hasSubmitted ? existingAnswers[0].created_at : null,
+        form: form,
+      });
+    } catch (error) {
+      console.error(error);
       res.status(500).json({
-        message: "Error generating PDF",
+        message: "Error fetching feedback status",
         error: error.message,
       });
+    }
+  }
+
+  static async submitCandidateFeedback(req, res) {
+    try {
+      const { active_course_id, answers } = req.body;
+      const candidate_id = req.user.id;
+
+      if (!active_course_id || !answers || !Array.isArray(answers)) {
+        return res.status(400).json({ message: "Invalid input data" });
+      }
+
+      const results = [];
+      for (const ans of answers) {
+        const {
+          question_id,
+          answer,
+          category_id,
+          option_id,
+          option_text,
+          feedback_id,
+        } = ans;
+
+        if (question_id) {
+          const id = await FeedbackAnswerDao.create({
+            candidate_id,
+            active_course_id,
+            feedback_question_id: question_id,
+            answer,
+            feedback_category_id: category_id,
+            feedback_id: feedback_id,
+            feedback_question_option_id: option_id,
+            feedback_question_option_text: option_text,
+          });
+          results.push(id);
+        }
+      }
+
+      res
+        .status(201)
+        .json({ message: "Feedback submitted successfully", ids: results });
+    } catch (error) {
+      console.error(error);
+      res
+        .status(500)
+        .json({ message: "Error submitting feedback", error: error.message });
     }
   }
 }

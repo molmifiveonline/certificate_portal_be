@@ -13,11 +13,51 @@ exports.createAssessment = async (req, res) => {
       question_ids,
     } = req.body;
 
+    const user = req.user;
+    const trainerId =
+      user.role.toLowerCase() === "trainer" ? user.id : null;
+
     if (!title || !course_id || !type_of_test) {
       return res.status(400).json({
         success: false,
         message: "Title, Course, and Type of Test are required",
       });
+    }
+
+    // Verify course ownership if trainer
+    if (trainerId) {
+      const pool = require("../config/db");
+      const [courseRows] = await pool.execute(
+        "SELECT primary_trainer_id, master_course_id FROM courses WHERE id = ?",
+        [course_id],
+      );
+
+      if (courseRows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Course not found" });
+      }
+
+      if (courseRows[0].primary_trainer_id !== trainerId) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to create assessments for this course",
+        });
+      }
+
+      // Validate question count for 'auto' choice
+      if (questions_choice === "auto") {
+        const questions = await AssessmentDao.getQuestionsByMasterCourse(
+          courseRows[0].master_course_id,
+          type_of_test,
+        );
+        if (questions.length < (num_of_questions || 10)) {
+          return res.status(400).json({
+            success: false,
+            message: `Not enough questions available for auto selection. Available: ${questions.length}, Requested: ${num_of_questions || 10}`,
+          });
+        }
+      }
     }
 
     // Check if Pre/Post assessment already exists for the course
@@ -39,6 +79,9 @@ exports.createAssessment = async (req, res) => {
     if (type_of_test === "1" || type_of_test === "2") {
       const candidates = await AssessmentDao.getCandidatesByCourse(course_id);
       finalCandidateIds = candidates.map((c) => c.id).join(",");
+    } else if (type_of_test === "3" && Array.isArray(candidate_ids)) {
+      // For daily, candidates should be multi-select (passed as array from UI)
+      finalCandidateIds = candidate_ids.join(",");
     }
 
     const newAssessment = await AssessmentDao.create({
@@ -48,7 +91,12 @@ exports.createAssessment = async (req, res) => {
       candidate_ids: finalCandidateIds || null,
       num_of_questions: num_of_questions || 10,
       questions_choice: questions_choice || "auto",
-      question_ids: questions_choice === "manual" ? question_ids : null,
+      question_ids:
+        questions_choice === "manual"
+          ? Array.isArray(question_ids)
+            ? question_ids.join(",")
+            : question_ids
+          : null,
     });
 
     res.status(201).json({
@@ -65,7 +113,11 @@ exports.createAssessment = async (req, res) => {
 exports.getAllAssessments = async (req, res) => {
   try {
     const { search, page, limit } = req.query;
-    const result = await AssessmentDao.getAll(search, page, limit);
+    const user = req.user;
+    const trainerId =
+      user.role.toLowerCase() === "trainer" ? user.id : null;
+
+    const result = await AssessmentDao.getAll(search, page, limit, trainerId);
     res.status(200).json({
       success: true,
       data: result.data,
@@ -108,6 +160,46 @@ exports.updateAssessment = async (req, res) => {
       question_ids,
     } = req.body;
 
+    const user = req.user;
+    const trainerId =
+      user.role.toLowerCase() === "trainer" ? user.id : null;
+
+    // Verify course ownership if trainer
+    if (trainerId) {
+      const pool = require("../config/db");
+      const [courseRows] = await pool.execute(
+        "SELECT primary_trainer_id, master_course_id FROM courses WHERE id = ?",
+        [course_id],
+      );
+
+      if (courseRows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Course not found" });
+      }
+
+      if (courseRows[0].primary_trainer_id !== trainerId) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to update assessments for this course",
+        });
+      }
+
+      // Validate question count for 'auto' choice
+      if (questions_choice === "auto") {
+        const questions = await AssessmentDao.getQuestionsByMasterCourse(
+          courseRows[0].master_course_id,
+          type_of_test,
+        );
+        if (questions.length < (num_of_questions || 10)) {
+          return res.status(400).json({
+            success: false,
+            message: `Not enough questions available for auto selection. Available: ${questions.length}, Requested: ${num_of_questions || 10}`,
+          });
+        }
+      }
+    }
+
     // Check if Pre/Post assessment already exists for the course (excluding current one)
     if (type_of_test === "1" || type_of_test === "2") {
       const existingAssessments = await AssessmentDao.getAssessmentsByCourseId(
@@ -128,6 +220,8 @@ exports.updateAssessment = async (req, res) => {
     if (type_of_test === "1" || type_of_test === "2") {
       const candidates = await AssessmentDao.getCandidatesByCourse(course_id);
       finalCandidateIds = candidates.map((c) => c.id).join(",");
+    } else if (type_of_test === "3" && Array.isArray(candidate_ids)) {
+      finalCandidateIds = candidate_ids.join(",");
     }
 
     const updated = await AssessmentDao.update(id, {
@@ -137,7 +231,12 @@ exports.updateAssessment = async (req, res) => {
       candidate_ids: finalCandidateIds || null,
       num_of_questions: num_of_questions || 10,
       questions_choice: questions_choice || "auto",
-      question_ids: questions_choice === "manual" ? question_ids : null,
+      question_ids:
+        questions_choice === "manual"
+          ? Array.isArray(question_ids)
+            ? question_ids.join(",")
+            : question_ids
+          : null,
     });
 
     if (updated) {
@@ -176,9 +275,14 @@ exports.deleteAssessment = async (req, res) => {
 exports.getActiveCourses = async (req, res) => {
   try {
     const { type_of_test, assessment_id } = req.query;
+    const user = req.user;
+    const trainerId =
+      user.role.toLowerCase() === "trainer" ? user.id : null;
+
     const courses = await AssessmentDao.getActiveCourses(
       type_of_test || null,
       assessment_id || null,
+      trainerId,
     );
     res.status(200).json({ success: true, data: courses });
   } catch (error) {
@@ -712,5 +816,91 @@ exports.exportSubmittedAssessments = async (req, res) => {
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+exports.getCandidateAssessmentsByCourse = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const candidateId = req.user.id;
+
+    const assessments = await AssessmentDao.getCandidateAssessmentsByCourse(
+      courseId,
+      candidateId,
+    );
+    res.status(200).json({ success: true, data: assessments });
+  } catch (error) {
+    console.error("Error fetching candidate assessments:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.submitAssessment = async (req, res) => {
+  try {
+    const { assessment_id, course_id, answers } = req.body;
+    const candidate_id = req.user.id;
+
+    if (!assessment_id || !course_id || !answers) {
+      return res.status(400).json({
+        success: false,
+        message: "Assessment ID, Course ID, and answers are required",
+      });
+    }
+
+    // 1. Fetch assessment details to verify questions
+    const assessment = await AssessmentDao.getById(assessment_id);
+    if (!assessment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Assessment not found" });
+    }
+
+    // 2. Fetch correct answers for scoring
+    const questionIds = answers.map((a) => a.question_id);
+    const questions = await AssessmentDao.getQuestionsByIds(questionIds);
+
+    let correctCount = 0;
+    const processedAnswers = answers.map((ans) => {
+      const question = questions.find((q) => q.id === ans.question_id);
+      const isCorrect = question
+        ? question.correct_option === ans.selected_option
+        : false;
+      if (isCorrect) correctCount++;
+      return {
+        ...ans,
+        is_correct: isCorrect,
+      };
+    });
+
+    const totalQuestions = questionIds.length;
+    const score = (correctCount / totalQuestions) * 100;
+
+    // 3. Save submission
+    const result = await AssessmentResultDao.saveSubmission({
+      assessment_id,
+      candidate_id,
+      course_id,
+      score,
+      total_questions: totalQuestions,
+      correct_answers: correctCount,
+      answers: processedAnswers,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Assessment submitted successfully",
+      data: {
+        result_id: result.id,
+        score,
+        correct_answers: correctCount,
+        total_questions: totalQuestions,
+        attempt_number: result.attempt_number,
+      },
+    });
+  } catch (error) {
+    console.error("Error submitting assessment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error during submission",
+    });
   }
 };
