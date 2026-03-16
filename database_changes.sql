@@ -369,6 +369,74 @@ ALTER TABLE users ADD COLUMN admin_role_id CHAR(36) NULL DEFAULT NULL AFTER role
 -- Since admin_roles are now also stored in role_permissions, remove the FK constraint.
 ALTER TABLE role_permissions DROP FOREIGN KEY role_permissions_ibfk_1;
 
+-- Date: 2026-03-16
+-- ---------------------------------------------------------
+-- Reimbursement module
+
+CREATE TABLE IF NOT EXISTS `reimbursements` (
+  `id` char(36) NOT NULL,
+  `claim_number` varchar(50) NOT NULL,
+  `candidate_id` char(36) NOT NULL,
+  `active_course_id` char(36) NOT NULL,
+  `claim_date` date NOT NULL,
+  `expense_category` varchar(100) NOT NULL,
+  `expense_description` text NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `payment_mode` varchar(100) DEFAULT NULL,
+  `bank_account_holder_name` varchar(255) DEFAULT NULL,
+  `bank_name` varchar(255) DEFAULT NULL,
+  `account_number` varchar(100) DEFAULT NULL,
+  `ifsc_code` varchar(50) DEFAULT NULL,
+  `candidate_notes` text DEFAULT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'draft',
+  `admin_remarks` text DEFAULT NULL,
+  `resubmission_remarks` text DEFAULT NULL,
+  `disapproval_remarks` text DEFAULT NULL,
+  `approved_pdf_url` text DEFAULT NULL,
+  `accounts_email_sent_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `reimbursements_claim_number_unique` (`claim_number`),
+  KEY `reimbursements_candidate_id_idx` (`candidate_id`),
+  KEY `reimbursements_active_course_id_idx` (`active_course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `reimbursement_attachments` (
+  `id` char(36) NOT NULL,
+  `reimbursement_id` char(36) NOT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `file_path` text DEFAULT NULL,
+  `file_url` text DEFAULT NULL,
+  `mime_type` varchar(150) DEFAULT NULL,
+  `size` bigint DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `reimbursement_attachments_reimbursement_id_idx` (`reimbursement_id`),
+  CONSTRAINT `reimbursement_attachments_reimbursement_fk`
+    FOREIGN KEY (`reimbursement_id`) REFERENCES `reimbursements` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `reimbursement_activity_logs` (
+  `id` char(36) NOT NULL,
+  `reimbursement_id` char(36) NOT NULL,
+  `action` varchar(100) NOT NULL,
+  `remarks` text DEFAULT NULL,
+  `action_by` char(36) NOT NULL,
+  `action_by_role` varchar(50) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `reimbursement_activity_logs_reimbursement_id_idx` (`reimbursement_id`),
+  CONSTRAINT `reimbursement_activity_logs_reimbursement_fk`
+    FOREIGN KEY (`reimbursement_id`) REFERENCES `reimbursements` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+INSERT INTO `permissions` (`id`, `name`, `slug`, `group_name`, `description`, `created_at`)
+SELECT UUID(), 'Manage Reimbursements', 'manage_reimbursements', 'Administration', 'Manage reimbursement review workflow', NOW()
+WHERE NOT EXISTS (
+  SELECT 1 FROM `permissions` WHERE `slug` = 'manage_reimbursements'
+);
+
 -- Date: 2026-03-03 - Pre-Active Course Module
 -- Add is_pre_active flag to courses table
 ALTER TABLE courses ADD COLUMN is_pre_active TINYINT(1) DEFAULT 0 AFTER status;

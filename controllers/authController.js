@@ -272,6 +272,7 @@ const login = async (req, res) => {
       user.role_id,
     ]);
     const roleName = roles[0]?.name || "unknown";
+    const candidateId = roleName.toLowerCase() === "candidate" ? user.id : null;
 
     // Fetch User Permissions (linked to their base role in `roles` table)
     const [permissions] = await db.query(
@@ -297,7 +298,13 @@ const login = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.id, role: roleName, roleId: user.role_id, email: user.email },
+      {
+        id: user.id,
+        role: roleName,
+        roleId: user.role_id,
+        email: user.email,
+        candidate_id: candidateId,
+      },
       process.env.JWT_SECRET || "fallback_secret",
       { expiresIn: "1d" },
     );
@@ -311,6 +318,7 @@ const login = async (req, res) => {
         last_name: user.last_name,
         email: user.email,
         role: roleName,
+        candidate_id: candidateId,
         permissions: permissionSlugs,
         // null means no restriction (superadmin or admin without assigned role)
         // array means restricted to these slugs
