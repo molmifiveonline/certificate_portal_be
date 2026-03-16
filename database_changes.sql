@@ -731,3 +731,30 @@ CREATE TABLE IF NOT EXISTS hotel_files (
   uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-03-16 - Outhouse Course Module
+-- ---------------------------------------------------------
+ALTER TABLE courses
+  ADD COLUMN IF NOT EXISTS is_outhouse TINYINT(1) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS feedback_type VARCHAR(50) DEFAULT 'Document',
+  ADD COLUMN IF NOT EXISTS creation_mode VARCHAR(50) DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS source_pre_active_id CHAR(36) NULL;
+
+ALTER TABLE courses_enrollment
+  ADD COLUMN IF NOT EXISTS certificate_number VARCHAR(255) NULL,
+  ADD COLUMN IF NOT EXISTS certificate_issue_date DATE NULL,
+  ADD COLUMN IF NOT EXISTS certificate_upload_name VARCHAR(255) NULL,
+  ADD COLUMN IF NOT EXISTS certificate_upload_path TEXT NULL;
+
+CREATE TABLE IF NOT EXISTS outhouse_feedback_documents (
+  id CHAR(36) NOT NULL,
+  course_id CHAR(36) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_path TEXT NOT NULL,
+  mime_type VARCHAR(150) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY outhouse_feedback_documents_course_id_idx (course_id),
+  CONSTRAINT outhouse_feedback_documents_course_fk
+    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

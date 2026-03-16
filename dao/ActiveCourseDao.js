@@ -1,7 +1,24 @@
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
+const { hasColumn } = require("../utils/schemaUtils");
 
 class ActiveCourseDao {
+  static async buildActivePredicate(alias = "c") {
+    const parts = [`${alias}.status != "Deleted"`];
+
+    if (await hasColumn("courses", "is_pre_active")) {
+      parts.push(`COALESCE(${alias}.is_pre_active, 0) = 0`);
+    }
+
+    if (await hasColumn("courses", "is_outhouse")) {
+      parts.push(`COALESCE(${alias}.is_outhouse, 0) = 0`);
+    } else {
+      parts.push(`${alias}.course_type != 'Out house'`);
+    }
+
+    return parts.join(" AND ");
+  }
+
   static async create(data) {
     const id = uuidv4();
     // Generate course_id logic here or in controller. For now assuming passed or simple generation.
@@ -75,7 +92,7 @@ class ActiveCourseDao {
   }
 
   static async getAll(search = "", page, limit, filters = {}) {
-    let whereClause = 'WHERE c.status != "Deleted"';
+    let whereClause = `WHERE ${await this.buildActivePredicate("c")}`;
     const whereParams = [];
 
     let joinClause = "";
@@ -139,11 +156,12 @@ class ActiveCourseDao {
   }
 
   static async getById(id) {
+    const predicate = await this.buildActivePredicate("c");
     const query = `
       SELECT c.*, mc.certificate_type 
       FROM courses c
       LEFT JOIN master_course mc ON c.master_course_id = mc.id
-      WHERE c.id = ?
+      WHERE c.id = ? AND ${predicate}
     `;
     const [rows] = await pool.execute(query, [id]);
     return rows[0];
@@ -196,7 +214,8 @@ class ActiveCourseDao {
     const values = keys.map((k) => data[k]);
     values.push(id);
 
-    const query = `UPDATE courses SET ${setClause} WHERE id = ?`;
+    const predicate = await this.buildActivePredicate("courses");
+    const query = `UPDATE courses SET ${setClause} WHERE id = ? AND ${predicate}`;
     const [result] = await pool.execute(query, values);
 
     if (result.affectedRows > 0) {
@@ -206,20 +225,21 @@ class ActiveCourseDao {
   }
 
   static async delete(id) {
-    const query = 'UPDATE courses SET status = "Deleted" WHERE id = ?';
+    const predicate = await this.buildActivePredicate("courses");
+    const query = `UPDATE courses SET status = "Deleted" WHERE id = ? AND ${predicate}`;
     const [result] = await pool.execute(query, [id]);
     return result.affectedRows > 0;
   }
   static async cancelCourse(id, reason) {
-    const query =
-      "UPDATE courses SET status = 'Cancelled', cancelation_reason = ? WHERE id = ?";
+    const predicate = await this.buildActivePredicate("courses");
+    const query = `UPDATE courses SET status = 'Cancelled', cancelation_reason = ? WHERE id = ? AND ${predicate}`;
     const [result] = await pool.execute(query, [reason, id]);
     return result.affectedRows > 0;
   }
 
   static async completeCourse(id, reason) {
-    const query =
-      "UPDATE courses SET status = 'Course Completed', completion_reason = ? WHERE id = ?";
+    const predicate = await this.buildActivePredicate("courses");
+    const query = `UPDATE courses SET status = 'Course Completed', completion_reason = ? WHERE id = ? AND ${predicate}`;
     const [result] = await pool.execute(query, [reason, id]);
     return result.affectedRows > 0;
   }

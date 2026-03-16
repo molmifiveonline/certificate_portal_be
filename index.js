@@ -117,6 +117,10 @@ app.use("/api/nominators", nominatorRoutes);
 const preActiveCourseRoutes = require("./routes/preActiveCourseRoutes");
 app.use("/api/pre-active", preActiveCourseRoutes);
 
+// Outhouse Courses
+const outhouseCourseRoutes = require("./routes/outhouseCourseRoutes");
+app.use("/api/outhouse-courses", outhouseCourseRoutes);
+
 // Certificates
 const certificateRoutes = require("./routes/certificateRoutes");
 app.use("/api/certificates", certificateRoutes);

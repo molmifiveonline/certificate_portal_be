@@ -438,6 +438,33 @@ class CourseEnrollmentDao {
     return result.affectedRows > 0;
   }
 
+  static async saveAcknowledgmentToken(courseId, candidateId, token) {
+    const [result] = await pool.execute(
+      "UPDATE courses_enrollment SET ack_token = ?, ack_status = 'Pending', ack_date = NULL, ack_remark = NULL WHERE course_id = ? AND candidate_id = ?",
+      [token, courseId, candidateId],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async updateAcknowledgmentStatus(token, status, remark = null) {
+    const [result] = await pool.execute(
+      "UPDATE courses_enrollment SET ack_status = ?, ack_date = NOW(), ack_remark = ? WHERE ack_token = ?",
+      [status, remark, token],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async getEnrollmentById(id) {
+    const [rows] = await pool.execute(
+      `SELECT ce.*, u.first_name, u.last_name, u.email
+       FROM courses_enrollment ce
+       JOIN users u ON u.id = ce.candidate_id
+       WHERE ce.id = ?`,
+      [id],
+    );
+    return rows[0];
+  }
+
   static async getCandidateAttendance(courseId, candidateId) {
     const [courseRows] = await pool.execute(
       "SELECT start_date, end_date FROM courses WHERE id = ?",
