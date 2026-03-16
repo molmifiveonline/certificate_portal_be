@@ -22,8 +22,11 @@ exports.getCourses = async (req, res) => {
       status: req.query.status,
     };
 
-    const courses = await DashboardDao.getCourses(filters);
-    res.status(200).json(courses);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const result = await DashboardDao.getCourses(filters, page, limit);
+    res.status(200).json(result);
   } catch (error) {
     console.error("Error fetching dashboard courses:", error);
     res
@@ -37,8 +40,10 @@ exports.getCourses = async (req, res) => {
 
 exports.getExpiryAlerts = async (req, res) => {
   try {
-    const alerts = await DashboardDao.getExpiryAlerts();
-    res.status(200).json(alerts);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const result = await DashboardDao.getExpiryAlerts(page, limit);
+    res.status(200).json(result);
   } catch (error) {
     console.error("Error fetching expiry alerts:", error);
     res

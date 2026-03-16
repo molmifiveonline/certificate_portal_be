@@ -156,7 +156,9 @@ class CertificateDao {
              CONCAT_WS(' ', u.first_name, u.last_name) as candidate_name,
              cp.employee_id as empId,
              cp.dob,
+             cp.officer,
              cp.nationality,
+             cp.profile_image,
              cp.prefix as caprefix,
              t.first_name as trainer_first_name,
              t.last_name as trainer_last_name,
@@ -172,6 +174,32 @@ class CertificateDao {
       LEFT JOIN master_course mc ON c.course_id = mc.id
       LEFT JOIN courses ac ON c.active_course_id = ac.id
       WHERE c.id = ?
+    `;
+    const [rows] = await pool.execute(query, [id]);
+    return rows[0];
+  }
+
+  static async getVerificationById(id) {
+    const query = `
+      SELECT c.id,
+             c.certificate_no,
+             c.status,
+             c.location,
+             c.issue_date,
+             CONCAT_WS(' ', cp.prefix, u.first_name, u.last_name) as candidate_name,
+             cp.dob,
+             mc.master_course_name,
+             COALESCE(c.from_date, ac.start_date) as from_date,
+             COALESCE(c.to_date, ac.end_date) as to_date,
+             CONCAT_WS(' ', tp.prefix, t.first_name, t.last_name) as trainer_name
+      FROM certificates c
+      LEFT JOIN users u ON c.candidate_id = u.id
+      LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
+      LEFT JOIN users t ON c.trainer_id = t.id
+      LEFT JOIN trainer_profiles tp ON t.id = tp.user_id
+      LEFT JOIN master_course mc ON c.course_id = mc.id
+      LEFT JOIN courses ac ON c.active_course_id = ac.id
+      WHERE c.id = ? AND COALESCE(c.is_hidden, 0) = 0
     `;
     const [rows] = await pool.execute(query, [id]);
     return rows[0];

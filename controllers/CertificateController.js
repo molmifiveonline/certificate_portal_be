@@ -5,6 +5,10 @@ const CourseEnrollmentDao = require("../dao/CourseEnrollmentDao");
 const trainerDao = require("../dao/trainerDao");
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
+const {
+  generateCertificateNumber,
+  normalizeTopic,
+} = require("../utils/certificateNumber");
 
 exports.listCertificates = async (req, res) => {
   try {
@@ -37,6 +41,23 @@ exports.getCertificateById = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error fetching certificate", error: error.message });
+  }
+};
+
+exports.getCertificateVerificationById = async (req, res) => {
+  try {
+    const certificate = await CertificateDao.getVerificationById(req.params.id);
+    if (!certificate) {
+      return res.status(404).json({ message: "Certificate not found" });
+    }
+
+    res.status(200).json(certificate);
+  } catch (error) {
+    console.error("Error fetching certificate verification:", error);
+    res.status(500).json({
+      message: "Error fetching certificate verification",
+      error: error.message,
+    });
   }
 };
 
@@ -84,32 +105,15 @@ exports.generateCertificate = async (req, res) => {
     if (!trainer) return res.status(404).json({ message: "Trainer not found" });
 
     const type = masterCourse.certificate_type || "Others";
-    const topic = course.topic;
+    const topic = normalizeTopic(course.topic);
     const generationDate = issueDate || new Date().toISOString().slice(0, 10);
-    const year = new Date(generationDate).getFullYear();
-
-    let certificate_no = "";
-    let subid = 0;
-
-    if (type === "Others" || type === "DNV-ST0029" || type === "DNV-ST008") {
-      subid = await CertificateDao.getNextSubId(topic, year);
-      const subidStr = subid.toString().padStart(4, "0");
-      const shortDate =
-        new Date(generationDate).toISOString().slice(2, 4) +
-        new Date(generationDate).toISOString().slice(5, 7);
-      certificate_no = `${topic.toUpperCase()}/${shortDate}/${subidStr}`;
-    } else {
-      // LNG Certificate logic
-      subid = await CertificateDao.getNextSubIdByType(type);
-      const subidStr = subid.toString().padStart(4, "0");
-      const trainerNation = (trainer.nationality || "UN")
-        .toUpperCase()
-        .substring(0, 2);
-      const candidateNation = (candidate.nationality || "UN")
-        .toUpperCase()
-        .substring(0, 2);
-      certificate_no = `MOLTC (${trainerNation})- LNG${year}-(${candidateNation})${subidStr}`;
-    }
+    const { certificate_no, subid } = await generateCertificateNumber({
+      type,
+      topic,
+      issueDate: generationDate,
+      trainerNationality: trainer.nationality,
+      candidateNationality: candidate.nationality,
+    });
 
     const certificateData = {
       certificate_no,
@@ -217,8 +221,22 @@ exports.createManualCertificate = async (req, res) => {
       const candidateId = candidateIds[i];
 
       let certData = { ...data, candidate_id: candidateId };
+      certData.topic = normalizeTopic(certData.topic);
 
-      // For manual certificates, we might need to generate the certificate number if not provided
+      const type = certData.type || "Others";
+      const [candidateRows] = await pool.execute(
+        "SELECT nationality FROM users WHERE id = ?",
+        [candidateId],
+      );
+      const candidateNationality = candidateRows[0]?.nationality || null;
+
+      let trainerNationality = null;
+      if (certData.trainer_id) {
+        const trainer = await trainerDao.getTrainerById(certData.trainer_id);
+        trainerNationality = trainer?.nationality || null;
+      }
+
+      // For manual certificates, generate the certificate number if not provided.
       if (!certData.certificate_no) {
         if (
           certData.sample_cert === 1 ||
@@ -228,20 +246,15 @@ exports.createManualCertificate = async (req, res) => {
           certData.certificate_no = "0001";
           certData.subid = 1;
         } else {
-          const year = new Date(
-            certData.issue_date || new Date(),
-          ).getFullYear();
-          let subid = await CertificateDao.getNextSubId(certData.topic, year);
-          const subidStr = subid.toString().padStart(4, "0");
-          const shortDate =
-            new Date(certData.issue_date || new Date())
-              .toISOString()
-              .slice(2, 4) +
-            new Date(certData.issue_date || new Date())
-              .toISOString()
-              .slice(5, 7);
-          certData.certificate_no = `${(certData.topic || "UNKNOWN").toUpperCase()}/${shortDate}/${subidStr}`;
-          certData.subid = subid;
+          const generated = await generateCertificateNumber({
+            type,
+            topic: certData.topic,
+            issueDate: certData.issue_date || new Date(),
+            trainerNationality,
+            candidateNationality,
+          });
+          certData.certificate_no = generated.certificate_no;
+          certData.subid = generated.subid;
         }
       }
 

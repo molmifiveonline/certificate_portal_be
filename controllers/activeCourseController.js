@@ -7,6 +7,11 @@ const CertificateDao = require("../dao/CertificateDao");
 const emailService = require("../utils/emailService");
 const { getAssessmentResultTemplate } = require("../utils/emailTemplates");
 const path = require("path");
+const pool = require("../config/db");
+const {
+  generateCertificateNumber,
+  normalizeTopic,
+} = require("../utils/certificateNumber");
 
 exports.createCourse = async (req, res) => {
   try {
@@ -555,20 +560,42 @@ exports.generateCertificate = async (req, res) => {
     const course = await ActiveCourseDao.getById(activeCourseId);
     const masterCourse = await MasterCourseDao.getById(course.master_course_id);
     const generationDate = issueDate || new Date().toISOString().slice(0, 10);
-    const year = new Date(generationDate).getFullYear();
     const type = masterCourse.certificate_type || "Others";
-
-    const subid = await (type === "Others" ? CertificateDao.getNextSubId(course.topic, year) : CertificateDao.getNextSubIdByType(type));
-    const certificate_no = `CERT-${year}-${subid}`;
+    const [candidateRows] = await pool.execute(
+      "SELECT nationality FROM users WHERE id = ?",
+      [candidateId],
+    );
+    const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);
+    const { certificate_no, subid } = await generateCertificateNumber({
+      type,
+      topic: normalizeTopic(course.topic),
+      issueDate: generationDate,
+      trainerNationality: trainer?.nationality,
+      candidateNationality: candidateRows[0]?.nationality,
+    });
 
     const newCert = await CertificateDao.create({
       certificate_no,
       type,
-      topic: course.topic,
+      topic: normalizeTopic(course.topic),
+      course_level: course.course_level || "Operational",
+      course_id: course.master_course_id,
       active_course_id: activeCourseId,
       candidate_id: candidateId,
+      trainer_id: course.primary_trainer_id,
+      location:
+        course.type_of_location === "Other"
+          ? course.other_location
+          : course.type_of_location,
+      course_conduct: course.type_of_location === "Online" ? "ONL" : "ONS",
+      from_date: course.start_date,
+      to_date: course.end_date,
       issue_date: generationDate,
       days: course.no_of_days,
+      show_logo: 1,
+      is_manual: 0,
+      description1: masterCourse.description,
+      remarks: "",
       subid
     });
 
