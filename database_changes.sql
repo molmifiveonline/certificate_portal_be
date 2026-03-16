@@ -260,6 +260,234 @@ ALTER TABLE `courses_enrollment`
   ADD COLUMN `candidate_email_status` tinyint(1) DEFAULT 0,
   ADD COLUMN `email_type` varchar(50) DEFAULT NULL;
 
+-- Date: 2026-03-16
+-- ---------------------------------------------------------
+-- Seed dummy expiry alert data for admin dashboard
+-- Login for these seeded candidates, if needed later:
+-- password = Password@123
+
+INSERT INTO `users` (`id`, `role_id`, `first_name`, `last_name`, `email`, `password`, `mobile`, `status`)
+SELECT
+  '8f700001-1111-4444-8888-aaaaaaaaaaa1',
+  r.id,
+  'Amit',
+  'Shah',
+  'amit.shah.alert@example.com',
+  '$2b$10$nmQGH/GiOFEjvk7eBVJDUO3IPMZE.f2RDd9bycAA0cUOUMpqT8SjS',
+  '9876543210',
+  1
+FROM `roles` r
+WHERE r.name = 'candidate'
+  AND NOT EXISTS (
+    SELECT 1 FROM `users` WHERE `id` = '8f700001-1111-4444-8888-aaaaaaaaaaa1'
+  );
+
+INSERT INTO `users` (`id`, `role_id`, `first_name`, `last_name`, `email`, `password`, `mobile`, `status`)
+SELECT
+  '8f700002-1111-4444-8888-aaaaaaaaaaa2',
+  r.id,
+  'Neha',
+  'Patel',
+  'neha.patel.alert@example.com',
+  '$2b$10$nmQGH/GiOFEjvk7eBVJDUO3IPMZE.f2RDd9bycAA0cUOUMpqT8SjS',
+  '9876543211',
+  1
+FROM `roles` r
+WHERE r.name = 'candidate'
+  AND NOT EXISTS (
+    SELECT 1 FROM `users` WHERE `id` = '8f700002-1111-4444-8888-aaaaaaaaaaa2'
+  );
+
+INSERT INTO `users` (`id`, `role_id`, `first_name`, `last_name`, `email`, `password`, `mobile`, `status`)
+SELECT
+  '8f700003-1111-4444-8888-aaaaaaaaaaa3',
+  r.id,
+  'Rahul',
+  'Verma',
+  'rahul.verma.alert@example.com',
+  '$2b$10$nmQGH/GiOFEjvk7eBVJDUO3IPMZE.f2RDd9bycAA0cUOUMpqT8SjS',
+  '9876543212',
+  1
+FROM `roles` r
+WHERE r.name = 'candidate'
+  AND NOT EXISTS (
+    SELECT 1 FROM `users` WHERE `id` = '8f700003-1111-4444-8888-aaaaaaaaaaa3'
+  );
+
+INSERT INTO `candidate_profiles` (
+  `id`, `user_id`, `gender`, `dob`, `nationality`, `passport_no`, `employee_id`,
+  `manager`, `rank`, `whatsapp_number`, `alternate_mobile`, `indos_number`,
+  `registration_type`, `designation`, `vessel_type`, `last_vessel_name`,
+  `next_vessel_name`, `manning_company`, `sign_on_date`, `sign_off_date`,
+  `officer`, `seaman_book_no`
+)
+SELECT
+  '9f700001-2222-4444-8888-bbbbbbbbbbb1',
+  '8f700001-1111-4444-8888-aaaaaaaaaaa1',
+  'Male',
+  '1990-04-12',
+  'Indian',
+  'PPT001001',
+  'EMP1001',
+  'Demo Manager',
+  'Officer',
+  '9876543210',
+  '9876543200',
+  'INDOS001',
+  'Internal',
+  'Deck Officer',
+  'LNG',
+  'MV Horizon',
+  'MV Pioneer',
+  'Molmi Marine',
+  '2026-02-01',
+  '2026-08-01',
+  'Yes',
+  'SB001001'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `candidate_profiles` WHERE `user_id` = '8f700001-1111-4444-8888-aaaaaaaaaaa1'
+);
+
+INSERT INTO `candidate_profiles` (
+  `id`, `user_id`, `gender`, `dob`, `nationality`, `passport_no`, `employee_id`,
+  `manager`, `rank`, `whatsapp_number`, `alternate_mobile`, `indos_number`,
+  `registration_type`, `designation`, `vessel_type`, `last_vessel_name`,
+  `next_vessel_name`, `manning_company`, `sign_on_date`, `sign_off_date`,
+  `officer`, `seaman_book_no`
+)
+SELECT
+  '9f700002-2222-4444-8888-bbbbbbbbbbb2',
+  '8f700002-1111-4444-8888-aaaaaaaaaaa2',
+  'Female',
+  '1992-08-20',
+  'Indian',
+  'PPT001002',
+  'EMP1002',
+  'Demo Manager',
+  'Engineer',
+  '9876543211',
+  '9876543201',
+  'INDOS002',
+  'Internal',
+  'Marine Engineer',
+  'Oil Tanker',
+  'MV Crest',
+  'MV Summit',
+  'Molmi Marine',
+  '2026-02-10',
+  '2026-08-10',
+  'Yes',
+  'SB001002'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `candidate_profiles` WHERE `user_id` = '8f700002-1111-4444-8888-aaaaaaaaaaa2'
+);
+
+INSERT INTO `candidate_profiles` (
+  `id`, `user_id`, `gender`, `dob`, `nationality`, `passport_no`, `employee_id`,
+  `manager`, `rank`, `whatsapp_number`, `alternate_mobile`, `indos_number`,
+  `registration_type`, `designation`, `vessel_type`, `last_vessel_name`,
+  `next_vessel_name`, `manning_company`, `sign_on_date`, `sign_off_date`,
+  `officer`, `seaman_book_no`
+)
+SELECT
+  '9f700003-2222-4444-8888-bbbbbbbbbbb3',
+  '8f700003-1111-4444-8888-aaaaaaaaaaa3',
+  'Male',
+  '1989-11-05',
+  'Indian',
+  'PPT001003',
+  'EMP1003',
+  'Demo Manager',
+  'Safety Officer',
+  '9876543212',
+  '9876543202',
+  'INDOS003',
+  'Internal',
+  'Safety Officer',
+  'Bulk Carrier',
+  'MV Atlas',
+  'MV Aurora',
+  'Molmi Marine',
+  '2026-01-15',
+  '2026-07-15',
+  'Yes',
+  'SB001003'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `candidate_profiles` WHERE `user_id` = '8f700003-1111-4444-8888-aaaaaaaaaaa3'
+);
+
+INSERT INTO `courses` (
+  `id`, `course_id`, `master_course_id`, `master_course_name`, `topic`, `course_name`,
+  `description`, `start_date`, `end_date`, `course_type`, `remarks`, `status`
+)
+SELECT
+  '7f700001-3333-4444-8888-ccccccccccc1',
+  'DEMO-EXP-001',
+  '33333333-3333-3333-3333-333333333333',
+  'Fire Safety',
+  'Safety',
+  'Fire Safety Training',
+  'Seeded demo course for expiry alerts',
+  '2026-01-10 09:00:00',
+  '2026-01-12 18:00:00',
+  'Offline',
+  'Used for admin expiry dashboard verification',
+  'Active'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `courses` WHERE `id` = '7f700001-3333-4444-8888-ccccccccccc1'
+);
+
+INSERT INTO `course_attendance` (
+  `id`, `course_id`, `candidate_id`, `attendance_date`, `status`,
+  `certificate_issue_date`, `certificate_expiry_date`, `mark_as_read`
+)
+SELECT
+  '6f700001-4444-4444-8888-ddddddddddd1',
+  '7f700001-3333-4444-8888-ccccccccccc1',
+  '8f700001-1111-4444-8888-aaaaaaaaaaa1',
+  '2026-01-12',
+  'Present',
+  '2026-01-15',
+  '2026-05-20',
+  0
+WHERE NOT EXISTS (
+  SELECT 1 FROM `course_attendance` WHERE `id` = '6f700001-4444-4444-8888-ddddddddddd1'
+);
+
+INSERT INTO `course_attendance` (
+  `id`, `course_id`, `candidate_id`, `attendance_date`, `status`,
+  `certificate_issue_date`, `certificate_expiry_date`, `mark_as_read`
+)
+SELECT
+  '6f700002-4444-4444-8888-ddddddddddd2',
+  '7f700001-3333-4444-8888-ccccccccccc1',
+  '8f700002-1111-4444-8888-aaaaaaaaaaa2',
+  '2026-01-12',
+  'Present',
+  '2026-01-15',
+  '2026-07-08',
+  0
+WHERE NOT EXISTS (
+  SELECT 1 FROM `course_attendance` WHERE `id` = '6f700002-4444-4444-8888-ddddddddddd2'
+);
+
+INSERT INTO `course_attendance` (
+  `id`, `course_id`, `candidate_id`, `attendance_date`, `status`,
+  `certificate_issue_date`, `certificate_expiry_date`, `mark_as_read`
+)
+SELECT
+  '6f700003-4444-4444-8888-ddddddddddd3',
+  '7f700001-3333-4444-8888-ccccccccccc1',
+  '8f700003-1111-4444-8888-aaaaaaaaaaa3',
+  '2026-01-12',
+  'Present',
+  '2026-01-15',
+  '2026-08-14',
+  0
+WHERE NOT EXISTS (
+  SELECT 1 FROM `course_attendance` WHERE `id` = '6f700003-4444-4444-8888-ddddddddddd3'
+);
+
 -- Date: 2026-02-19 (Venue Updates)
 -- ---------------------------------------------------------
 ALTER TABLE `courses_enrollment`

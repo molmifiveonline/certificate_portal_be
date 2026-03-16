@@ -60,6 +60,7 @@ const adminUserRoutes = require("./routes/admin/adminUserRoutes");
 const adminRoleRoutes = require("./routes/adminRoleRoutes");
 const reimbursementRoutes = require("./routes/reimbursementRoutes");
 const adminReimbursementRoutes = require("./routes/admin/reimbursementRoutes");
+const adminNotificationRoutes = require("./routes/admin/notificationRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
@@ -78,6 +79,7 @@ app.use("/api/system-manual", systemManualRoutes);
 app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/reimbursements", reimbursementRoutes);
 app.use("/api/admin/reimbursements", adminReimbursementRoutes);
+app.use("/api/admin/notifications", adminNotificationRoutes);
 
 // Dummy Seeder Route for Testing
 app.use("/api/seed", require("./routes/seedRoutes"));
