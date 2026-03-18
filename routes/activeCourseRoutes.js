@@ -170,6 +170,12 @@ router.get(
   authorize("Admin", "SuperAdmin", "Trainer"),
   activeCourseController.getFeedbackStatus,
 );
+router.post(
+  "/:id/email/feedback",
+  protect,
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  activeCourseController.sendFeedbackEmail,
+);
 
 // Certificate Tab
 router.get(

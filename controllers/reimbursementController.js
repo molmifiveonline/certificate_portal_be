@@ -2,6 +2,12 @@ const ReimbursementDao = require("../dao/reimbursementDao");
 const LogDao = require("../dao/LogDao");
 const { generateReimbursementPdf } = require("../utils/reimbursementPdf");
 const path = require("path");
+const emailService = require("../utils/emailService");
+const {
+  getReimbursementApprovedTemplate,
+  getReimbursementDisapprovedTemplate,
+  getReimbursementResubmissionTemplate,
+} = require("../utils/emailTemplates");
 
 const STATUS = {
   DRAFT: "draft",
@@ -279,6 +285,25 @@ exports.approveReimbursement = async (req, res) => {
     reimbursement.admin_remarks = req.body.remarks || null;
     const { filePath, fileUrl } = await generateReimbursementPdf(reimbursement);
     await sendAccountsApprovalEmail(reimbursement, filePath);
+
+    // Send email to Candidate
+    try {
+      if (reimbursement.candidate_email) {
+        const html = getReimbursementApprovedTemplate(
+          reimbursement.candidate_name || "Candidate",
+          reimbursement.claim_number,
+          reimbursement.amount,
+        );
+        await emailService.sendEmail(
+          reimbursement.candidate_email,
+          `Reimbursement Approved - ${reimbursement.claim_number}`,
+          html,
+        );
+      }
+    } catch (emailError) {
+      console.error("Error sending reimbursement approval email to candidate:", emailError);
+    }
+
     await ReimbursementDao.markApproved(reimbursement.id, req.body.remarks, fileUrl);
     await ReimbursementDao.createActivityLog(
       reimbursement.id,
@@ -307,6 +332,24 @@ exports.disapproveReimbursement = async (req, res) => {
       return res.status(409).json({ message: "Invalid reimbursement status for disapproval" });
     }
 
+    // Send email to Candidate
+    try {
+      if (reimbursement.candidate_email) {
+        const html = getReimbursementDisapprovedTemplate(
+          reimbursement.candidate_name || "Candidate",
+          reimbursement.claim_number,
+          req.body.remarks,
+        );
+        await emailService.sendEmail(
+          reimbursement.candidate_email,
+          `Reimbursement Disapproved - ${reimbursement.claim_number}`,
+          html,
+        );
+      }
+    } catch (emailError) {
+      console.error("Error sending reimbursement disapproval email to candidate:", emailError);
+    }
+
     await ReimbursementDao.markDisapproved(reimbursement.id, req.body.remarks);
     await ReimbursementDao.createActivityLog(
       reimbursement.id,
@@ -333,6 +376,24 @@ exports.requestResubmission = async (req, res) => {
 
     if (!decisionStatuses.includes(reimbursement.status)) {
       return res.status(409).json({ message: "Invalid reimbursement status for resubmission" });
+    }
+
+    // Send email to Candidate
+    try {
+      if (reimbursement.candidate_email) {
+        const html = getReimbursementResubmissionTemplate(
+          reimbursement.candidate_name || "Candidate",
+          reimbursement.claim_number,
+          req.body.remarks,
+        );
+        await emailService.sendEmail(
+          reimbursement.candidate_email,
+          `Reimbursement Resubmission Requested - ${reimbursement.claim_number}`,
+          html,
+        );
+      }
+    } catch (emailError) {
+      console.error("Error sending reimbursement resubmission email to candidate:", emailError);
     }
 
     await ReimbursementDao.markResubmissionRequested(reimbursement.id, req.body.remarks);

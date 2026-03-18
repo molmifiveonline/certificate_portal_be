@@ -5,7 +5,11 @@ const trainerDao = require("../dao/trainerDao");
 const HotelFilesDao = require("../dao/hotelFilesDao");
 const CertificateDao = require("../dao/CertificateDao");
 const emailService = require("../utils/emailService");
-const { getAssessmentResultTemplate } = require("../utils/emailTemplates");
+const {
+  getAssessmentResultTemplate,
+  getCertificateGenerationTemplate,
+  getFeedbackRequestTemplate,
+} = require("../utils/emailTemplates");
 const path = require("path");
 const pool = require("../config/db");
 const {
@@ -254,78 +258,142 @@ exports.emailPrimaryTrainer = async (req, res) => {
     const course = await ActiveCourseDao.getById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);
-    if (!trainer)
-      return res.status(404).json({ message: "Primary Trainer not found" });
+    // Collect all Trainer IDs (Primary + Secondary)
+    const trainerIds = [];
+    if (course.primary_trainer_id) trainerIds.push(course.primary_trainer_id);
+    if (course.secondary_trainer_ids) {
+      const secondaries = course.secondary_trainer_ids.split(",").map(id => id.trim()).filter(Boolean);
+      trainerIds.push(...secondaries);
+    }
+
+    if (trainerIds.length === 0) {
+      return res.status(400).json({ message: "No trainers assigned to this course" });
+    }
+
+    // Fetch Candidates List
+    const candidates = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
+    let candidatesHtml = `<p style="color: #64748b; font-style: italic;">No candidates enrolled yet.</p>`;
+
+    if (candidates && candidates.length > 0) {
+      candidatesHtml = `
+        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid #e2e8f0; font-family: sans-serif; font-size: 14px;">
+          <thead>
+            <tr style="background-color: #f8fafc; text-align: left; color: #1e293b;">
+              <th>Name</th>
+              <th>Email</th>
+              <th>Rank</th>
+              <th>Manager</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${candidates.map(c => `
+              <tr style="border-bottom: 1px solid #e2e8f0; color: #334155;">
+                <td>${c.first_name || ''} ${c.last_name || ''}</td>
+                <td>${c.email || '-'}</td>
+                <td>${c.rank || '-'}</td>
+                <td>${c.manager || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
 
     const subject = `Course Assignment Notification - ${course.course_name}`;
-    const html = `
-      <h3>Dear ${trainer.first_name} ${trainer.last_name},</h3>
-      <p>You have been assigned as the Primary Trainer for the course <strong>${course.course_name}</strong>.</p>
-      <p><strong>Start Date:</strong> ${course.start_date}</p>
-      <p><strong>End Date:</strong> ${course.end_date}</p>
-      <p>Please log in to the portal for more details.</p>
-    `;
 
-    await emailService.sendEmail(trainer.email, subject, html);
+    let successfullySent = 0;
+    for (const trainerId of trainerIds) {
+      const trainer = await trainerDao.getTrainerById(trainerId);
+      if (trainer && trainer.email) {
+        const html = `
+          <div style="font-family: sans-serif; line-height: 1.6; color: #334155;">
+            <p>Dear ${trainer.first_name || ''} ${trainer.last_name || ''},</p>
+            <p>You have been assigned as a Trainer for the course <strong>${course.course_name}</strong>.</p>
+            <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+              <p style="margin: 0;"><strong>Start Date:</strong> ${course.start_date ? new Date(course.start_date).toLocaleDateString() : '-'}</p>
+              <p style="margin: 0;"><strong>End Date:</strong> ${course.end_date ? new Date(course.end_date).toLocaleDateString() : '-'}</p>
+            </div>
+            <h4 style="color: #1e293b; margin-top: 24px;">Candidates List:</h4>
+            ${candidatesHtml}
+            <p style="margin-top: 24px;">Please log in to the portal for more details.</p>
+          </div>
+        `;
+        await emailService.sendEmail(trainer.email, subject, html);
+        successfullySent++;
+      }
+    }
+
     await ActiveCourseDao.update(courseId, { primary_trainer_email_status: 1 });
 
-    res.status(200).json({ message: "Email sent to primary trainer" });
+    res.status(200).json({ message: `Email sent to ${successfullySent} trainer(s)` });
   } catch (error) {
-    console.error("Error emailing primary trainer:", error);
-    res
-      .status(500)
-      .json({ message: "Error sending email", error: error.message });
+    console.error("Error emailing trainers:", error);
+    res.status(500).json({ message: "Error sending email", error: error.message });
   }
+};
+const sendCandidateEmailNotification = async (course, candidateEnrollment, type) => {
+  const crypto = require("crypto");
+  const ackToken = crypto.randomBytes(32).toString("hex");
+  await CourseEnrollmentDao.saveAcknowledgmentToken(course.id, candidateEnrollment.candidate_id, ackToken);
+
+  const portalUrl = process.env.PORTAL_URL || "http://localhost:3000";
+  const approveLink = `${portalUrl}/acknowledge?token=${ackToken}&action=approve`;
+  const rejectLink = `${portalUrl}/acknowledge?token=${ackToken}&action=reject`;
+
+  const acknowledgmentHtml = `
+    <p>Please acknowledge your enrollment by clicking one of the links below:</p>
+    <p>
+      <a href="${approveLink}" style="padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">Approve</a>
+      <a href="${rejectLink}" style="padding: 10px 20px; background-color: #f44336; color: white; text-decoration: none; border-radius: 5px; margin-left: 10px;">Reject</a>
+    </p>
+  `;
+
+  let html = `
+    <h3>Dear ${candidateEnrollment.candidate_name},</h3>
+    <p>You have been enrolled in the course <strong>${course.course_name}</strong>.</p>
+  `;
+
+  if (type === "online") {
+    html += `<p>This is an Online course. Zoom Link: <a href="${course.zoom_link}">${course.zoom_link}</a></p>`;
+  } else {
+    const venue = await CourseEnrollmentDao.getCandidateVenueDetails(course.id, candidateEnrollment.candidate_id);
+    if (venue && venue.venue_name) {
+      html += `<p>This is an Offline course at <strong>${venue.venue_name}</strong>.</p>`;
+    }
+  }
+
+  html += acknowledgmentHtml;
+
+  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html);
+  await CourseEnrollmentDao.updateEmailStatus(course.id, candidateEnrollment.candidate_id, 1, type === "online" ? "Online" : "Offline");
 };
 
 exports.emailCandidate = async (req, res) => {
   try {
     const { id: courseId, candidateId } = req.params;
     const { type } = req.body; // 'online' or 'offline'
-    const crypto = require("crypto");
 
     const course = await ActiveCourseDao.getById(courseId);
-    const enrollment = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
-    const candidateEnrollment = enrollment.find((c) => c.candidate_id == candidateId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
 
-    if (!course || !candidateEnrollment) {
-      return res.status(404).json({ message: "Course or Candidate not found" });
-    }
-
-    const ackToken = crypto.randomBytes(32).toString("hex");
-    await CourseEnrollmentDao.saveAcknowledgmentToken(courseId, candidateId, ackToken);
-
-    const portalUrl = process.env.PORTAL_URL || "http://localhost:3000";
-    const approveLink = `${portalUrl}/acknowledge?token=${ackToken}&action=approve`;
-    const rejectLink = `${portalUrl}/acknowledge?token=${ackToken}&action=reject`;
-
-    const acknowledgmentHtml = `
-      <p>Please acknowledge your enrollment by clicking one of the links below:</p>
-      <p>
-        <a href="${approveLink}" style="padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">Approve</a>
-        <a href="${rejectLink}" style="padding: 10px 20px; background-color: #f44336; color: white; text-decoration: none; border-radius: 5px; margin-left: 10px;">Reject</a>
-      </p>
-    `;
-
-    let html = `
-      <h3>Dear ${candidateEnrollment.candidate_name},</h3>
-      <p>You have been enrolled in the course <strong>${course.course_name}</strong>.</p>
-    `;
-
-    if (type === "online") {
-      html += `<p>This is an Online course. Zoom Link: <a href="${course.zoom_link}">${course.zoom_link}</a></p>`;
-    } else {
+    // Enforce strict check for Offline Course Welcome Letter
+    if (type === "offline") {
       const venue = await CourseEnrollmentDao.getCandidateVenueDetails(courseId, candidateId);
-      if (venue && venue.venue_name) {
-        html += `<p>This is an Offline course at <strong>${venue.venue_name}</strong>.</p>`;
+      if (!venue || !venue.venue_name || !venue.venue_address || !venue.venue_contact || !venue.offline_date) {
+        return res.status(400).json({ 
+          message: "Hotel details and offline dates must be entered for candidate before sending offline welcome letter." 
+        });
       }
     }
 
-    html += acknowledgmentHtml;
+    const enrollment = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
+    const candidateEnrollment = enrollment.find((c) => c.candidate_id == candidateId);
 
-    await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html);
-    await CourseEnrollmentDao.updateEmailStatus(courseId, candidateId, 1, type === "online" ? "Online" : "Offline");
+    if (!candidateEnrollment) {
+      return res.status(404).json({ message: "Candidate not found in enrollment" });
+    }
+
+    await sendCandidateEmailNotification(course, candidateEnrollment, type);
 
     res.status(200).json({ message: "Email sent to candidate" });
   } catch (error) {
@@ -438,6 +506,24 @@ exports.enrollCandidates = async (req, res) => {
     const { candidateIds, trainerId } = req.body;
     const courseId = req.params.id;
     const result = await CourseEnrollmentDao.enrollCandidates(courseId, candidateIds, trainerId);
+
+    // Auto-trigger online Welcome Letter if course is Online and has Zoom link
+    try {
+      const course = await ActiveCourseDao.getById(courseId);
+      if (course && course.type_of_location === "Online" && course.zoom_link) {
+        const enrolled = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
+        for (const candidateId of candidateIds) {
+          const cand = enrolled.find((c) => c.candidate_id == candidateId);
+          if (cand) {
+            // Trigger asynchronously, don't block response
+            sendCandidateEmailNotification(course, cand, "online").catch(console.error);
+          }
+        }
+      }
+    } catch (autoErr) {
+      console.error("Error auto-triggering online emails:", autoErr);
+    }
+
     res.status(200).json(result);
   } catch (error) {
     console.error("Error enrolling candidates:", error);
@@ -600,6 +686,33 @@ exports.generateCertificate = async (req, res) => {
     });
 
     await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, newCert.id);
+
+    // Send email notification to candidate
+    try {
+      if (candidateId) {
+        const [candidateRows] = await pool.execute(
+          "SELECT first_name, last_name, email FROM users WHERE id = ?",
+          [candidateId],
+        );
+        const candidate = candidateRows[0];
+
+        if (candidate && candidate.email) {
+          const html = getCertificateGenerationTemplate(
+            `${candidate.first_name} ${candidate.last_name}`,
+            course.course_name,
+            certificate_no,
+          );
+          await emailService.sendEmail(
+            candidate.email,
+            `Certificate Generated - ${course.course_name}`,
+            html,
+          );
+        }
+      }
+    } catch (emailError) {
+      console.error("Error sending certificate generation email:", emailError);
+    }
+
     res.status(200).json({ success: true, certificate_id: newCert.id });
   } catch (error) {
     console.error("Error generating certificate:", error);
@@ -629,6 +742,46 @@ exports.updateCertificateHide = async (req, res) => {
     res.status(200).json({ success: true });
   } catch (error) {
     console.error("Error updating certificate hide:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.sendFeedbackEmail = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const course = await ActiveCourseDao.getById(id);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const candidates = await CourseEnrollmentDao.getEnrolledCandidates(id);
+
+    let count = 0;
+    for (const candidate of candidates) {
+      if (candidate.status === "Deleted") continue;
+
+      // Check if already submitted feedback
+      const [existing] = await pool.execute(
+        "SELECT id FROM feedback_answers WHERE candidate_id = ? AND active_course_id = ? LIMIT 1",
+        [candidate.candidate_id || candidate.id, id]
+      );
+      if (existing.length > 0) continue; // Skip if already submitted
+
+      if (candidate.email) {
+        const html = getFeedbackRequestTemplate(
+          `${candidate.first_name || ""} ${candidate.last_name || ""}`.trim() || candidate.candidate_name,
+          course.course_name
+        );
+        await emailService.sendEmail(
+          candidate.email,
+          `Course Feedback Request - ${course.course_name}`,
+          html
+        );
+        count++;
+      }
+    }
+
+    res.status(200).json({ success: true, message: `Feedback email sent to ${count} candidates.` });
+  } catch (error) {
+    console.error("Error sending feedback email:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };

@@ -8,8 +8,15 @@ const activityLogger = (req, res, next) => {
     return next();
   }
 
+  // Exclude listing/fetch operations that use POST
+  const excludedKeywords = ["fetch", "search", "preview", "filter", "list"];
+  const urlPath = req.originalUrl.split("?")[0].toLowerCase();
+  
+  if (excludedKeywords.some(keyword => urlPath.includes(keyword))) {
+    return next();
+  }
+
   // Hook into the 'finish' event of the response.
-  // This ensures we know if the request was successful and any auth middleware has run.
   res.on("finish", async () => {
     // Only log successful actions (status 2xx or 3xx)
     if (res.statusCode >= 400) {
@@ -17,21 +24,14 @@ const activityLogger = (req, res, next) => {
     }
 
     try {
-      // Extract User ID.
-      // Protect middleware usually populates req.user.
-      // Sometimes it might be in body or query depending on how the route is designed.
       let userId = req.user ? req.user.id : null;
       if (!userId && req.body && req.body.user_id) {
         userId = req.body.user_id;
       }
 
-      // If we still don't have a user, it might be a public mutation (like login itself).
-      // We can choose to log it without a user, or ignore. We'll log it.
-
       const ipAddress = req.ip || req.connection.remoteAddress;
       const userAgent = req.get("User-Agent");
 
-      // Construct a readable Action string
       let actionPrefix = "";
       switch (req.method) {
         case "POST":
@@ -46,18 +46,22 @@ const activityLogger = (req, res, next) => {
           break;
       }
 
-      // Attempt to extract the module name from the URL
-      // E.g., /api/trainer -> trainer
       const pathParts = req.originalUrl.split("?")[0].split("/");
       let moduleName = "Unknown";
 
-      // Usually URLs look like /api/trainer or /api/hotel-details/123
       const apiIndex = pathParts.indexOf("api");
       if (apiIndex !== -1 && pathParts.length > apiIndex + 1) {
-        moduleName = pathParts[apiIndex + 1];
-        // Clean up the module name (e.g., hotel-details -> Hotel Details)
+        let firstPart = pathParts[apiIndex + 1];
+        
+        // Handle nested routes like /api/admin/users
+        if (firstPart === "admin" && pathParts.length > apiIndex + 2) {
+          moduleName = `${pathParts[apiIndex + 1]} ${pathParts[apiIndex + 2]}`;
+        } else {
+          moduleName = firstPart;
+        }
+
         moduleName = moduleName
-          .split("-")
+          .split(/[- ]+/)
           .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
           .join(" ");
       }

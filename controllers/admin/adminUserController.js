@@ -74,6 +74,57 @@ const createAdmin = async (req, res) => {
       status: status !== undefined ? status : 1,
     });
 
+    // Send Welcome Email with credentials
+    if (process.env.SMTP_USER || true) {
+      try {
+        const { sendEmail } = require("../../utils/emailService");
+        const subject = "Welcome - Admin Account Created";
+        const frontendUrl = process.env.FRONTEND_URL
+          ? process.env.FRONTEND_URL.split(",")[0].trim()
+          : "http://localhost:3000";
+
+        const html = `
+          <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; }
+                .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+                .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
+                .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
+                .info { margin-bottom: 15px; }
+              </style>
+            </head>
+            <body>
+              <div class='content'>
+                <div class='header'>
+                  <h2>Admin Account Created</h2>
+                </div>
+                <p>Dear ${first_name} ${last_name || ""},</p>
+                <p>An administrative account has been created for you. Below are your login credentials:</p>
+                <div class='info'>
+                  <p><strong>URL:</strong> <a href='${frontendUrl}/login'>${frontendUrl}/login</a></p>
+                  <p><strong>Username (Email):</strong> ${email}</p>
+                  <p><strong>Password:</strong> ${password}</p>
+                </div>
+                <p>Please log in and update your password for security reasons.</p>
+                <div class='footer'>
+                  <p>&copy; ${new Date().getFullYear()} Molmi. All rights reserved.</p>
+                </div>
+              </div>
+            </body>
+          </html>
+        `;
+
+        if (process.env.SMTP_USER) {
+          await sendEmail(email, subject, html);
+        } else {
+          console.log(`[DEV] Admin Email for ${email}: URL=${frontendUrl}/login, PW=${password}`);
+        }
+      } catch (emailError) {
+        console.error("Failed to send admin creation email:", emailError);
+      }
+    }
+
     await LogDao.createLog({
       user_id: req.user ? req.user.id : userId,
       action: "CREATE_ADMIN",
@@ -85,6 +136,7 @@ const createAdmin = async (req, res) => {
     res
       .status(201)
       .json({ message: "Admin user created successfully", id: userId });
+
   } catch (error) {
     console.error("Error creating admin user:", error);
     res.status(500).json({ message: "Server error", error: error.message });

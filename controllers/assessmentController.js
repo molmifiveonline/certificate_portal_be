@@ -99,6 +99,46 @@ exports.createAssessment = async (req, res) => {
           : null,
     });
 
+    // Send email notifications to candidates
+    try {
+      const pool = require("../config/db");
+      const [courseRows] = await pool.execute(
+        "SELECT course_name FROM courses WHERE id = ?",
+        [course_id],
+      );
+      const courseName = courseRows[0]?.course_name || "Course";
+
+      const emailService = require("../utils/emailService");
+      const { getAssessmentCreationTemplate } = require("../utils/emailTemplates");
+
+      if (finalCandidateIds) {
+        const ids = finalCandidateIds.split(",");
+        const [candidateRows] = await pool.execute(
+          `SELECT id, first_name, last_name, email FROM users WHERE id IN (${ids.map(() => "?").join(",")})`,
+          ids,
+        );
+
+        for (const candidate of candidateRows) {
+          if (candidate.email) {
+            const html = getAssessmentCreationTemplate(
+              `${candidate.first_name} ${candidate.last_name}`,
+              courseName,
+              title,
+              type_of_test,
+            );
+            await emailService.sendEmail(
+              candidate.email,
+              `New Assessment Assigned - ${courseName}`,
+              html,
+            );
+          }
+        }
+      }
+    } catch (emailError) {
+      console.error("Error sending assessment creation emails:", emailError);
+      // We don't fail the request if email sending fails
+    }
+
     res.status(201).json({
       success: true,
       message: "Assessment created successfully",
