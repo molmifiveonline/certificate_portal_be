@@ -437,6 +437,90 @@ class CourseEnrollmentDao {
     );
     return result.affectedRows > 0;
   }
+
+  static async saveAcknowledgmentToken(courseId, candidateId, token) {
+    const [result] = await pool.execute(
+      "UPDATE courses_enrollment SET ack_token = ?, ack_status = 'Pending', ack_date = NULL, ack_remark = NULL WHERE course_id = ? AND candidate_id = ?",
+      [token, courseId, candidateId],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async updateAcknowledgmentStatus(token, status, remark = null) {
+    const [result] = await pool.execute(
+      "UPDATE courses_enrollment SET ack_status = ?, ack_date = NOW(), ack_remark = ? WHERE ack_token = ?",
+      [status, remark, token],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async getEnrollmentById(id) {
+    const [rows] = await pool.execute(
+      `SELECT ce.*, u.first_name, u.last_name, u.email
+       FROM courses_enrollment ce
+       JOIN users u ON u.id = ce.candidate_id
+       WHERE ce.id = ?`,
+      [id],
+    );
+    return rows[0];
+  }
+
+  static async getCandidateAttendance(courseId, candidateId) {
+    const [courseRows] = await pool.execute(
+      "SELECT start_date, end_date FROM courses WHERE id = ?",
+      [courseId],
+    );
+    if (courseRows.length === 0) return [];
+
+    const { start_date, end_date } = courseRows[0];
+
+    const [enrollmentRows] = await pool.execute(
+      "SELECT is_present, holidays, absent_reasons FROM courses_enrollment WHERE course_id = ? AND candidate_id = ?",
+      [courseId, candidateId],
+    );
+    if (enrollmentRows.length === 0) return [];
+
+    const record = enrollmentRows[0];
+    const presentDates = record.is_present
+      ? record.is_present.split(",").filter(Boolean)
+      : [];
+    const holidayDates = record.holidays
+      ? record.holidays.split(",").filter(Boolean)
+      : [];
+    const absentReasons = record.absent_reasons
+      ? JSON.parse(record.absent_reasons)
+      : {};
+
+    const attendanceLog = [];
+    let start = new Date(start_date);
+    let end = new Date(end_date);
+
+    // Filter out potential invalid dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10);
+      let status = "";
+      let reason = "";
+
+      if (presentDates.includes(dateStr)) {
+        status = "present";
+      } else if (holidayDates.includes(dateStr)) {
+        status = "holiday";
+      } else if (absentReasons[dateStr]) {
+        status = "absent";
+        reason = absentReasons[dateStr];
+      }
+
+      attendanceLog.push({
+        attendance_date: dateStr,
+        status: status,
+        absent_reason: reason,
+      });
+    }
+
+    return attendanceLog;
+  }
 }
 
 module.exports = CourseEnrollmentDao;

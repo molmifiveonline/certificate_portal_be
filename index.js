@@ -58,6 +58,9 @@ const questionBankRoutes = require("./routes/questionBankRoutes");
 const systemManualRoutes = require("./routes/systemManualRoutes");
 const adminUserRoutes = require("./routes/admin/adminUserRoutes");
 const adminRoleRoutes = require("./routes/adminRoleRoutes");
+const reimbursementRoutes = require("./routes/reimbursementRoutes");
+const adminReimbursementRoutes = require("./routes/admin/reimbursementRoutes");
+const adminNotificationRoutes = require("./routes/admin/notificationRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
@@ -74,6 +77,9 @@ app.use("/api/feedback-forms", feedbackFormRoutes);
 app.use("/api/question-bank", questionBankRoutes);
 app.use("/api/system-manual", systemManualRoutes);
 app.use("/api/admin/users", adminUserRoutes);
+app.use("/api/reimbursements", reimbursementRoutes);
+app.use("/api/admin/reimbursements", adminReimbursementRoutes);
+app.use("/api/admin/notifications", adminNotificationRoutes);
 
 // Dummy Seeder Route for Testing
 app.use("/api/seed", require("./routes/seedRoutes"));
@@ -110,6 +116,10 @@ app.use("/api/nominators", nominatorRoutes);
 // Pre-Active Courses
 const preActiveCourseRoutes = require("./routes/preActiveCourseRoutes");
 app.use("/api/pre-active", preActiveCourseRoutes);
+
+// Outhouse Courses
+const outhouseCourseRoutes = require("./routes/outhouseCourseRoutes");
+app.use("/api/outhouse-courses", outhouseCourseRoutes);
 
 // Certificates
 const certificateRoutes = require("./routes/certificateRoutes");

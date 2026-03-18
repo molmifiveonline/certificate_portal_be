@@ -35,23 +35,29 @@ class AssessmentDao {
     return { id, ...data };
   }
 
-  static async getAll(search = "", page, limit) {
+  static async getAll(search = "", page, limit, trainerId = null) {
     let baseQuery = `
       FROM assessment a
       LEFT JOIN courses c ON a.course_id = c.id
       WHERE a.status = 1
     `;
     let countQuery =
-      "SELECT COUNT(*) as total FROM assessment WHERE status = 1";
+      "SELECT COUNT(*) as total FROM assessment a LEFT JOIN courses c ON a.course_id = c.id WHERE a.status = 1";
     const params = [];
+
+    if (trainerId) {
+      baseQuery += " AND c.primary_trainer_id = ?";
+      countQuery += " AND c.primary_trainer_id = ?";
+      params.push(trainerId);
+    }
 
     if (search) {
       baseQuery += " AND (a.title LIKE ? OR c.course_name LIKE ?)";
-      countQuery += " AND (title LIKE ?)";
+      countQuery += " AND (a.title LIKE ? OR c.course_name LIKE ?)";
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    const countParams = search ? [`%${search}%`] : [];
+    const countParams = params.slice(0); // For count query, we use the same params as before limit/offset
     const [countResult] = await pool.execute(countQuery, countParams);
     const total = countResult[0].total;
 
@@ -156,14 +162,19 @@ class AssessmentDao {
     return rows;
   }
 
-  // Get active courses (optionally filtered by test type)
-  static async getActiveCourses(typeOfTest = null, excludeAssessmentId = null) {
+  // Get active courses (optionally filtered by test type and trainer)
+  static async getActiveCourses(typeOfTest = null, excludeAssessmentId = null, trainerId = null) {
     let query = `
       SELECT c.id, c.course_id AS course_code, c.course_name, c.master_course_name, c.master_course_id
       FROM courses c
-      WHERE c.status = 'Initiated' OR c.status = 'Course started'
+      WHERE (c.status = 'Initiated' OR c.status = 'Course started')
     `;
     const params = [];
+
+    if (trainerId) {
+      query += " AND c.primary_trainer_id = ?";
+      params.push(trainerId);
+    }
 
     if (typeOfTest && typeOfTest !== "3") {
       // For pre/post, exclude courses that already have an assessment of this type
@@ -232,8 +243,43 @@ class AssessmentDao {
       FROM question_bank
       WHERE id IN (${placeholders}) AND status = 1
     `;
-
     const [rows] = await pool.execute(query, questionIds);
+    return rows;
+  }
+
+  // Get assessments for a candidate in a specific course
+  static async getCandidateAssessmentsByCourse(courseId, candidateId) {
+    const query = `
+      SELECT 
+        a.id, 
+        a.title, 
+        a.type_of_test,
+        a.num_of_questions,
+        ar.score,
+        ar.total_questions,
+        ar.correct_answers,
+        ar.status as test_status,
+        ar.created_at as test_date,
+        ar.attempt_number
+      FROM assessment a
+      LEFT JOIN assessment_results ar ON a.id = ar.assessment_id 
+        AND ar.candidate_id = ? 
+        AND ar.course_id = a.course_id
+        AND ar.id = (
+          SELECT id FROM assessment_results 
+          WHERE assessment_id = a.id AND candidate_id = ? AND course_id = a.course_id 
+          ORDER BY attempt_number DESC LIMIT 1
+        )
+      WHERE a.course_id = ? AND a.status = 1
+      AND (FIND_IN_SET(?, a.candidate_ids) OR a.type_of_test IN ('1', '2'))
+      ORDER BY a.type_of_test ASC, a.created_at DESC
+    `;
+    const [rows] = await pool.execute(query, [
+      candidateId,
+      candidateId,
+      courseId,
+      candidateId,
+    ]);
     return rows;
   }
 }

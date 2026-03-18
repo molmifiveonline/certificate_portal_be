@@ -4,6 +4,7 @@ const certificateController = require("../controllers/CertificateController");
 const authMiddleware = require("../middleware/authMiddleware");
 
 router.get("/", authMiddleware, certificateController.listCertificates);
+router.get("/verify/:id", certificateController.getCertificateVerificationById);
 router.get("/:id", authMiddleware, certificateController.getCertificateById);
 router.post("/", authMiddleware, certificateController.createManualCertificate);
 router.post(

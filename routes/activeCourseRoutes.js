@@ -19,7 +19,7 @@ router.get(
 router.get(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  authorize("Admin", "SuperAdmin", "Trainer", "Candidate"),
   activeCourseController.getCourseById,
 );
 router.put(
@@ -33,6 +33,14 @@ router.delete(
   protect,
   authorize("Admin", "SuperAdmin"),
   activeCourseController.deleteCourse,
+);
+
+// Attendance Routes
+router.get(
+  "/:id/my-attendance",
+  protect,
+  authorize("Candidate"),
+  activeCourseController.getCandidateAttendance,
 );
 
 // Course Operations
@@ -161,6 +169,12 @@ router.get(
   protect,
   authorize("Admin", "SuperAdmin", "Trainer"),
   activeCourseController.getFeedbackStatus,
+);
+router.post(
+  "/:id/email/feedback",
+  protect,
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  activeCourseController.sendFeedbackEmail,
 );
 
 // Certificate Tab

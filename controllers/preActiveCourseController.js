@@ -11,12 +11,18 @@ exports.createCourse = async (req, res) => {
   try {
     const course = await PreActiveCourseDao.createPreActiveCourse(req.body);
     if (course) {
+      // Trigger automatic notification to nominators (Centres)
+      sendCourseNotificationsToNominators(course.id).catch((err) => {
+        console.error("Automatic notifications failed on course creation:", err);
+      });
+
       res
         .status(201)
         .json({ message: "Pre-Active course created", data: course });
     } else {
       res.status(400).json({ message: "Failed to create course" });
     }
+
   } catch (error) {
     console.error("Error creating pre-active course:", error);
     res
@@ -99,56 +105,56 @@ exports.deleteCourse = async (req, res) => {
 // Nominator Notification & Portal
 // ==========================================
 
+// Helper to notify nominators
+const sendCourseNotificationsToNominators = async (courseId) => {
+  const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
+  if (!course) throw new Error("Course not found");
+
+  const nominatorsResult = await NominatorDao.getAllNominators(null, null, null);
+  const nominators = nominatorsResult.data || []; // Fix iteration bug
+  let sentCount = 0;
+
+  for (const nominator of nominators) {
+    if (nominator.email) {
+      const token = await PreActiveCourseDao.createToken(
+        courseId,
+        nominator.id,
+        "Nominator"
+      );
+
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const portalLink = `${frontendUrl}/nominate/${token}`;
+
+      const subject = `Nomination Request for Course: ${course.course_name}`;
+      const html = `
+                  <h3>Dear ${nominator.name},</h3>
+                  <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
+                  <p><strong>Start Date:</strong> ${course.start_date}</p>
+                  <p><strong>End Date:</strong> ${course.end_date}</p>
+                  <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
+                  <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
+                  <br><br>
+                  <p>Link expires in 7 days.</p>
+              `;
+
+      await emailService.sendEmail(nominator.email, subject, html);
+      sentCount++;
+    }
+  }
+  return sentCount;
+};
+
 exports.notifyNominators = async (req, res) => {
   try {
     const courseId = req.params.id;
-    const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
-    if (!course) return res.status(404).json({ message: "Course not found" });
-
-    // Get nominators
-    const nominators = await NominatorDao.getAllNominators(null, null, null); // all
-    let sentCount = 0;
-
-    for (const nominator of nominators) {
-      if (nominator.email) {
-        const token = await PreActiveCourseDao.createToken(
-          courseId,
-          nominator.id,
-          "Nominator",
-        );
-
-        // Assuming frontend runs on same host but different port, usually configured in env
-        // We'll construct a generic portal link. The client should configure FRONTEND_URL
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-        const portalLink = `${frontendUrl}/nominate/${token}`;
-
-        const subject = `Nomination Request for Course: ${course.course_name}`;
-        const html = `
-                    <h3>Dear ${nominator.name},</h3>
-                    <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${course.start_date}</p>
-                    <p><strong>End Date:</strong> ${course.end_date}</p>
-                    <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `;
-
-        await emailService.sendEmail(nominator.email, subject, html);
-        sentCount++;
-      }
-    }
-
-    res
-      .status(200)
-      .json({ message: `Emails sent to ${sentCount} nominators.` });
+    const sentCount = await sendCourseNotificationsToNominators(courseId);
+    res.status(200).json({ message: `Emails sent to ${sentCount} nominators.` });
   } catch (error) {
     console.error("Error notifying nominators:", error);
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
 
 exports.getCourseByToken = async (req, res) => {
   try {

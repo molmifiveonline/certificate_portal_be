@@ -388,6 +388,80 @@ class AssessmentResultDao {
       totalPages: Math.ceil(totalCount / limit),
     };
   }
+
+  /**
+   * Save a single assessment submission result and its answers.
+   */
+  static async saveSubmission(data) {
+    const {
+      assessment_id,
+      candidate_id,
+      course_id,
+      score,
+      total_questions,
+      correct_answers,
+      answers, // Array of { question_id, selected_option, is_correct }
+    } = data;
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Get latest attempt number
+      const [attemptRows] = await connection.execute(
+        "SELECT MAX(attempt_number) as lastAttempt FROM assessment_results WHERE assessment_id = ? AND candidate_id = ? AND course_id = ?",
+        [assessment_id, candidate_id, course_id],
+      );
+      const attempt_number = (attemptRows[0].lastAttempt || 0) + 1;
+
+      const resultId = uuidv4();
+      const resultQuery = `
+        INSERT INTO assessment_results (
+          id, assessment_id, candidate_id, course_id, 
+          score, total_questions, correct_answers, 
+          attempt_number, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Completed')
+      `;
+
+      await connection.execute(resultQuery, [
+        resultId,
+        assessment_id,
+        candidate_id,
+        course_id,
+        score,
+        total_questions,
+        correct_answers,
+        attempt_number,
+      ]);
+
+      // Save individual answers
+      if (answers && answers.length > 0) {
+        const answerQuery = `
+          INSERT INTO assessment_answers (
+            id, assessment_result_id, question_id, selected_option, is_correct
+          ) VALUES (?, ?, ?, ?, ?)
+        `;
+
+        for (const ans of answers) {
+          await connection.execute(answerQuery, [
+            uuidv4(),
+            resultId,
+            ans.question_id,
+            ans.selected_option,
+            ans.is_correct ? 1 : 0,
+          ]);
+        }
+      }
+
+      await connection.commit();
+      return { id: resultId, attempt_number };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
 }
 
 module.exports = AssessmentResultDao;
