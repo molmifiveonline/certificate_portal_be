@@ -222,7 +222,55 @@ class CandidateDao {
     }
   }
 
-  static async exportCandidates() {
+  static async exportCandidates(filters = {}) {
+    let baseQuery = `
+      FROM users u
+      JOIN candidate_profiles cp ON u.id = cp.user_id
+      JOIN roles r ON u.role_id = r.id
+      WHERE r.name = 'candidate'
+    `;
+
+    const params = [];
+
+    if (filters.search) {
+      baseQuery += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR cp.passport_no LIKE ? OR cp.employee_id LIKE ?)`;
+      const searchTerm = `%${filters.search}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    if (filters.manager) {
+      baseQuery += ` AND cp.manager = ?`;
+      params.push(filters.manager);
+    }
+
+    if (filters.rank) {
+      baseQuery += ` AND cp.rank = ?`;
+      params.push(filters.rank);
+    }
+
+    if (filters.nationality) {
+      baseQuery += ` AND cp.nationality = ?`;
+      params.push(filters.nationality);
+    }
+
+    if (filters.registration_type) {
+      baseQuery += ` AND cp.registration_type = ?`;
+      params.push(filters.registration_type);
+    }
+
+    if (
+      filters.status !== undefined &&
+      filters.status !== "" &&
+      filters.status !== "all"
+    ) {
+      baseQuery += ` AND u.status = ?`;
+      params.push(filters.status);
+    } else if (filters.status === "all") {
+      // no status filter
+    } else {
+      baseQuery += ` AND u.status = 1`;
+    }
+
     const query = `
       SELECT 
         u.first_name, u.last_name, u.email, u.mobile,
@@ -232,13 +280,10 @@ class CandidateDao {
         cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name, 
         cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image,
         u.created_at
-      FROM users u
-      JOIN candidate_profiles cp ON u.id = cp.user_id
-      JOIN roles r ON u.role_id = r.id
-      WHERE r.name = 'candidate' AND u.status = 1
+      ${baseQuery}
       ORDER BY u.created_at DESC
     `;
-    const [rows] = await db.query(query);
+    const [rows] = await db.query(query, params);
     return rows;
   }
 

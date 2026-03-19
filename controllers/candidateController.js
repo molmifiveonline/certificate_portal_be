@@ -105,7 +105,23 @@ const { Parser } = require("json2csv");
 
 const exportCandidates = async (req, res) => {
   try {
-    const data = await CandidateDao.exportCandidates();
+    const {
+      search,
+      manager,
+      rank,
+      nationality,
+      status,
+      registration_type,
+    } = req.query;
+
+    const data = await CandidateDao.exportCandidates({
+      search,
+      manager,
+      rank,
+      nationality,
+      status,
+      registration_type,
+    });
 
     if (!data || data.length === 0) {
       return res.status(404).json({ message: "No candidates found to export" });
