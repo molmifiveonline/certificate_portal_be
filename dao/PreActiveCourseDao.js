@@ -285,26 +285,45 @@ const enrollCandidateByNominator = async (
   let candidateId = candidateData.candidate_id;
 
   if (!candidateId && candidateData.email) {
+    // Fetch candidate role ID
+    const [roles] = await pool.execute(
+      "SELECT id FROM roles WHERE name = 'candidate'",
+    );
+    if (roles.length === 0) throw new Error("Candidate role not found");
+    const roleId = roles[0].id;
+
     // See if user exists
     const [users] = await pool.execute(
-      "SELECT id FROM users WHERE email = ? AND role_type = 'Candidate'",
-      [candidateData.email],
+      "SELECT id FROM users WHERE email = ? AND role_id = ?",
+      [candidateData.email, roleId],
     );
+
     if (users.length > 0) {
       candidateId = users[0].id;
     } else {
       // Create user
       candidateId = uuidv4();
       await pool.execute(
-        "INSERT INTO users (id, first_name, last_name, email, indos_number, mobile_no, date_of_birth, registration_type, role_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Others', 'Candidate', 1)",
+        "INSERT INTO users (id, role_id, first_name, last_name, email, mobile, status) VALUES (?, ?, ?, ?, ?, ?, 1)",
         [
           candidateId,
+          roleId,
           candidateData.first_name,
           candidateData.last_name || "",
           candidateData.email,
-          candidateData.indos_number || null,
           candidateData.mobile_no || null,
+        ],
+      );
+
+      // Create Candidate Profile
+      const profileId = uuidv4();
+      await pool.execute(
+        "INSERT INTO candidate_profiles (id, user_id, dob, indos_number, registration_type) VALUES (?, ?, ?, ?, 'Others')",
+        [
+          profileId,
+          candidateId,
           candidateData.date_of_birth || null,
+          candidateData.indos_number || null,
         ],
       );
     }
@@ -368,10 +387,11 @@ const getPendingAdminApprovals = async (course_id) => {
   const [rows] = await pool.execute(
     `SELECT ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark, 
                 ce.admin_approval_status, ce.admin_remark, ce.admin_action_date, ce.nominator_id,
-                u.first_name, u.last_name, u.email, u.indos_number,
+                u.first_name, u.last_name, u.email, cp.indos_number,
                 n.name as nominator_name
          FROM courses_enrollment ce
          JOIN users u ON ce.candidate_id = u.id
+         LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
          LEFT JOIN nominators n ON ce.nominator_id = n.id
          WHERE ce.course_id = ? AND ce.candidate_approval_status IN ('Approved', 'Rejected')`,
     [course_id],
