@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const ActiveCourseDao = require("./ActiveCourseDao");
 
 class DashboardDao {
   static async getStats() {
@@ -9,6 +10,7 @@ class DashboardDao {
     const [candidateResult] = await pool.query(`
       SELECT COUNT(*) as count 
       FROM users u
+      JOIN candidate_profiles cp ON u.id = cp.user_id
       JOIN roles r ON u.role_id = r.id
       WHERE r.name = 'candidate' AND u.status = 1
     `);
@@ -23,18 +25,15 @@ class DashboardDao {
     `);
     stats.totalTrainers = trainerResult[0].count;
 
-    // 3. Total Active Courses (status = 'Active' or just not deleted?)
-    // Legacy code used 'status = 1' on 'course' table. ActiveCourseDao uses 'status != "Deleted"'
-    // We will follow ActiveCourseDao logic for "Active" which seems to be "Not Deleted"
-    // But legacy specifically checked for "Active Courses". Let's assume we want all non-deleted for now,
-    // or maybe filter by specific status if 'Active' is a value in `status` column (ActiveCourseDao inserts 'Initiated')
-    // Let's count all non-deleted for now as "Total Courses"
+    // 3. Total Active Courses — use the same predicate as ActiveCourseDao.getAll()
+    // so the count matches exactly what the Active Courses listing page shows
+    const activePredicate = await ActiveCourseDao.buildActivePredicate("c");
     const [courseResult] = await pool.query(`
       SELECT COUNT(*) as count 
-      FROM courses 
-      WHERE status != 'Deleted'
+      FROM courses c
+      WHERE ${activePredicate}
     `);
-    stats.totalCourses = courseResult[0].count; // Labelled as "Total Active Courses" in legacy UI
+    stats.totalCourses = courseResult[0].count;
 
     return stats;
   }
