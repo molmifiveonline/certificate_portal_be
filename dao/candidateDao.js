@@ -63,7 +63,7 @@ class CandidateDao {
         cp.passport_no, cp.employee_id, cp.manager, cp.rank, 
         cp.whatsapp_number, cp.alternate_mobile, cp.indos_number, cp.registration_type,
         cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name, 
-        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image
+        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image, u.created_at
       ${baseQuery}
     `;
 
@@ -121,7 +121,7 @@ class CandidateDao {
         cp.passport_no, cp.employee_id, cp.manager, cp.rank, 
         cp.whatsapp_number, cp.alternate_mobile, cp.indos_number, cp.registration_type,
         cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name, 
-        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image
+        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image, u.created_at
       FROM users u
       JOIN candidate_profiles cp ON u.id = cp.user_id
       WHERE u.id = ?
