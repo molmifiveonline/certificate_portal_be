@@ -13,7 +13,7 @@ class ActiveCourseDao {
     if (await hasColumn("courses", "is_outhouse")) {
       parts.push(`COALESCE(${alias}.is_outhouse, 0) = 0`);
     } else {
-      parts.push(`${alias}.course_type != 'Out house'`);
+      parts.push(`COALESCE(${alias}.course_type, '') != 'Out house'`);
     }
 
     return parts.join(" AND ");
