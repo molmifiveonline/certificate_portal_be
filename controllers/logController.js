@@ -22,6 +22,7 @@ const createLog = async (req, res) => {
       ip_address: ipAddress,
       user_agent: userAgent,
     });
+      req.skipActivityLog = true;
 
     res.status(201).json({
       message: "Log created successfully",

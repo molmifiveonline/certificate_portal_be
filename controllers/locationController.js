@@ -38,6 +38,7 @@ const createLocation = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Location created successfully", location);
@@ -60,6 +61,7 @@ const updateLocation = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Location updated successfully", location);
@@ -87,6 +89,7 @@ const deleteLocation = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Location deleted successfully");

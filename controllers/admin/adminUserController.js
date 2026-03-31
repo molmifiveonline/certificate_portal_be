@@ -132,6 +132,7 @@ const createAdmin = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
+      req.skipActivityLog = true;
 
     res
       .status(201)
@@ -199,6 +200,7 @@ const updateAdmin = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
+      req.skipActivityLog = true;
 
     res.json({ message: "Admin user updated successfully" });
   } catch (error) {
@@ -238,6 +240,7 @@ const deleteAdmin = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
+      req.skipActivityLog = true;
 
     res.json({ message: "Admin user deleted successfully" });
   } catch (error) {

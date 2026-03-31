@@ -105,6 +105,7 @@ const logAction = async (req, action, details) => {
     ip_address: req.ip,
     user_agent: req.get("User-Agent"),
   });
+      req.skipActivityLog = true;
 };
 
 exports.getMyReimbursements = async (req, res) => {

@@ -231,6 +231,7 @@ const registerCandidate = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
+      req.skipActivityLog = true;
 
     res.status(201).json({ message: "Candidate registered successfully" });
   } catch (error) {
@@ -309,6 +310,15 @@ const login = async (req, res) => {
       { expiresIn: "1d" },
     );
 
+    await LogDao.createLog({
+      user_id: user.id,
+      action: "LOGIN",
+      details: `User logged in: ${user.email}`,
+      ip_address: req.ip,
+      user_agent: req.get("User-Agent"),
+    });
+    req.skipActivityLog = true;
+
     res.json({
       message: "Login successful",
       token,
@@ -324,14 +334,6 @@ const login = async (req, res) => {
         // array means restricted to these slugs
         adminRolePermissions,
       },
-    });
-
-    await LogDao.createLog({
-      user_id: user.id,
-      action: "LOGIN",
-      details: `User logged in: ${user.email}`,
-      ip_address: req.ip,
-      user_agent: req.get("User-Agent"),
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -392,6 +394,7 @@ const forgotPassword = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
+      req.skipActivityLog = true;
 
     res.json({ message: "A password reset link has been sent to your email." });
   } catch (error) {
@@ -432,6 +435,7 @@ const resetPassword = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
 
       res.json({ message: "Your password has been successfully updated." });
     } else {

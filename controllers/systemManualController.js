@@ -84,6 +84,7 @@ const addSystemManual = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "System Manual created successfully", { id: manualId });
@@ -163,6 +164,7 @@ const updateSystemManual = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "System Manual updated successfully");
@@ -189,6 +191,7 @@ const deleteSystemManual = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "System Manual deleted successfully");

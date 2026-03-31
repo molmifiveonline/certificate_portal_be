@@ -131,6 +131,7 @@ const confirmBulkImport = async (req, res) => {
       ip_address: userIp,
       user_agent: userAgent,
     });
+      req.skipActivityLog = true;
 
     res.json({ message: "Course sync completed successfully", stats });
   } catch (error) {
