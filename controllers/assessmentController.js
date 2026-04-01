@@ -912,7 +912,13 @@ exports.submitAssessment = async (req, res) => {
     });
 
     const totalQuestions = questionIds.length;
-    const score = (correctCount / totalQuestions) * 100;
+    if (totalQuestions > 0 && answers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one answer is required to submit the assessment",
+      });
+    }
+    const score = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
 
     // 3. Save submission
     const result = await AssessmentResultDao.saveSubmission({
