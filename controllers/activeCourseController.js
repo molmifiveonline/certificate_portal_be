@@ -648,7 +648,7 @@ exports.generateCertificate = async (req, res) => {
     const generationDate = issueDate || new Date().toISOString().slice(0, 10);
     const type = masterCourse.certificate_type || "Others";
     const [candidateRows] = await pool.execute(
-      "SELECT nationality FROM users WHERE id = ?",
+      "SELECT cp.nationality FROM users u LEFT JOIN candidate_profiles cp ON u.id = cp.user_id WHERE u.id = ?",
       [candidateId],
     );
     const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);

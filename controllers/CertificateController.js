@@ -90,11 +90,8 @@ exports.generateCertificate = async (req, res) => {
     if (!masterCourse)
       return res.status(404).json({ message: "Master Course not found" });
 
-    // In a real scenario, we'd fetch the candidate and trainer details to get nationality for LNG certificates
-    // For now, let's use placeholders or fetch them if needed.
-    // Let's fetch them to be accurate.
     const [candidateRows] = await pool.execute(
-      "SELECT first_name, last_name, nationality FROM users WHERE id = ?",
+      "SELECT u.first_name, u.last_name, cp.nationality FROM users u LEFT JOIN candidate_profiles cp ON u.id = cp.user_id WHERE u.id = ?",
       [candidateId],
     );
     if (candidateRows.length === 0)
@@ -225,7 +222,7 @@ exports.createManualCertificate = async (req, res) => {
 
       const type = certData.type || "Others";
       const [candidateRows] = await pool.execute(
-        "SELECT nationality FROM users WHERE id = ?",
+        "SELECT cp.nationality FROM users u LEFT JOIN candidate_profiles cp ON u.id = cp.user_id WHERE u.id = ?",
         [candidateId],
       );
       const candidateNationality = candidateRows[0]?.nationality || null;

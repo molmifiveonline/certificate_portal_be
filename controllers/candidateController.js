@@ -51,6 +51,7 @@ const deleteCandidate = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     res.status(200).json({ message: "Candidate deleted successfully" });
@@ -92,6 +93,7 @@ const updateCandidate = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     res.status(200).json({ message: "Candidate updated successfully" });

@@ -76,6 +76,7 @@ const addHotel = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Hotel created successfully", { hotelId });
@@ -116,6 +117,7 @@ const updateHotel = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Hotel updated successfully");
@@ -142,6 +144,7 @@ const deleteHotel = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Hotel deleted successfully");

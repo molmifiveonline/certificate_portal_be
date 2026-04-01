@@ -8,8 +8,8 @@ const activityLogger = (req, res, next) => {
     return next();
   }
 
-  // Exclude listing/fetch operations that use POST
-  const excludedKeywords = ["fetch", "search", "preview", "filter", "list"];
+  // Exclude listing/fetch operations that use POST, and do not track log-history mutations
+  const excludedKeywords = ["fetch", "search", "preview", "filter", "list", "log-history"];
   const urlPath = req.originalUrl.split("?")[0].toLowerCase();
   
   if (excludedKeywords.some(keyword => urlPath.includes(keyword))) {
@@ -19,7 +19,7 @@ const activityLogger = (req, res, next) => {
   // Hook into the 'finish' event of the response.
   res.on("finish", async () => {
     // Only log successful actions (status 2xx or 3xx)
-    if (res.statusCode >= 400) {
+    if (res.statusCode >= 400 || req.skipActivityLog) {
       return;
     }
 

@@ -85,6 +85,7 @@ const createTrainer = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     res.status(201).json({ message: "Trainer created successfully", userId });
@@ -161,6 +162,7 @@ const updateTrainer = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     res.status(200).json({ message: "Trainer updated successfully" });
@@ -186,6 +188,7 @@ const deleteTrainer = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     res.status(200).json({ message: "Trainer deleted successfully" });

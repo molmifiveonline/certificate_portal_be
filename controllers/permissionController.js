@@ -57,6 +57,7 @@ const updateRolePermissions = async (req, res) => {
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
+      req.skipActivityLog = true;
     }
 
     return ok(res, "Role permissions updated successfully");
