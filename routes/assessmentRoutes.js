@@ -21,48 +21,111 @@ const {
   getCandidateAssessmentsByCourse,
   submitAssessment,
 } = require("../controllers/assessmentController");
-const verifyToken = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
-// CRUD routes
-router.post("/create", verifyToken, createAssessment);
-router.get("/", verifyToken, getAllAssessments);
-router.get("/courses", verifyToken, getActiveCourses);
-router.get("/candidates/:courseId", verifyToken, getCandidatesByCourse);
-router.get("/questions/:courseId", verifyToken, getQuestionsByCourse);
+// All assessment routes require authentication
+router.use(protect);
 
-// Submitted Assessment routes
-router.get("/export-submitted", verifyToken, exportSubmittedAssessments);
-router.get("/submitted-courses", verifyToken, getSubmittedCourses);
-router.get("/all-submissions", verifyToken, getPaginatedSubmissions);
-router.get("/course/:courseId/submissions", verifyToken, getCourseSubmissions);
+// Admin/Trainer CRUD routes
+router.post(
+  "/create",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  createAssessment,
+);
+router.get(
+  "/",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  getAllAssessments,
+);
+router.get(
+  "/courses",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  getActiveCourses,
+);
+router.get(
+  "/candidates/:courseId",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  getCandidatesByCourse,
+);
+router.get(
+  "/questions/:courseId",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  getQuestionsByCourse,
+);
+
+// Submitted Assessment routes - Admin/Trainer
+router.get(
+  "/export-submitted",
+  authorize("Admin", "SuperAdmin"),
+  exportSubmittedAssessments,
+);
+router.get(
+  "/submitted-courses",
+  authorize("Admin", "SuperAdmin"),
+  getSubmittedCourses,
+);
+router.get(
+  "/all-submissions",
+  authorize("Admin", "SuperAdmin"),
+  getPaginatedSubmissions,
+);
+router.get(
+  "/course/:courseId/submissions",
+  authorize("Admin", "SuperAdmin"),
+  getCourseSubmissions,
+);
 router.get(
   "/course/:courseId/assessments",
-  verifyToken,
+  authorize("Admin", "SuperAdmin", "Trainer"),
   getAssessmentsByCourse,
 );
 router.get(
   "/assessment/:assessmentId/submissions",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   getAssessmentSubmissions,
 );
 router.get(
   "/submission/:resultId/download",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   downloadSubmissionById,
 );
-router.get("/submission/:resultId", verifyToken, getSubmissionDetail);
+router.get(
+  "/submission/:resultId",
+  authorize("Admin", "SuperAdmin"),
+  getSubmissionDetail,
+);
 
 // Candidate endpoints
-router.get("/:id/play-questions", verifyToken, getPlayAssessmentQuestions);
+router.get(
+  "/:id/play-questions",
+  authorize("Admin", "SuperAdmin", "Candidate"),
+  getPlayAssessmentQuestions,
+);
 router.get(
   "/course/:courseId/candidate-list",
-  verifyToken,
+  authorize("Admin", "SuperAdmin", "Candidate"),
   getCandidateAssessmentsByCourse,
 );
-router.post("/submit", verifyToken, submitAssessment);
+router.post(
+  "/submit",
+  authorize("Admin", "SuperAdmin", "Candidate"),
+  submitAssessment,
+);
 
-router.get("/:id", verifyToken, getAssessmentById);
-router.put("/update/:id", verifyToken, updateAssessment);
-router.delete("/delete/:id", verifyToken, deleteAssessment);
+router.get(
+  "/:id",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  getAssessmentById,
+);
+router.put(
+  "/update/:id",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  updateAssessment,
+);
+router.delete(
+  "/delete/:id",
+  authorize("Admin", "SuperAdmin"),
+  deleteAssessment,
+);
 
 module.exports = router;

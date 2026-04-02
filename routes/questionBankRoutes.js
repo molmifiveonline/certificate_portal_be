@@ -11,7 +11,7 @@ const {
   deleteQuestion,
   bulkUpload,
 } = require("../controllers/questionBankController");
-const verifyToken = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 // Dedicated upload config for question bank images
 const questionUploadDir = "uploads/question";
@@ -68,9 +68,13 @@ const handleUpload = (req, res, next) => {
   });
 };
 
-router.post("/create", verifyToken, handleUpload, createQuestion);
-router.get("/", verifyToken, getAllQuestions);
-router.get("/sample-template", verifyToken, (req, res) => {
+// All question bank routes require auth and admin/superadmin role
+router.use(protect);
+router.use(authorize("Admin", "SuperAdmin"));
+
+router.post("/create", handleUpload, createQuestion);
+router.get("/", getAllQuestions);
+router.get("/sample-template", (req, res) => {
   const XLSX = require("xlsx");
   const wb = XLSX.utils.book_new();
   const sampleData = [
@@ -100,12 +104,11 @@ router.get("/sample-template", verifyToken, (req, res) => {
 });
 router.post(
   "/bulk-upload",
-  verifyToken,
   multer({ dest: "uploads/temp/" }).single("file"),
   bulkUpload,
 );
-router.get("/:id", verifyToken, getQuestionById);
-router.put("/update/:id", verifyToken, handleUpload, updateQuestion);
-router.delete("/delete/:id", verifyToken, deleteQuestion);
+router.get("/:id", getQuestionById);
+router.put("/update/:id", handleUpload, updateQuestion);
+router.delete("/delete/:id", deleteQuestion);
 
 module.exports = router;

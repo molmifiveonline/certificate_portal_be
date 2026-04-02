@@ -402,13 +402,22 @@ exports.getSubmittedCourses = async (req, res) => {
 
 exports.getPaginatedSubmissions = async (req, res) => {
   try {
-    const { search, page, limit, type_of_test, course_id } = req.query;
+    const { 
+      search, 
+      page, 
+      limit, 
+      type_of_test: typeOfTest, 
+      course_id: courseId,
+      type,
+      course
+    } = req.query;
+
     const result = await AssessmentResultDao.getAllSubmissionsPaginated(
       search,
       page || 1,
       limit || 10,
-      type_of_test,
-      course_id,
+      typeOfTest || type,
+      courseId || course,
     );
     res.status(200).json({
       success: true,
@@ -780,10 +789,20 @@ exports.downloadSubmissionById = async (req, res) => {
 
 exports.exportSubmittedAssessments = async (req, res) => {
   try {
-    const { search } = req.query;
+    const { 
+      search, 
+      type_of_test: typeOfTest, 
+      course_id: courseId,
+      type,
+      course
+    } = req.query;
     const xlsx = require("xlsx");
 
-    const submissions = await AssessmentResultDao.getAllSubmissions(search);
+    const submissions = await AssessmentResultDao.getAllSubmissions(
+      search, 
+      typeOfTest || type, 
+      courseId || course
+    );
 
     if (submissions.length === 0) {
       return res.status(404).json({ message: "No submissions found." });

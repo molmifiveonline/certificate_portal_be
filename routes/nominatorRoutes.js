@@ -7,29 +7,30 @@ const {
   updateNominator,
   deleteNominator,
 } = require("../controllers/nominatorController");
-const verifyToken = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 
-// Protected routes (Assuming same protection level as trainers for now)
+// All nominator routes require authentication and admin role
+router.use(protect);
+router.use(authorize("Admin", "SuperAdmin"));
+
+// Protected routes
 router.post(
   "/create",
-  verifyToken,
   checkPermission("create_nominator"),
   createNominator,
 );
 router.put(
   "/update/:id",
-  verifyToken,
   checkPermission("edit_nominator"),
   updateNominator,
 );
 router.delete(
   "/delete/:id",
-  verifyToken,
   checkPermission("delete_nominator"),
   deleteNominator,
 );
-router.get("/", verifyToken, getAllNominators);
-router.get("/:id", verifyToken, getNominatorById);
+router.get("/", getAllNominators);
+router.get("/:id", getNominatorById);
 
 module.exports = router;

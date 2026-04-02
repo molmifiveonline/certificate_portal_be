@@ -18,7 +18,7 @@ const {
 const {
   uploadProfileImage,
 } = require("../controllers/candidateProfileUploadController");
-const verifyToken = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 const candidateUpload = require("../middleware/candidateUploadMiddleware");
 const multer = require("multer");
@@ -35,32 +35,35 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Protected routes
-router.get("/", verifyToken, getAllCandidates);
+// All candidate routes require authentication
+router.use(protect);
+
+// Candidate list/view - Admin only (candidates see their own data through different endpoints)
+router.get("/", authorize("Admin", "SuperAdmin"), getAllCandidates);
 router.get(
   "/export",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("export_candidates"),
   exportCandidates,
 );
-router.get("/:id", verifyToken, getCandidateById);
+router.get("/:id", authorize("Admin", "SuperAdmin"), getCandidateById);
 router.put(
   "/update/:id",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("edit_candidate"),
   updateCandidate,
 );
 router.delete(
   "/delete/:id",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("delete_candidate"),
   deleteCandidate,
 );
 
-// Bulk operations
+// Bulk operations - Admin only
 router.post(
   "/upload",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("create_candidate"),
   upload.single("csv"),
   uploadCandidates,
@@ -72,23 +75,23 @@ router.post(
 );
 router.post(
   "/import-api",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("create_candidate"),
   importFromApi,
 );
 
 router.post(
   "/fetch-external-preview",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("create_candidate"),
-  fetchExternalPreview
+  fetchExternalPreview,
 );
 
 router.post(
   "/confirm-bulk-import",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("create_candidate"),
-  confirmBulkImport
+  confirmBulkImport,
 );
 
 module.exports = router;

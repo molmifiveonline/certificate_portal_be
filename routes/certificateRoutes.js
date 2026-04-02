@@ -1,18 +1,47 @@
 const express = require("express");
 const router = express.Router();
 const certificateController = require("../controllers/CertificateController");
-const authMiddleware = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
-router.get("/", authMiddleware, certificateController.listCertificates);
+// Public verification route (no auth required)
 router.get("/verify/:id", certificateController.getCertificateVerificationById);
-router.get("/:id", authMiddleware, certificateController.getCertificateById);
-router.post("/", authMiddleware, certificateController.createManualCertificate);
+
+// Admin routes - require auth + admin/superadmin role
+router.get(
+  "/",
+  protect,
+  authorize("Admin", "SuperAdmin"),
+  certificateController.listCertificates,
+);
+router.get(
+  "/:id",
+  protect,
+  authorize("Admin", "SuperAdmin", "Candidate"),
+  certificateController.getCertificateById,
+);
+router.post(
+  "/",
+  protect,
+  authorize("Admin", "SuperAdmin"),
+  certificateController.createManualCertificate,
+);
 router.post(
   "/generate",
-  authMiddleware,
+  protect,
+  authorize("Admin", "SuperAdmin"),
   certificateController.generateCertificate,
 );
-router.put("/:id", authMiddleware, certificateController.updateCertificate);
-router.delete("/:id", authMiddleware, certificateController.deleteCertificate);
+router.put(
+  "/:id",
+  protect,
+  authorize("Admin", "SuperAdmin"),
+  certificateController.updateCertificate,
+);
+router.delete(
+  "/:id",
+  protect,
+  authorize("Admin", "SuperAdmin"),
+  certificateController.deleteCertificate,
+);
 
 module.exports = router;

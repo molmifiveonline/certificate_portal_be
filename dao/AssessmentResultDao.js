@@ -194,14 +194,24 @@ class AssessmentResultDao {
   /**
    * Get all submissions for export.
    */
-  static async getAllSubmissions(search = "") {
+  static async getAllSubmissions(search = "", type_of_test = null, course_id = null) {
     let baseWhere = `WHERE ar.status = 'Completed'`;
     const params = [];
 
+    if (type_of_test) {
+      baseWhere += ` AND a.type_of_test = ?`;
+      params.push(type_of_test);
+    }
+
+    if (course_id) {
+      baseWhere += ` AND ar.course_id = ?`;
+      params.push(course_id);
+    }
+
     if (search) {
-      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)`;
+      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     const dataQuery = `

@@ -7,11 +7,11 @@ class MasterCourseDao {
     const {
       topic,
       master_course_name,
-      certificate_type,
-      expiry_date,
-      description,
-      remarks,
-      material_link,
+      certificate_type = null,
+      expiry_date = null,
+      description = null,
+      remarks = null,
+      material_link = null,
     } = data;
     const query = `
             INSERT INTO master_course (id, topic, master_course_name, certificate_type, expiry_date, description, remarks, material_link, status)
@@ -77,11 +77,11 @@ class MasterCourseDao {
     const {
       topic,
       master_course_name,
-      certificate_type,
-      expiry_date,
-      description,
-      remarks,
-      material_link,
+      certificate_type = null,
+      expiry_date = null,
+      description = null,
+      remarks = null,
+      material_link = null,
     } = data;
     const query = `
             UPDATE master_course 

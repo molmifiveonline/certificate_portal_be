@@ -2,10 +2,11 @@ const express = require("express");
 const router = express.Router();
 const systemManualController = require("../controllers/systemManualController");
 const uploadSystemManual = require("../middleware/systemManualUploadMiddleware");
-const authMiddleware = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
-// All routes are protected
-router.use(authMiddleware);
+// All routes require authentication and admin/superadmin role
+router.use(protect);
+router.use(authorize("Admin", "SuperAdmin"));
 
 // Routes
 router.get("/", systemManualController.getSystemManuals);

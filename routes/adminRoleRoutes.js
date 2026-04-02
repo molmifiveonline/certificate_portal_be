@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const adminRoleController = require("../controllers/adminRoleController");
-const authMiddleware = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 
-// All admin role routes should be under auth
-router.use(authMiddleware);
+// All admin role routes require auth and admin/superadmin role
+router.use(protect);
+router.use(authorize("Admin", "SuperAdmin"));
 
 router.post(
   "/",
