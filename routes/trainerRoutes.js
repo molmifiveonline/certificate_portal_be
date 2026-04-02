@@ -9,9 +9,9 @@ const {
   exportTrainers,
   getTrainerDashboardStats,
 } = require("../controllers/trainerController");
-const verifyToken = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
-const upload = require("../middleware/uploadMiddleware"); // Import upload middleware
+const upload = require("../middleware/uploadMiddleware");
 
 // Configure file upload fields
 const uploadFields = upload.fields([
@@ -19,38 +19,52 @@ const uploadFields = upload.fields([
   { name: "profile_photo", maxCount: 1 },
 ]);
 
-// Protected routes
+// All trainer management routes require auth
+router.use(protect);
+
+// Trainer list/view - Admin only (trainers see their own data through different endpoints)
+router.get(
+  "/",
+  authorize("Admin", "SuperAdmin"),
+  getAllTrainers,
+);
+router.get(
+  "/export",
+  authorize("Admin", "SuperAdmin"),
+  checkPermission("export_trainers"),
+  exportTrainers,
+);
+router.get(
+  "/dashboard-stats",
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  getTrainerDashboardStats,
+);
+router.get(
+  "/:id",
+  authorize("Admin", "SuperAdmin"),
+  getTrainerById,
+);
+
+// Trainer CRUD - Admin only with permissions
 router.post(
   "/create",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("create_trainer"),
   uploadFields,
   createTrainer,
 );
-
 router.put(
   "/update/:id",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("edit_trainer"),
   uploadFields,
   updateTrainer,
 );
-
 router.delete(
   "/delete/:id",
-  verifyToken,
+  authorize("Admin", "SuperAdmin"),
   checkPermission("delete_trainer"),
   deleteTrainer,
 );
-
-router.get("/", verifyToken, getAllTrainers);
-router.get(
-  "/export",
-  verifyToken,
-  checkPermission("export_trainers"),
-  exportTrainers,
-); // Place before /:id to avoid conflict
-router.get("/dashboard-stats", verifyToken, getTrainerDashboardStats);
-router.get("/:id", verifyToken, getTrainerById);
 
 module.exports = router;

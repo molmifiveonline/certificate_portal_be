@@ -38,9 +38,11 @@ class LogDao {
 
     // Get Data
     const [rows] = await db.query(
-      `SELECT logs.*, CONCAT(users.first_name, ' ', users.last_name) AS user_name 
+      `SELECT logs.*, CONCAT(users.first_name, ' ', users.last_name) AS user_name, r.name as role_name, ar.role_name as admin_role_name
        FROM logs 
        LEFT JOIN users ON logs.user_id = users.id 
+       LEFT JOIN roles r ON users.role_id = r.id
+       LEFT JOIN admin_roles ar ON users.admin_role_id = ar.id
        ${whereClause} 
        ORDER BY logs.created_at DESC 
        LIMIT ? OFFSET ?`,
@@ -82,9 +84,11 @@ class LogDao {
 
     // Get Data
     const [rows] = await db.query(
-      `SELECT logs.*, CONCAT(users.first_name, ' ', users.last_name) AS user_name 
+      `SELECT logs.*, CONCAT(users.first_name, ' ', users.last_name) AS user_name, r.name as role_name, ar.role_name as admin_role_name
        FROM logs 
        LEFT JOIN users ON logs.user_id = users.id 
+       LEFT JOIN roles r ON users.role_id = r.id
+       LEFT JOIN admin_roles ar ON users.admin_role_id = ar.id
        ${whereClause}
        ORDER BY logs.created_at DESC
        LIMIT ? OFFSET ?`,

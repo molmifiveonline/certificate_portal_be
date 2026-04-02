@@ -1,8 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const ReportController = require("../../controllers/admin/ReportController");
-// potentially add auth middleware if needed, e.g. authenticateUser or similar
-// const { authenticateUser } = require('../../middleware/authMiddleware');
+const { protect, authorize } = require("../../middleware/authMiddleware");
+
+// All report routes require authentication and admin/superadmin role
+router.use(protect);
+router.use(authorize("Admin", "SuperAdmin"));
 
 router.get("/filter-options", ReportController.getFilterOptions);
 router.post("/feedback/export", ReportController.exportFeedbackReport);
