@@ -11,10 +11,11 @@ class AdminUserDao {
       WHERE r.name IN ('admin', 'superadmin')
     `;
     const params = [];
+    let searchParam = null;
 
     if (search) {
       query += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ?)`;
-      const searchParam = `%${search}%`;
+      searchParam = `%${search}%`;
       params.push(searchParam, searchParam, searchParam, searchParam);
     }
 
