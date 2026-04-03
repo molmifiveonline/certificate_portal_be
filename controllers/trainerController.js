@@ -20,10 +20,16 @@ const createTrainer = async (req, res) => {
       rank,
       officer,
       other_officer,
+      mobile,
+      status,
     } = req.body;
 
+    const sanitizedOfficer = officer === "undefined" ? null : officer;
+    const sanitizedOtherOfficer = other_officer === "undefined" ? null : other_officer;
+    const trainerStatus = status !== undefined ? Number(status) : 1;
+
     // Validation
-    if (!email || !password || !first_name || !last_name) {
+    if (!email || !password || !first_name) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -65,15 +71,16 @@ const createTrainer = async (req, res) => {
       last_name,
       email,
       password: hashedPassword,
-      mobile: req.body.mobile,
       prefix,
       designation,
       nationality,
       rank,
       digital_signature,
       profile_photo,
-      officer,
-      other_officer,
+      officer: sanitizedOfficer,
+      other_officer: sanitizedOtherOfficer,
+      mobile,
+      status: trainerStatus,
     });
 
     // Log the action
@@ -81,7 +88,7 @@ const createTrainer = async (req, res) => {
       await LogDao.createLog({
         user_id: req.user.id,
         action: "CREATE_TRAINER",
-        details: `Created trainer: ${first_name} ${last_name} (${email})`,
+        details: `Created trainer: ${first_name} ${last_name} (${email}), Status: ${trainerStatus === 1 ? 'Active' : 'Inactive'}`,
         ip_address: req.ip,
         user_agent: req.get("User-Agent"),
       });
@@ -90,6 +97,9 @@ const createTrainer = async (req, res) => {
 
     res.status(201).json({ message: "Trainer created successfully", userId });
   } catch (error) {
+    if (error.code === "ER_DUP_ENTRY" || error.errno === 1062) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
     console.error("Create Trainer Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -129,7 +139,12 @@ const getTrainerById = async (req, res) => {
 const updateTrainer = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = { ...req.body };
+
+    // Sanitize officer fields
+    if (updateData.officer === "undefined") updateData.officer = null;
+    if (updateData.other_officer === "undefined") updateData.other_officer = null;
+    if (updateData.status !== undefined) updateData.status = Number(updateData.status);
 
     // Handle Files
     if (req.files) {
@@ -167,6 +182,9 @@ const updateTrainer = async (req, res) => {
 
     res.status(200).json({ message: "Trainer updated successfully" });
   } catch (error) {
+    if (error.code === "ER_DUP_ENTRY" || error.errno === 1062) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
     console.error("Update Trainer Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
