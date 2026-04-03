@@ -14,10 +14,11 @@ class TrainerDao {
       nationality,
       rank,
       digital_signature,
-
       profile_photo,
       officer,
       other_officer,
+      mobile,
+      status = 1,
     } = trainerData;
 
     const connection = await db.getConnection();
@@ -27,16 +28,16 @@ class TrainerDao {
       // 1. Create User
       const userId = uuidv4();
       await connection.query(
-        "INSERT INTO users (id, role_id, first_name, last_name, email, password) VALUES (?, ?, ?, ?, ?, ?)",
-        [userId, role_id, first_name, last_name, email, password],
+        "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [userId, role_id, first_name, last_name, email, password, mobile, status],
       );
 
       // 2. Create Trainer Profile
       const profileId = uuidv4();
       await connection.query(
         `INSERT INTO trainer_profiles 
-        (id, user_id, prefix, designation, nationality, \`rank\`, digital_signature, profile_photo, officer, other_officer) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, user_id, prefix, designation, nationality, \`rank\`, digital_signature, profile_photo, officer, other_officer, status) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           profileId,
           userId,
@@ -48,6 +49,7 @@ class TrainerDao {
           profile_photo,
           officer,
           other_officer,
+          status,
         ],
       );
 
@@ -155,7 +157,7 @@ class TrainerDao {
       await connection.beginTransaction();
 
       // Update User fields if present
-      const userFields = ["first_name", "last_name", "email"];
+      const userFields = ["first_name", "last_name", "email", "mobile", "status"];
       const userUpdates = [];
       const userpParams = [];
 
@@ -185,6 +187,7 @@ class TrainerDao {
         "profile_photo",
         "officer",
         "other_officer",
+        "status",
       ];
       const profileUpdates = [];
       const profileParams = [];
