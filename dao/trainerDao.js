@@ -93,7 +93,7 @@ class TrainerDao {
     // Build data query
     let dataQuery = `
       SELECT 
-        u.id, u.first_name, u.last_name, u.email,
+        u.id, u.first_name, u.last_name, u.email, u.mobile,
         tp.prefix, tp.designation, 
         tp.nationality, tp.rank, 
 
@@ -137,7 +137,7 @@ class TrainerDao {
   static async getTrainerById(id) {
     const query = `
       SELECT 
-        u.id, u.first_name, u.last_name, u.email,
+        u.id, u.first_name, u.last_name, u.email, u.mobile,
         tp.prefix, tp.designation, 
         tp.nationality, tp.rank, 
 
