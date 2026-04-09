@@ -3,18 +3,15 @@ dotenv.config();
 
 const express = require("express");
 const cors = require("cors");
-const path = require("path"); // Moved up from bottom
-const fs = require("fs"); // Added
-const db = require("./config/db"); // Kept original db import, assuming connectDB was a typo or different intent
-// const setupStaticFiles = require("./utils/setupStaticFiles"); // Not used in the snippet, so not adding
-
-// require("dotenv").config(); // Duplicate, removed
+const path = require("path");
+const fs = require("fs");
+const db = require("./config/db");
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
-const allowedOrigins = ["http://localhost:3000", "http://localhost:5173"];
+const allowedOrigins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001", "http://localhost:3002"];
 
 if (process.env.FRONTEND_URL) {
   const urls = process.env.FRONTEND_URL.split(",").map((url) => url.trim());
@@ -24,7 +21,7 @@ if (process.env.FRONTEND_URL) {
 app.use(
   cors({
     origin: function (origin, callback) {
-      console.log("Incoming request origin:", origin);
+      // console.log("Incoming request origin:", origin);
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -89,7 +86,6 @@ const assessmentRoutes = require("./routes/assessmentRoutes");
 app.use("/api/assessment", assessmentRoutes);
 
 // Feedback Answers
-
 const feedbackAnswerRoutes = require("./routes/feedbackAnswerRoutes");
 app.use("/api/feedback-answers", feedbackAnswerRoutes);
 
