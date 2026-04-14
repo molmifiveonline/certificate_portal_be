@@ -10,13 +10,13 @@ router.get("/verify/:id", certificateController.getCertificateVerificationById);
 router.get(
   "/",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  authorize("Admin", "SuperAdmin", "Trainer", "Candidate"),
   certificateController.listCertificates,
 );
 router.get(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin", "Candidate"),
+  authorize("Admin", "SuperAdmin", "Candidate", "Trainer"),
   certificateController.getCertificateById,
 );
 router.post(

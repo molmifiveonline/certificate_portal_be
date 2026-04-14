@@ -48,7 +48,7 @@ class QuestionBankDao {
     return { id, ...data };
   }
 
-  static async getAll(search = "", page, limit) {
+  static async getAll(search = "", masterCourseId = "", page, limit) {
     let baseQuery = `
       FROM question_bank q
       LEFT JOIN master_course m ON q.master_course_id = m.id
@@ -64,7 +64,16 @@ class QuestionBankDao {
       params.push(`%${search}%`);
     }
 
-    const countParams = search ? [`%${search}%`] : [];
+    if (masterCourseId) {
+      baseQuery += " AND q.master_course_id = ?";
+      countQuery += " AND master_course_id = ?";
+      params.push(masterCourseId);
+    }
+
+    const countParams = [];
+    if (search) countParams.push(`%${search}%`);
+    if (masterCourseId) countParams.push(masterCourseId);
+
     const [countResult] = await pool.execute(countQuery, countParams);
     const total = countResult[0].total;
 

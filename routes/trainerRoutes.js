@@ -22,10 +22,10 @@ const uploadFields = upload.fields([
 // All trainer management routes require auth
 router.use(protect);
 
-// Trainer list/view - Admin only (trainers see their own data through different endpoints)
+// Trainer list/view - Admin & Trainer allowed for course dropdowns
 router.get(
   "/",
-  authorize("Admin", "SuperAdmin"),
+  authorize("Admin", "SuperAdmin", "Trainer"),
   getAllTrainers,
 );
 router.get(

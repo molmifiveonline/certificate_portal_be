@@ -38,6 +38,7 @@ const registerCandidate = async (req, res) => {
       officer,
       seaman_book_no,
       profile_image,
+      status,
     } = req.body;
 
     // Validation
@@ -84,6 +85,7 @@ const registerCandidate = async (req, res) => {
       email,
       password: hashedPassword,
       mobile,
+      status: status !== undefined ? status : 0,
     });
 
     // Create Profile

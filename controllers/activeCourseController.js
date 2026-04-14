@@ -16,6 +16,7 @@ const {
   generateCertificateNumber,
   normalizeTopic,
 } = require("../utils/certificateNumber");
+const { generateTrainingReportPdf } = require("../utils/trainingReportPdf");
 
 exports.createCourse = async (req, res) => {
   try {
@@ -575,6 +576,20 @@ exports.getAssessmentScores = async (req, res) => {
   }
 };
 
+exports.updateTrainerComment = async (req, res) => {
+  try {
+    const { id: courseId } = req.params;
+    const { candidateId, comment } = req.body;
+    await CourseEnrollmentDao.updateTrainerComment(courseId, candidateId, comment);
+    res.status(200).json({ message: "Trainer comment updated" });
+  } catch (error) {
+    console.error("Error updating trainer comment:", error);
+    res
+      .status(500)
+      .json({ message: "Error updating trainer comment", error: error.message });
+  }
+};
+
 exports.sendAssessmentEmail = async (req, res) => {
   try {
     const { id } = req.params;
@@ -600,17 +615,24 @@ exports.sendAssessmentEmail = async (req, res) => {
 exports.generateTrainingReport = async (req, res) => {
   try {
     const { id } = req.params;
-    const PDFDocument = require("pdfkit");
     const course = await ActiveCourseDao.getById(id);
-    const scores = await CourseEnrollmentDao.getAssessmentScores(id);
-    const doc = new PDFDocument({ margin: 50 });
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const [scores, trainer] = await Promise.all([
+      CourseEnrollmentDao.getAssessmentScores(id),
+      course.primary_trainer_id ? trainerDao.getTrainerById(course.primary_trainer_id) : null,
+    ]);
+
+    const buffer = await generateTrainingReportPdf(course, scores, trainer);
+
     res.setHeader("Content-Type", "application/pdf");
-    doc.pipe(res);
-    doc.fontSize(20).text("Training Report", { align: "center" });
-    doc.end();
+    res.setHeader("Content-Disposition", `attachment; filename=Training_Report_${id}.pdf`);
+    res.send(buffer);
   } catch (error) {
     console.error("Error generating report:", error);
-    res.status(500).json({ message: "Error generating report", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error generating report", error: error.message });
   }
 };
 
