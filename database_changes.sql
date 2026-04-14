@@ -758,3 +758,10 @@ CREATE TABLE IF NOT EXISTS outhouse_feedback_documents (
   CONSTRAINT outhouse_feedback_documents_course_fk
     FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+-- Date: 2026-04-13 - Enhance Trainer Course Module
+-- ---------------------------------------------------------
+-- Add trainer evaluation to courses table
+ALTER TABLE `courses` ADD COLUMN `trainer_evaluation` TEXT NULL AFTER `completion_reason`;
+
+-- Add trainer_comment to courses_enrollment table
+ALTER TABLE `courses_enrollment` ADD COLUMN `trainer_comment` TEXT NULL AFTER `remarks`;

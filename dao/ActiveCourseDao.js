@@ -48,6 +48,7 @@ class ActiveCourseDao {
       zoom_link = null,
       zoom_username = null,
       zoom_password = null,
+      trainer_evaluation = null,
     } = data;
 
     const query = `
@@ -56,9 +57,9 @@ class ActiveCourseDao {
                 description, start_date, end_date, start_time, end_time, type_of_location, location_id, 
                 other_location, course_type, remarks, status, course_level, 
                 primary_trainer_id, secondary_trainer_ids, whatsapp_link, zoom_link,
-                zoom_username, zoom_password
+                zoom_username, zoom_password, trainer_evaluation
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Initiated', ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Initiated', ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
     const params = [
@@ -85,6 +86,7 @@ class ActiveCourseDao {
       zoom_link,
       zoom_username,
       zoom_password,
+      trainer_evaluation,
     ];
 
     await pool.execute(query, params);
@@ -205,6 +207,7 @@ class ActiveCourseDao {
       "no_of_days",
       "cancelation_reason",
       "completion_reason",
+      "trainer_evaluation",
     ];
 
     const keys = Object.keys(data).filter((k) => allowedColumns.includes(k));

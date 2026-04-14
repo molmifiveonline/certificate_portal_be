@@ -15,6 +15,18 @@ exports.createQuestion = async (req, res) => {
       correct_option,
     } = req.body;
 
+    if (
+      !option_a?.trim() ||
+      !option_b?.trim() ||
+      !option_c?.trim() ||
+      !option_d?.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All 4 option text entries are mandatory",
+      });
+    }
+
     const files = req.files || {};
     const questionData = {
       question,
@@ -54,8 +66,8 @@ exports.createQuestion = async (req, res) => {
 
 exports.getAllQuestions = async (req, res) => {
   try {
-    const { search, page, limit } = req.query;
-    const result = await QuestionBankDao.getAll(search, page, limit);
+    const { search, masterCourseId, page, limit } = req.query;
+    const result = await QuestionBankDao.getAll(search, masterCourseId, page, limit);
     res.status(200).json({
       success: true,
       data: result.data,
@@ -98,6 +110,18 @@ exports.updateQuestion = async (req, res) => {
       option_d,
       correct_option,
     } = req.body;
+
+    if (
+      !option_a?.trim() ||
+      !option_b?.trim() ||
+      !option_c?.trim() ||
+      !option_d?.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All 4 option text entries are mandatory",
+      });
+    }
 
     const files = req.files || {};
     const updateData = {
@@ -227,6 +251,11 @@ exports.bulkUpload = async (req, res) => {
       if (!correct_option) {
         results.failed++;
         results.errors.push(`Row ${rowNum}: Correct Option is required`);
+        continue;
+      }
+      if (!option_a || !option_b || !option_c || !option_d) {
+        results.failed++;
+        results.errors.push(`Row ${rowNum}: All 4 options are required`);
         continue;
       }
 

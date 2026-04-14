@@ -163,6 +163,13 @@ router.post(
   activeCourseController.sendAssessmentEmail,
 );
 
+router.put(
+  "/:id/trainer-comment",
+  protect,
+  authorize("Admin", "SuperAdmin", "Trainer"),
+  activeCourseController.updateTrainerComment,
+);
+
 // Feedback Tab
 router.get(
   "/:id/feedback-status",

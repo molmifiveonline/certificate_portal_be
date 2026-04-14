@@ -71,7 +71,8 @@ class CourseEnrollmentDao {
         ce.*,
         u.first_name, u.last_name, u.email, u.mobile, 
         CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
-        cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager
+        cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
+        cp.dob, cp.nationality, cp.designation, ce.trainer_comment
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -327,6 +328,7 @@ class CourseEnrollmentDao {
         u.first_name, u.last_name,
         cp.employee_id as empId,
         CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+        ce.trainer_comment,
         pre_res.assessment_id as pre_assessment_id,
         pre_res.score as pre_score,
         pre_res.total_questions as pre_total,
@@ -352,6 +354,13 @@ class CourseEnrollmentDao {
     `;
     const [rows] = await pool.execute(query, [courseId, courseId, courseId]);
     return rows;
+  }
+
+  static async updateTrainerComment(courseId, candidateId, comment) {
+    const query =
+      "UPDATE courses_enrollment SET trainer_comment = ? WHERE course_id = ? AND candidate_id = ?";
+    const [result] = await pool.execute(query, [comment, courseId, candidateId]);
+    return result.affectedRows > 0;
   }
 
   // ==========================================

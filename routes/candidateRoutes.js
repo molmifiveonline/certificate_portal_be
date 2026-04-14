@@ -35,7 +35,14 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// All candidate routes require authentication
+// Public routes (Registration)
+router.post(
+  "/upload-profile-image",
+  candidateUpload.single("image"),
+  uploadProfileImage,
+);
+
+// All other candidate routes require authentication
 router.use(protect);
 
 // Candidate list/view - Admin only (candidates see their own data through different endpoints)
@@ -67,11 +74,6 @@ router.post(
   checkPermission("create_candidate"),
   upload.single("csv"),
   uploadCandidates,
-);
-router.post(
-  "/upload-profile-image",
-  candidateUpload.single("image"),
-  uploadProfileImage,
 );
 router.post(
   "/import-api",
