@@ -1,8 +1,21 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const UserDao = require("../dao/userDao");
+const NominatorDao = require("../dao/nominatorDao");
 const LogDao = require("../dao/LogDao");
 const db = require("../config/db");
+
+const NOMINATOR_ADMIN_PERMISSIONS = [
+  "view_master_courses",
+  "view_pre_active_courses",
+  "view_active_courses",
+  "view_outhouse_courses",
+];
+
+const signAuthToken = (payload) =>
+  jwt.sign(payload, process.env.JWT_SECRET || "fallback_secret", {
+    expiresIn: "1d",
+  });
 
 const registerCandidate = async (req, res) => {
   try {
@@ -256,85 +269,121 @@ const login = async (req, res) => {
     }
 
     const user = await UserDao.findUserByEmail(email);
-    if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
+    if (user) {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
+      if (user.status !== 1) {
+        return res.status(403).json({ message: "Account is inactive" });
+      }
 
-    // Check status
-    if (user.status !== 1) {
-      return res.status(403).json({ message: "Account is inactive" });
-    }
+      const [roles] = await db.query("SELECT name FROM roles WHERE id = ?", [
+        user.role_id,
+      ]);
+      const roleName = roles[0]?.name || "unknown";
+      const candidateId =
+        roleName.toLowerCase() === "candidate" ? user.id : null;
 
-    // Fetch Role Name
-    const [roles] = await db.query("SELECT name FROM roles WHERE id = ?", [
-      user.role_id,
-    ]);
-    const roleName = roles[0]?.name || "unknown";
-    const candidateId = roleName.toLowerCase() === "candidate" ? user.id : null;
-
-    // Fetch User Permissions (linked to their base role in `roles` table)
-    const [permissions] = await db.query(
-      `SELECT p.slug FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       WHERE rp.role_id = ?`,
-      [user.role_id],
-    );
-    const permissionSlugs = permissions.map((p) => p.slug);
-
-    // Fetch Admin Role Permissions if the user has an admin_role_id assigned
-    let adminRolePermissions = null;
-    const isSuperAdmin = roleName.toLowerCase() === "superadmin";
-
-    if (!isSuperAdmin && user.admin_role_id) {
-      const [adminRolePerms] = await db.query(
+      const [permissions] = await db.query(
         `SELECT p.slug FROM permissions p
          JOIN role_permissions rp ON p.id = rp.permission_id
          WHERE rp.role_id = ?`,
-        [user.admin_role_id],
+        [user.role_id],
       );
-      adminRolePermissions = adminRolePerms.map((p) => p.slug);
-    }
+      const permissionSlugs = permissions.map((p) => p.slug);
 
-    const token = jwt.sign(
-      {
+      let adminRolePermissions = null;
+      const isSuperAdmin = roleName.toLowerCase() === "superadmin";
+
+      if (!isSuperAdmin && user.admin_role_id) {
+        const [adminRolePerms] = await db.query(
+          `SELECT p.slug FROM permissions p
+           JOIN role_permissions rp ON p.id = rp.permission_id
+           WHERE rp.role_id = ?`,
+          [user.admin_role_id],
+        );
+        adminRolePermissions = adminRolePerms.map((p) => p.slug);
+      }
+
+      const token = signAuthToken({
         id: user.id,
         role: roleName,
         roleId: user.role_id,
         email: user.email,
         candidate_id: candidateId,
-      },
-      process.env.JWT_SECRET || "fallback_secret",
-      { expiresIn: "1d" },
-    );
+        adminRolePermissions,
+      });
+
+      await LogDao.createLog({
+        user_id: user.id,
+        action: "LOGIN",
+        details: `User logged in: ${user.email}`,
+        ip_address: req.ip,
+        user_agent: req.get("User-Agent"),
+      });
+      req.skipActivityLog = true;
+
+      return res.json({
+        message: "Login successful",
+        token,
+        user: {
+          id: user.id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          email: user.email,
+          role: roleName,
+          candidate_id: candidateId,
+          permissions: permissionSlugs,
+          adminRolePermissions,
+        },
+      });
+    }
+
+    const nominator = await NominatorDao.findNominatorByEmail(email);
+    if (!nominator) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    const isMatch = await bcrypt.compare(password, nominator.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    if (Number(nominator.status) !== 1) {
+      return res.status(403).json({ message: "Account is inactive" });
+    }
+
+    const token = signAuthToken({
+      id: nominator.id,
+      role: "admin",
+      roleId: null,
+      email: nominator.email,
+      nominator_id: nominator.id,
+      adminRolePermissions: NOMINATOR_ADMIN_PERMISSIONS,
+    });
 
     await LogDao.createLog({
-      user_id: user.id,
+      user_id: null,
       action: "LOGIN",
-      details: `User logged in: ${user.email}`,
+      details: `Nominator logged in: ${nominator.email}`,
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
     req.skipActivityLog = true;
 
-    res.json({
+    return res.json({
       message: "Login successful",
       token,
       user: {
-        id: user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        role: roleName,
-        candidate_id: candidateId,
-        permissions: permissionSlugs,
-        // null means no restriction (superadmin or admin without assigned role)
-        // array means restricted to these slugs
-        adminRolePermissions,
+        id: nominator.id,
+        first_name: nominator.first_name,
+        last_name: nominator.last_name,
+        email: nominator.email,
+        role: "admin",
+        permissions: [],
+        adminRolePermissions: NOMINATOR_ADMIN_PERMISSIONS,
       },
     });
   } catch (error) {

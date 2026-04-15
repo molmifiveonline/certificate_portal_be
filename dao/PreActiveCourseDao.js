@@ -388,7 +388,7 @@ const getPendingAdminApprovals = async (course_id) => {
     `SELECT ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark, 
                 ce.admin_approval_status, ce.admin_remark, ce.admin_action_date, ce.nominator_id,
                 u.first_name, u.last_name, u.email, cp.indos_number,
-                n.name as nominator_name
+                COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) as nominator_name
          FROM courses_enrollment ce
          JOIN users u ON ce.candidate_id = u.id
          LEFT JOIN candidate_profiles cp ON u.id = cp.user_id

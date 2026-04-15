@@ -1,6 +1,42 @@
 const AssessmentDao = require("../dao/AssessmentDao");
 const AssessmentResultDao = require("../dao/AssessmentResultDao");
 
+const validateAutoQuestionAvailability = async (courseId, typeOfTest, numOfQuestions) => {
+  const pool = require("../config/db");
+  const [courseRows] = await pool.execute(
+    "SELECT primary_trainer_id, master_course_id FROM courses WHERE id = ?",
+    [courseId],
+  );
+
+  if (courseRows.length === 0) {
+    return {
+      success: false,
+      status: 404,
+      message: "Course not found",
+      course: null,
+    };
+  }
+
+  const questions = await AssessmentDao.getQuestionsByMasterCourse(
+    courseRows[0].master_course_id,
+    typeOfTest,
+  );
+
+  if (questions.length < (numOfQuestions || 10)) {
+    return {
+      success: false,
+      status: 400,
+      message: `Not enough questions available for auto selection. Available: ${questions.length}, Requested: ${numOfQuestions || 10}`,
+      course: courseRows[0],
+    };
+  }
+
+  return {
+    success: true,
+    course: courseRows[0],
+  };
+};
+
 exports.createAssessment = async (req, res) => {
   try {
     const {
@@ -24,11 +60,26 @@ exports.createAssessment = async (req, res) => {
       });
     }
 
+    if (questions_choice === "auto") {
+      const validation = await validateAutoQuestionAvailability(
+        course_id,
+        type_of_test,
+        num_of_questions,
+      );
+
+      if (!validation.success) {
+        return res.status(validation.status).json({
+          success: false,
+          message: validation.message,
+        });
+      }
+    }
+
     // Verify course ownership if trainer
     if (trainerId) {
       const pool = require("../config/db");
       const [courseRows] = await pool.execute(
-        "SELECT primary_trainer_id, master_course_id FROM courses WHERE id = ?",
+        "SELECT primary_trainer_id FROM courses WHERE id = ?",
         [course_id],
       );
 
@@ -43,20 +94,6 @@ exports.createAssessment = async (req, res) => {
           success: false,
           message: "You are not authorized to create assessments for this course",
         });
-      }
-
-      // Validate question count for 'auto' choice
-      if (questions_choice === "auto") {
-        const questions = await AssessmentDao.getQuestionsByMasterCourse(
-          courseRows[0].master_course_id,
-          type_of_test,
-        );
-        if (questions.length < (num_of_questions || 10)) {
-          return res.status(400).json({
-            success: false,
-            message: `Not enough questions available for auto selection. Available: ${questions.length}, Requested: ${num_of_questions || 10}`,
-          });
-        }
       }
     }
 
@@ -204,11 +241,26 @@ exports.updateAssessment = async (req, res) => {
     const trainerId =
       user.role.toLowerCase() === "trainer" ? user.id : null;
 
+    if (questions_choice === "auto") {
+      const validation = await validateAutoQuestionAvailability(
+        course_id,
+        type_of_test,
+        num_of_questions,
+      );
+
+      if (!validation.success) {
+        return res.status(validation.status).json({
+          success: false,
+          message: validation.message,
+        });
+      }
+    }
+
     // Verify course ownership if trainer
     if (trainerId) {
       const pool = require("../config/db");
       const [courseRows] = await pool.execute(
-        "SELECT primary_trainer_id, master_course_id FROM courses WHERE id = ?",
+        "SELECT primary_trainer_id FROM courses WHERE id = ?",
         [course_id],
       );
 
@@ -223,20 +275,6 @@ exports.updateAssessment = async (req, res) => {
           success: false,
           message: "You are not authorized to update assessments for this course",
         });
-      }
-
-      // Validate question count for 'auto' choice
-      if (questions_choice === "auto") {
-        const questions = await AssessmentDao.getQuestionsByMasterCourse(
-          courseRows[0].master_course_id,
-          type_of_test,
-        );
-        if (questions.length < (num_of_questions || 10)) {
-          return res.status(400).json({
-            success: false,
-            message: `Not enough questions available for auto selection. Available: ${questions.length}, Requested: ${num_of_questions || 10}`,
-          });
-        }
       }
     }
 

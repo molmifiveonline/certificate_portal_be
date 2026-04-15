@@ -25,6 +25,14 @@ const activityLogger = (req, res, next) => {
 
     try {
       let userId = req.user ? req.user.id : null;
+      const isRestrictedAdmin =
+        (req.user?.role || "").toLowerCase() === "admin" &&
+        Array.isArray(req.user?.adminRolePermissions);
+
+      if (isRestrictedAdmin) {
+        userId = null;
+      }
+
       if (!userId && req.body && req.body.user_id) {
         userId = req.body.user_id;
       }

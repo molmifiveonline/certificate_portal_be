@@ -36,15 +36,10 @@ const questionUpload = multer({
   storage: questionStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase(),
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
+    if (file.mimetype.startsWith("image/")) {
       return cb(null, true);
     }
-    cb(new Error("Only images (jpeg, jpg, png, gif) are allowed!"));
+    cb(new Error("Only image files are allowed!"));
   },
 });
 

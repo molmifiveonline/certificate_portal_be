@@ -61,7 +61,7 @@ router.delete(
 // Actions on a specific pre-active course
 router.post(
   "/:id/notify-nominators",
-  checkPermission("edit_pre_active_course"),
+  checkPermission(["edit_pre_active_course", "view_pre_active_courses"]),
   controller.notifyNominators,
 );
 router.post(

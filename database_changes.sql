@@ -765,3 +765,46 @@ ALTER TABLE `courses` ADD COLUMN `trainer_evaluation` TEXT NULL AFTER `completio
 
 -- Add trainer_comment to courses_enrollment table
 ALTER TABLE `courses_enrollment` ADD COLUMN `trainer_comment` TEXT NULL AFTER `remarks`;
+
+-- Date: 2026-04-15 - Nominator Account Expansion
+-- ---------------------------------------------------------
+ALTER TABLE `nominators`
+  ADD COLUMN IF NOT EXISTS `first_name` VARCHAR(255) NULL AFTER `name`,
+  ADD COLUMN IF NOT EXISTS `last_name` VARCHAR(255) NULL AFTER `first_name`,
+  ADD COLUMN IF NOT EXISTS `mobile` VARCHAR(20) NULL AFTER `email`,
+  ADD COLUMN IF NOT EXISTS `password` VARCHAR(255) NULL AFTER `mobile`,
+  ADD COLUMN IF NOT EXISTS `location` VARCHAR(255) NULL AFTER `password`,
+  ADD COLUMN IF NOT EXISTS `status` TINYINT(1) NOT NULL DEFAULT 1 AFTER `location`,
+  ADD COLUMN IF NOT EXISTS `gender` VARCHAR(20) NULL AFTER `status`;
+
+UPDATE `nominators`
+SET
+  `first_name` = COALESCE(NULLIF(`first_name`, ''), `name`),
+  `last_name` = COALESCE(`last_name`, ''),
+  `name` = TRIM(CONCAT_WS(' ', COALESCE(NULLIF(`first_name`, ''), `name`), COALESCE(`last_name`, '')))
+WHERE `name` IS NOT NULL;
+
+-- Date: 2026-04-15
+-- Candidate sync history log for API imports (read capped to last 60 days in API layer)
+CREATE TABLE IF NOT EXISTS `candidate_sync_logs` (
+  `id` char(36) NOT NULL,
+  `sync_batch_id` char(36) DEFAULT NULL,
+  `candidate_user_id` char(36) DEFAULT NULL,
+  `sync_status` varchar(20) NOT NULL,
+  `employee_id` varchar(100) DEFAULT NULL,
+  `first_name` varchar(255) DEFAULT NULL,
+  `last_name` varchar(255) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `mobile` varchar(50) DEFAULT NULL,
+  `nationality` varchar(100) DEFAULT NULL,
+  `passport_no` varchar(100) DEFAULT NULL,
+  `manager` varchar(255) DEFAULT NULL,
+  `rank` varchar(255) DEFAULT NULL,
+  `registration_type` varchar(50) DEFAULT NULL,
+  `source_sync_date` date DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `candidate_sync_logs_created_at_idx` (`created_at`),
+  KEY `candidate_sync_logs_employee_id_idx` (`employee_id`),
+  KEY `candidate_sync_logs_candidate_user_id_idx` (`candidate_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

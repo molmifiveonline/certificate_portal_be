@@ -14,6 +14,7 @@ const {
   importFromApi,
   fetchExternalPreview,
   confirmBulkImport,
+  getSyncHistory,
 } = require("../controllers/candidateSyncController");
 const {
   uploadProfileImage,
@@ -22,9 +23,7 @@ const { protect, authorize } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 const candidateUpload = require("../middleware/candidateUploadMiddleware");
 const multer = require("multer");
-const path = require("path");
 
-// Multer config for CSV uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
@@ -35,23 +34,26 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Public routes (Registration)
 router.post(
   "/upload-profile-image",
   candidateUpload.single("image"),
   uploadProfileImage,
 );
 
-// All other candidate routes require authentication
 router.use(protect);
 
-// Candidate list/view - Admin only (candidates see their own data through different endpoints)
 router.get("/", authorize("Admin", "SuperAdmin"), getAllCandidates);
 router.get(
   "/export",
   authorize("Admin", "SuperAdmin"),
   checkPermission("export_candidates"),
   exportCandidates,
+);
+router.get(
+  "/sync-history",
+  authorize("Admin", "SuperAdmin"),
+  checkPermission("view_candidates"),
+  getSyncHistory,
 );
 router.get("/:id", authorize("Admin", "SuperAdmin"), getCandidateById);
 router.put(
@@ -67,7 +69,6 @@ router.delete(
   deleteCandidate,
 );
 
-// Bulk operations - Admin only
 router.post(
   "/upload",
   authorize("Admin", "SuperAdmin"),
@@ -81,14 +82,12 @@ router.post(
   checkPermission("create_candidate"),
   importFromApi,
 );
-
 router.post(
   "/fetch-external-preview",
   authorize("Admin", "SuperAdmin"),
   checkPermission("create_candidate"),
   fetchExternalPreview,
 );
-
 router.post(
   "/confirm-bulk-import",
   authorize("Admin", "SuperAdmin"),
