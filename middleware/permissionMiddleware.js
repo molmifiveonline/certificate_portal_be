@@ -5,34 +5,51 @@ const checkPermission = (requiredPermission, allowRoles = []) => {
   return async (req, res, next) => {
     try {
       const userRole = (req.user.role || "").toLowerCase();
+      const requiredPermissions = Array.isArray(requiredPermission)
+        ? requiredPermission
+        : [requiredPermission];
 
-      // Superadmin and admin always have full access — skip DB check
-      if (userRole === "superadmin" || userRole === "admin") {
+      if (userRole === "superadmin") {
         return next();
       }
 
-      // Optional role-level bypass for specific endpoints (read-only utility calls, etc.)
-      const normalizedAllowRoles = (allowRoles || []).map((r) =>
-        String(r).toLowerCase(),
+      if (userRole === "admin") {
+        if (Array.isArray(req.user.adminRolePermissions)) {
+          const hasRestrictedPermission = requiredPermissions.some((permission) =>
+            req.user.adminRolePermissions.includes(permission),
+          );
+
+          if (hasRestrictedPermission) {
+            return next();
+          }
+
+          return error(res, 403, "Access denied. Insufficient permissions.", {
+            code: "PERMISSION_DENIED",
+            required: requiredPermissions,
+          });
+        }
+
+        return next();
+      }
+
+      const normalizedAllowRoles = (allowRoles || []).map((role) =>
+        String(role).toLowerCase(),
       );
       if (normalizedAllowRoles.includes(userRole)) {
         return next();
       }
 
-      const roleId = req.user.roleId; // from authMiddleware
-
-      // OPTIMIZATION: In a high-load app, cache this.
-      // For now, DB query is fine for accuracy.
+      const roleId = req.user.roleId;
       const permissions = await permissionDao.getPermissionsByRoleId(roleId);
 
-      if (permissions.includes(requiredPermission)) {
-        next();
-      } else {
-        return error(res, 403, "Access denied. Insufficient permissions.", {
-          code: "PERMISSION_DENIED",
-          required: requiredPermission,
-        });
+      if (requiredPermissions.some((permission) => permissions.includes(permission))) {
+        return next();
       }
+
+      return error(res, 403, "Access denied. Insufficient permissions.", {
+        code: "PERMISSION_DENIED",
+        required: requiredPermissions,
+      });
     } catch (err) {
       console.error("Permission Check Error:", err);
       return error(res, 500, "Internal server error during permission check");

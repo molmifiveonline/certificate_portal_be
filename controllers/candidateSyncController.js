@@ -1,6 +1,8 @@
 const axios = require("axios");
 const https = require("https");
+const { v4: uuidv4 } = require("uuid");
 const CandidateDao = require("../dao/candidateDao");
+const CandidateSyncLogDao = require("../dao/CandidateSyncLogDao");
 const LogDao = require("../dao/LogDao");
 
 const SYNC_CONFIG = {
@@ -26,7 +28,7 @@ const getAccessToken = async () => {
       "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
     },
     httpsAgent: new https.Agent({
-      rejectUnauthorized: false, // Ignore SSL errors
+      rejectUnauthorized: false,
     }),
   });
   return response.data;
@@ -34,12 +36,75 @@ const getAccessToken = async () => {
 
 let isSyncing = false;
 
-/**
- * Step 1: Fetch data from external API and return for preview
- */
+const normalizeSyncDate = (value) => {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    const directMatch = value.match(/^\d{4}-\d{2}-\d{2}/);
+    if (directMatch) return directMatch[0];
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  return parsedDate.toISOString().split("T")[0];
+};
+
+const mapPersonnelToCandidates = (personnel = []) =>
+  personnel.map((item) => ({
+    first_name: item["First Name"] || "",
+    last_name: item["Surname"] || "",
+    email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
+    mobile: item["Mobile"] || "",
+    middle_name: item["Middle Name"] || "",
+    prefix: item["title"] || "",
+    gender:
+      item["Gender"] === "M"
+        ? "Male"
+        : item["Gender"] === "F"
+          ? "Female"
+          : null,
+    dob: item["Birth Date"] || null,
+    nationality: item["Country"] || "",
+    passport_no: item["Passport No"] || "",
+    employee_id: item["Employee No"] || "",
+    manager: item["Manager"] || "",
+    rank: item["Position"] || "",
+    whatsapp_number: item["Mobile"] || "",
+    alternate_mobile: item["Mobile 1"] || "",
+    indos_number: "",
+    registration_type: "MOLMI Employee",
+  }));
+
+const enrichWithExistingFlag = async (candidates) => {
+  const emails = candidates.map((candidate) => candidate.email).filter(Boolean);
+  const existingEmails = await CandidateDao.getExistingEmails(emails);
+
+  return candidates.map((candidate) => ({
+    ...candidate,
+    isExisting: existingEmails.includes(candidate.email.toLowerCase()),
+  }));
+};
+
+const persistSyncHistory = async (changes = [], syncDate) => {
+  if (!Array.isArray(changes) || changes.length === 0) return;
+
+  const syncBatchId = uuidv4();
+  const normalizedSyncDate = normalizeSyncDate(syncDate);
+
+  await CandidateSyncLogDao.createMany(
+    changes.map((change) => ({
+      ...change,
+      sync_batch_id: syncBatchId,
+      source_sync_date: normalizedSyncDate,
+    })),
+  );
+};
+
 const fetchExternalPreview = async (req, res) => {
   try {
     const { date } = req.body;
+    const normalizedSyncDate = normalizeSyncDate(date);
     const tokenData = await getAccessToken();
     const token = tokenData.access_token;
     const refreshToken = tokenData.refresh_token || "";
@@ -49,7 +114,7 @@ const fetchExternalPreview = async (req, res) => {
       JSON.stringify({
         ServiceName: SYNC_CONFIG.serviceName,
         AuthorizationKey: SYNC_CONFIG.authKey,
-        FromUTCDateTime: date || "1970-01-01",
+        FromUTCDateTime: normalizedSyncDate || "1970-01-01",
       }),
       {
         headers: {
@@ -64,60 +129,41 @@ const fetchExternalPreview = async (req, res) => {
       },
     );
 
-    const apiData = response.data;
-    const personnel = apiData.data?.PersonnelDetails_MOLMI || [];
+    const personnel = response.data?.data?.PersonnelDetails_MOLMI || [];
 
     if (personnel.length === 0) {
-      return res.json({ data: [], message: "No data found for the selected date." });
+      return res.json({
+        data: [],
+        message: "No data found for the selected date.",
+        lastSyncedDate: normalizedSyncDate,
+      });
     }
 
-    // Map to our candidate format
-    const candidates = personnel.map((item) => ({
-      first_name: item["First Name"] || "",
-      last_name: item["Surname"] || "",
-      email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
-      mobile: item["Mobile"] || "",
-      middle_name: item["Middle Name"] || "",
-      prefix: item["title"] || "",
-      gender: item["Gender"] === "M" ? "Male" : item["Gender"] === "F" ? "Female" : null,
-      dob: item["Birth Date"] || null,
-      nationality: item["Country"] || "",
-      passport_no: item["Passport No"] || "",
-      employee_id: item["Employee No"] || "",
-      manager: item["Manager"] || "",
-      rank: item["Position"] || "",
-      whatsapp_number: item["Mobile"] || "",
-      alternate_mobile: item["Mobile 1"] || "",
-      indos_number: "",
-      registration_type: "MOLMI Employee",
-    }));
+    const candidates = mapPersonnelToCandidates(personnel);
+    const dataWithStatus = await enrichWithExistingFlag(candidates);
 
-    // Check which ones already exist
-    const emails = candidates.map(c => c.email).filter(e => e);
-    const existingEmails = await CandidateDao.getExistingEmails(emails);
-    
-    const dataWithStatus = candidates.map(c => ({
-      ...c,
-      isExisting: existingEmails.includes(c.email.toLowerCase())
-    }));
-
-    res.json({ data: dataWithStatus, total: dataWithStatus.length });
+    res.json({
+      data: dataWithStatus,
+      total: dataWithStatus.length,
+      lastSyncedDate: normalizedSyncDate,
+    });
   } catch (error) {
     console.error("Fetch external preview error:", error.message);
-    res.status(500).json({ message: "Error fetching data from external API", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error fetching data from external API", error: error.message });
   }
 };
 
-/**
- * Step 2: Confirm and perform bulk import
- */
 const confirmBulkImport = async (req, res) => {
   try {
     if (isSyncing) {
       return res.status(429).json({ message: "An import is already in progress." });
     }
 
-    const { candidates } = req.body;
+    const { candidates, syncDate } = req.body;
+    const normalizedSyncDate = normalizeSyncDate(syncDate);
+
     if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
       return res.status(400).json({ message: "No candidates provided for import." });
     }
@@ -127,7 +173,12 @@ const confirmBulkImport = async (req, res) => {
     const userIp = req.ip;
     const userAgent = req.get("User-Agent");
 
-    const stats = await CandidateDao.bulkUpsert(candidates);
+    const syncResult = await CandidateDao.bulkUpsert(candidates, {
+      captureChanges: true,
+    });
+    const { changes = [], ...stats } = syncResult;
+
+    await persistSyncHistory(changes, normalizedSyncDate);
 
     await LogDao.createLog({
       user_id: userId,
@@ -136,9 +187,13 @@ const confirmBulkImport = async (req, res) => {
       ip_address: userIp,
       user_agent: userAgent,
     });
-      req.skipActivityLog = true;
+    req.skipActivityLog = true;
 
-    res.json({ message: "Import completed successfully", stats });
+    res.json({
+      message: "Import completed successfully",
+      stats,
+      lastSyncedDate: normalizedSyncDate,
+    });
   } catch (error) {
     console.error("Confirm bulk import error:", error.message);
     res.status(500).json({ message: "Error performing bulk import", error: error.message });
@@ -154,6 +209,7 @@ const importFromApi = async (req, res) => {
     }
 
     const { date } = req.body;
+    const normalizedSyncDate = normalizeSyncDate(date);
     const tokenData = await getAccessToken();
     const token = tokenData.access_token;
     const refreshToken = tokenData.refresh_token || "";
@@ -163,7 +219,7 @@ const importFromApi = async (req, res) => {
       JSON.stringify({
         ServiceName: SYNC_CONFIG.serviceName,
         AuthorizationKey: SYNC_CONFIG.authKey,
-        FromUTCDateTime: date || "1970-01-01",
+        FromUTCDateTime: normalizedSyncDate || "1970-01-01",
       }),
       {
         headers: {
@@ -180,44 +236,37 @@ const importFromApi = async (req, res) => {
 
     const personnel = response.data?.data?.PersonnelDetails_MOLMI || [];
     if (personnel.length === 0) {
-      return res.json({ message: "No data found to import.", stats: { inserted: 0, updated: 0 } });
+      return res.json({
+        message: "No data found to import.",
+        stats: { inserted: 0, updated: 0 },
+        lastSyncedDate: normalizedSyncDate,
+      });
     }
 
-    // Map to our candidate format
-    const candidates = personnel.map((item) => ({
-      first_name: item["First Name"] || "",
-      last_name: item["Surname"] || "",
-      email: (item["E-mail"] || "").replace(/\.invalid$/, ""),
-      mobile: item["Mobile"] || "",
-      middle_name: item["Middle Name"] || "",
-      prefix: item["title"] || "",
-      gender: item["Gender"] === "M" ? "Male" : item["Gender"] === "F" ? "Female" : null,
-      dob: item["Birth Date"] || null,
-      nationality: item["Country"] || "",
-      passport_no: item["Passport No"] || "",
-      employee_id: item["Employee No"] || "",
-      manager: item["Manager"] || "",
-      rank: item["Position"] || "",
-      whatsapp_number: item["Mobile"] || "",
-      alternate_mobile: item["Mobile 1"] || "",
-      indos_number: "",
-      registration_type: "MOLMI Employee",
-    }));
+    const candidates = mapPersonnelToCandidates(personnel);
 
     isSyncing = true;
-    const stats = await CandidateDao.bulkUpsert(candidates);
+    const syncResult = await CandidateDao.bulkUpsert(candidates, {
+      captureChanges: true,
+    });
+    const { changes = [], ...stats } = syncResult;
 
-    // Optional: Log the background/direct sync
+    await persistSyncHistory(changes, normalizedSyncDate);
+
     await LogDao.createLog({
-      user_id: req.user?.id || 1, // Default to admin if triggered externally/automated
+      user_id: req.user?.id || 1,
       action: "API_DIRECT_IMPORT",
       details: `Direct import: ${stats.inserted} new, ${stats.updated} updated via import-api endpoint.`,
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
-      req.skipActivityLog = true;
+    req.skipActivityLog = true;
 
-    res.json({ message: "Direct import completed successfully", stats });
+    res.json({
+      message: "Direct import completed successfully",
+      stats,
+      lastSyncedDate: normalizedSyncDate,
+    });
   } catch (error) {
     console.error("Direct import error:", error.message);
     res.status(500).json({ message: "Error performing direct import", error: error.message });
@@ -226,5 +275,29 @@ const importFromApi = async (req, res) => {
   }
 };
 
-module.exports = { importFromApi, fetchExternalPreview, confirmBulkImport };
+const getSyncHistory = async (req, res) => {
+  try {
+    const result = await CandidateSyncLogDao.getHistory({
+      page: req.query.page,
+      limit: req.query.limit,
+      search: req.query.search,
+      days: req.query.days,
+      registration_type: "MOLMI Employee",
+    });
 
+    res.json(result);
+  } catch (error) {
+    console.error("Get candidate sync history error:", error.message);
+    res.status(500).json({
+      message: "Error fetching candidate sync history",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = {
+  importFromApi,
+  fetchExternalPreview,
+  confirmBulkImport,
+  getSyncHistory,
+};

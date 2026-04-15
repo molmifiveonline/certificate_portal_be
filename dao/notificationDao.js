@@ -51,7 +51,7 @@ class NotificationDao {
         c.course_name,
         CONCAT_WS(' ', u.first_name, u.last_name) AS candidate_name,
         u.email AS candidate_email,
-        n.name AS nominator_name
+        COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) AS nominator_name
       FROM courses_enrollment ce
       INNER JOIN courses c ON c.id = ce.course_id
       INNER JOIN users u ON u.id = ce.candidate_id

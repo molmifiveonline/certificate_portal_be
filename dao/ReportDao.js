@@ -211,7 +211,7 @@ class ReportDao {
                 c.course_id as master_course_id,
                 c.trainer_id,
                 c.certificate_no,
-                c.issued_date,
+                c.issue_date,
                 c.from_date,
                 c.to_date,
                 c.days,
@@ -230,7 +230,7 @@ class ReportDao {
                 curr_cp.manager,
                 
                 course.course_name,
-                course.type_of_course,
+                course.course_type as type_of_course,
                 course.course_id as active_course_code,
                 course.secondary_trainer_ids,
                 

@@ -3,6 +3,12 @@ const NominatorDao = require("../dao/nominatorDao");
 const CourseEnrollmentDao = require("../dao/CourseEnrollmentDao");
 const emailService = require("../utils/emailService");
 
+const getNominatorDisplayName = (nominator = {}) =>
+  [nominator.first_name, nominator.last_name].filter(Boolean).join(" ").trim() ||
+  nominator.name ||
+  nominator.email ||
+  "Nominator";
+
 // ==========================================
 // Pre-Active Course Management
 // ==========================================
@@ -127,7 +133,7 @@ const sendCourseNotificationsToNominators = async (courseId) => {
 
       const subject = `Nomination Request for Course: ${course.course_name}`;
       const html = `
-                  <h3>Dear ${nominator.name},</h3>
+                  <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
                   <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
                   <p><strong>Start Date:</strong> ${course.start_date}</p>
                   <p><strong>End Date:</strong> ${course.end_date}</p>

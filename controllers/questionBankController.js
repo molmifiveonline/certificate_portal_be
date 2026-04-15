@@ -1,6 +1,7 @@
-const QuestionBankDao = require("../dao/QuestionBankDao");
+const QuestionBankDao = require("../dao/questionBankDao");
 const { v4: uuidv4 } = require("uuid");
 const XLSX = require("xlsx");
+const fs = require("fs");
 
 exports.createQuestion = async (req, res) => {
   try {
@@ -189,14 +190,28 @@ exports.bulkUpload = async (req, res) => {
     }
 
     const workbook = XLSX.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-    if (rows.length === 0) {
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      if (req.file.path) fs.unlink(req.file.path, () => {});
       return res
         .status(400)
-        .json({ success: false, message: "Excel file is empty" });
+        .json({ success: false, message: "Excel file has no sheets" });
+    }
+
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      if (req.file.path) fs.unlink(req.file.path, () => {});
+      return res
+        .status(400)
+        .json({ success: false, message: "Excel sheet is empty or invalid" });
+    }
+
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    if (rows.length === 0) {
+      if (req.file.path) fs.unlink(req.file.path, () => {});
+      return res
+        .status(400)
+        .json({ success: false, message: "No data found in Excel file" });
     }
 
     const results = { success: 0, failed: 0, errors: [] };
@@ -283,7 +298,6 @@ exports.bulkUpload = async (req, res) => {
     }
 
     // Clean up uploaded file
-    const fs = require("fs");
     if (req.file.path) {
       fs.unlink(req.file.path, () => {});
     }
@@ -295,8 +309,16 @@ exports.bulkUpload = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in bulk upload:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to process Excel file" });
+    // Unlink file if it exists
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {}
+    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to process Excel file",
+      error: error.message,
+    });
   }
 };

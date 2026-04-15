@@ -1,12 +1,66 @@
+const bcrypt = require("bcryptjs");
 const NominatorDao = require("../dao/nominatorDao");
+const UserDao = require("../dao/userDao");
+
+const normalizeNominatorPayload = async (body, isEditMode = false) => {
+  const {
+    first_name,
+    last_name = "",
+    email,
+    mobile,
+    password,
+    location,
+    status = 1,
+    gender,
+  } = body;
+
+  if (!first_name || !email || !mobile || !location || !gender) {
+    return {
+      error:
+        "First name, email, mobile, location, and gender are required",
+    };
+  }
+
+  if (!isEditMode && !password) {
+    return { error: "Password is required" };
+  }
+
+  const payload = {
+    first_name,
+    last_name,
+    email,
+    mobile,
+    location,
+    status: Number(status) === 0 ? 0 : 1,
+    gender,
+  };
+
+  if (password) {
+    payload.password = await bcrypt.hash(password, 10);
+  }
+
+  return { payload };
+};
 
 const createNominator = async (req, res) => {
   try {
-    const { name, email } = req.body;
-    if (!name || !email) {
-      return res.status(400).json({ message: "Name and email are required" });
+    const { error, payload } = await normalizeNominatorPayload(req.body);
+    if (error) {
+      return res.status(400).json({ message: error });
     }
-    const id = await NominatorDao.createNominator({ name, email });
+
+    const [existingNominator, existingUser] = await Promise.all([
+      NominatorDao.findNominatorByEmail(payload.email),
+      UserDao.findUserByEmail(payload.email),
+    ]);
+
+    if (existingNominator || existingUser) {
+      return res
+        .status(400)
+        .json({ message: "Email already exists. Please use a different email" });
+    }
+
+    const id = await NominatorDao.createNominator(payload);
     res.status(201).json({ message: "Nominator created successfully", id });
   } catch (error) {
     console.error("Create Nominator Error:", error);
@@ -41,11 +95,26 @@ const getNominatorById = async (req, res) => {
 const updateNominator = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email } = req.body;
-    if (!name || !email) {
-      return res.status(400).json({ message: "Name and email are required" });
+    const { error, payload } = await normalizeNominatorPayload(req.body, true);
+    if (error) {
+      return res.status(400).json({ message: error });
     }
-    const updated = await NominatorDao.updateNominator(id, { name, email });
+
+    const existingNominator = await NominatorDao.findNominatorByEmail(payload.email);
+    if (existingNominator && existingNominator.id !== id) {
+      return res
+        .status(400)
+        .json({ message: "Email already exists. Please use a different email" });
+    }
+
+    const existingUser = await UserDao.findUserByEmail(payload.email);
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ message: "Email already exists. Please use a different email" });
+    }
+
+    const updated = await NominatorDao.updateNominator(id, payload);
     if (!updated) {
       return res.status(404).json({ message: "Nominator not found" });
     }

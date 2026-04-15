@@ -287,27 +287,28 @@ class CandidateDao {
     return rows;
   }
 
-  static async bulkUpsert(candidates) {
+  static async bulkUpsert(candidates, options = {}) {
+    const { captureChanges = false } = options;
     const connection = await db.getConnection();
     const stats = { inserted: 0, updated: 0, errors: 0 };
+    const changes = [];
+
+    const emails = candidates
+      .map((c) => c.email)
+      .filter((e) => e && e.trim() !== "");
+    if (emails.length === 0) {
+      return captureChanges ? { ...stats, changes } : stats;
+    }
 
     try {
       await connection.beginTransaction();
 
-      // Get Candidate Role ID
       const [roles] = await connection.query(
         "SELECT id FROM roles WHERE name = 'candidate'",
       );
       if (roles.length === 0) throw new Error("Candidate role not found");
       const roleId = roles[0].id;
 
-      // Extract all emails to check existence in one go
-      const emails = candidates
-        .map((c) => c.email)
-        .filter((e) => e && e.trim() !== "");
-      if (emails.length === 0) return stats;
-
-      // Fetch all existing users with these emails
       const [existingUsersRows] = await connection.query(
         "SELECT id, email FROM users WHERE email IN (?)",
         [emails],
@@ -317,7 +318,6 @@ class CandidateDao {
         existingUsersRows.map((u) => [u.email.toLowerCase(), u.id]),
       );
 
-      // Pre-hash one password for all new users to save time
       const tempPassword = crypto.randomBytes(8).toString("hex");
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
@@ -351,14 +351,11 @@ class CandidateDao {
         const existingUserId = existingUsersMap.get(normalizedEmail);
 
         if (existingUserId) {
-          // Update User
           await connection.query(
             "UPDATE users SET first_name = ?, last_name = ?, mobile = ? WHERE id = ?",
             [first_name, last_name, mobile, existingUserId],
           );
 
-          // Update/Insert Profile (using INSERT ... ON DUPLICATE KEY UPDATE might be better if we had a unique constraint on user_id, 
-          // but sticking to current logic of checking first to be safe with existing schema)
           const [profiles] = await connection.query(
             "SELECT id FROM candidate_profiles WHERE user_id = ?",
             [existingUserId],
@@ -420,9 +417,25 @@ class CandidateDao {
               ],
             );
           }
+
           stats.updated++;
+          if (captureChanges) {
+            changes.push({
+              candidate_user_id: existingUserId,
+              sync_status: "Updated",
+              employee_id: employee_id || "",
+              first_name: first_name || "",
+              last_name: last_name || "",
+              email: email || "",
+              mobile: mobile || "",
+              nationality: nationality || "",
+              passport_no: passport_no || "",
+              manager: manager || "",
+              rank: rank || "",
+              registration_type: registration_type || "",
+            });
+          }
         } else {
-          // Insert New User
           const userId = uuidv4();
           await connection.query(
             "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -438,7 +451,6 @@ class CandidateDao {
             ],
           );
 
-          // Insert Profile
           const profileId = uuidv4();
           await connection.query(
             `INSERT INTO candidate_profiles 
@@ -466,12 +478,29 @@ class CandidateDao {
               rank,
             ],
           );
+
           stats.inserted++;
+          if (captureChanges) {
+            changes.push({
+              candidate_user_id: userId,
+              sync_status: "Created",
+              employee_id: employee_id || "",
+              first_name: first_name || "",
+              last_name: last_name || "",
+              email: email || "",
+              mobile: mobile || "",
+              nationality: nationality || "",
+              passport_no: passport_no || "",
+              manager: manager || "",
+              rank: rank || "",
+              registration_type: registration_type || "",
+            });
+          }
         }
       }
 
       await connection.commit();
-      return stats;
+      return captureChanges ? { ...stats, changes } : stats;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -491,3 +520,6 @@ class CandidateDao {
 }
 
 module.exports = CandidateDao;
+
+
+
