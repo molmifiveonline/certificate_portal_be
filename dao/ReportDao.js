@@ -45,10 +45,8 @@ class ReportDao {
     const nonRatings = [];
 
     rows.forEach((row) => {
-      if (
-        row.question_format &&
-        row.question_format.toLowerCase() === "ratings"
-      ) {
+      const type = (row.type || "").toLowerCase();
+      if (type === "ratings" || type === "rating") {
         ratings.push(row);
       } else {
         nonRatings.push(row);

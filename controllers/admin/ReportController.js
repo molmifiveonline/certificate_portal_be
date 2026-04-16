@@ -1,5 +1,5 @@
 const ReportDao = require("../../dao/ReportDao");
-const xlsx = require("xlsx");
+const ExcelJS = require("exceljs");
 const archiver = require("archiver");
 const pdfmake = require("pdfmake");
 const FeedbackAnswerDao = require("../../dao/FeedbackAnswerDao");
@@ -61,22 +61,23 @@ exports.exportFeedbackReport = async (req, res) => {
     const headers = [
       "Sr. No.",
       "Date and time of Feedback submission",
-      "Name of the participant",
-      "Employee Number", // /Passport Number
+      "Name of the participant : Use capital letters (First Name- Middle name- Surname)",
+      "Employee Number - (Non MOLMI/ New Candidate enter your passport number)",
       "Start date of course",
       "End date of course",
       "Rank Last served on vessel before this course",
       "Name of the manager (last served)",
       "Course Name",
       "No. of Participants",
-      "Course No.",
+      "Course No. (This information will be provided in your welcome letter)",
       "Location of course conducted",
       "Instructors Name(s)",
     ];
 
     const ratingQuestions = [];
     questionsData.forEach((q) => {
-      if (q.question_format === "Ratings") {
+      const format = (q.question_format || "").toLowerCase();
+      if (format === "ratings" || format === "rating") {
         headers.push(`${q.question} ( ${q.category_name} )`);
         ratingQuestions.push(q.id);
       }
@@ -87,21 +88,12 @@ exports.exportFeedbackReport = async (req, res) => {
 
     const nonRatingQuestionsMap = [];
     feedbackQuestionsWithOutRatings.forEach((q) => {
-      // Logic from PHP: if ($question->feedback_category_id == 23 && $question->feedback_id == 3)
-      // We need to check if these IDs match new DB ids.
-      // For now, including all non-rating questions that appear in the feedback answers could be safer,
-      // OR follow the PHP logic blindly if IDs are consistent.
-      // Let's include them if they exist in the questionsData or just append all non-rating questions found.
-      // PHP Logic specific filter:
-      if (q.category_id == 23) {
-        // Assuming 23 is specific category
-        // Find category name
-        // Since we don't have category name in `allQuestions.nonRatings` easily without join,
-        // we might skip the name in header or fetch it.
-        // For now, let's just add the question text.
-        headers.push(q.question);
-        nonRatingQuestionsMap.push(q.id);
-      }
+      // In new project, we include all non-rating questions (comments/suggestions)
+      // fetch category name from questionsData if available or default
+      const cat = questionsData.find((qd) => qd.category_id === q.category_id);
+      const catName = cat ? cat.category_name : "Other Comments";
+      headers.push(`${q.question} ( ${catName} )`);
+      nonRatingQuestionsMap.push(q.id);
     });
 
     // 3. Fetch Data
@@ -140,7 +132,7 @@ exports.exportFeedbackReport = async (req, res) => {
 
     const masterCourseIds = [
       ...new Set(courses.map((c) => c.master_course_name)),
-    ]; // Assuming master_course_name holds ID as per PHP logic
+    ];
     const masterCourses =
       await ReportDao.getMasterCoursesByIds(masterCourseIds);
 
@@ -270,10 +262,9 @@ exports.exportFeedbackReport = async (req, res) => {
         };
       courseAverages[masterCourseName].total += parseFloat(avg);
       courseAverages[masterCourseName].count++;
-      courseAverages[masterCourseName].rowsIndices.push(dataRows.length); // Store index of this row to update later
+      courseAverages[masterCourseName].rowsIndices.push(dataRows.length);
 
-      // Placeholder for Overall Avg
-      row.push(""); // Will fill later
+      row.push(""); // Placeholder for Overall Avg
 
       // Non Ratings
       nonRatingQuestionsMap.forEach((qId) => {
@@ -299,22 +290,54 @@ exports.exportFeedbackReport = async (req, res) => {
       });
     });
 
-    // 6. Generate Excel
-    const wb = xlsx.utils.book_new();
-    const ws = xlsx.utils.aoa_to_sheet([headers, ...dataRows]);
-    xlsx.utils.book_append_sheet(wb, ws, "Feedback Report");
+    // 6. Generate Excel with Styling
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Feedback Report");
 
-    const wbout = xlsx.write(wb, { bookType: "xlsx", type: "buffer" });
+    const headerRow = worksheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "0060AA" },
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
 
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="Feedback_Report.xlsx"',
-    );
+    dataRows.forEach((row) => {
+      worksheet.addRow(row);
+    });
+
+    // Auto-fit columns
+    worksheet.columns.forEach((column) => {
+      let maxColumnLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxColumnLength) {
+          maxColumnLength = columnLength;
+        }
+      });
+      column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+    });
+
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
-    res.send(wbout);
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="Feedback_Report.xlsx"',
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
     console.error("Export Feedback Error:", error);
     res
@@ -349,34 +372,55 @@ exports.exportCertificateReport = async (req, res) => {
       });
     }
 
+    // Fetch all trainers to map secondary trainer names
+    const allTrainerIds = [];
+    data.forEach(item => {
+        if (item.trainer_id) allTrainerIds.push(item.trainer_id);
+        if (item.secondary_trainer_ids) {
+            const sIds = item.secondary_trainer_ids.split(",").map(id => id.trim()).filter(id => id);
+            allTrainerIds.push(...sIds);
+        }
+    });
+    const trainers = await ReportDao.getTrainersByIds([...new Set(allTrainerIds)]);
+    const trainersMap = {};
+    trainers.forEach(t => trainersMap[t.id] = t);
+
     const headers = [
       "Sr. No.",
       "Employee Id",
-      "Name",
+      "Name as per Shipmate/platform/registry",
       "Rank",
       "Last manager",
       "Topic",
       "Master Course Name",
       "INHOUSE/OUTHOUSE",
       "Location",
-      "Actual course conducted no.",
+      "Actual course conducted no. for the ongoing year",
       "From Date",
       "To Date",
       "No. of Days",
       "Trainers",
       "Certificate No.",
-      "Course Name",
+      "Course Name from Active Courses",
     ];
 
     const rows = data.map((item, index) => {
       // Format Trainers
-      let trainerStr = `${item.trainer_prefix || ""}.${item.trainer_first_name} ${item.trainer_last_name || ""}`;
+      const mainTrainer = trainersMap[item.trainer_id];
+      let trainerStr = mainTrainer ? `${mainTrainer.prefix || ""}.${mainTrainer.first_name} ${mainTrainer.last_name || ""}` : "";
+      
       if (item.secondary_trainer_ids) {
-        // We don't have secondary trainer names joined in the main query easily without multiple joins or aggregation.
-        // For simplicity, we might just show main trainer or if we really need secondary, we'd need another lookup.
-        // The DAO structure for Certificate Report was a single query.
-        // Let's rely on what we have. If secondary_trainer_ids is just IDs, we can't show names without fetching them.
-        // For now, let's just show main trainer. If strict parity is needed, we can fetch all trainers map.
+        const sIds = item.secondary_trainer_ids.split(",").map(id => id.trim()).filter(id => id);
+        const sTrainerNames = [];
+        sIds.forEach(id => {
+            const t = trainersMap[id];
+            if (t) {
+                sTrainerNames.push(`${t.prefix || ""}.${t.first_name} ${t.last_name || ""}`.toUpperCase());
+            }
+        });
+        if (sTrainerNames.length > 0) {
+            trainerStr += " / " + sTrainerNames.join(" / ");
+        }
       }
 
       // Extract last part of course id
@@ -395,8 +439,8 @@ exports.exportCertificateReport = async (req, res) => {
         item.type_of_course,
         item.location,
         lastPart,
-        new Date(item.from_date).toLocaleDateString("en-GB"),
-        new Date(item.to_date).toLocaleDateString("en-GB"),
+        new Date(item.from_date).toLocaleDateString("en-GB").replace(/\//g, "-"),
+        new Date(item.to_date).toLocaleDateString("en-GB").replace(/\//g, "-"),
         item.days,
         trainerStr,
         item.certificate_no,
@@ -404,21 +448,56 @@ exports.exportCertificateReport = async (req, res) => {
       ];
     });
 
-    const wb = xlsx.utils.book_new();
-    const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
-    xlsx.utils.book_append_sheet(wb, ws, "Certificate Report");
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Certificate Report");
 
-    const wbout = xlsx.write(wb, { bookType: "xlsx", type: "buffer" });
+    const headerRow = worksheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "0060AA" },
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
 
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="Certificate_Report.xlsx"',
-    );
+    rows.forEach((row) => {
+      const rowInstance = worksheet.addRow(row);
+      rowInstance.eachCell(cell => {
+          cell.alignment = { vertical: "middle" };
+      });
+    });
+
+    // Auto-fit columns
+    worksheet.columns.forEach((column) => {
+      let maxColumnLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxColumnLength) {
+          maxColumnLength = columnLength;
+        }
+      });
+      column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+    });
+
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
-    res.send(wbout);
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="Certificate_Report.xlsx"',
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
     console.error("Export Certificate Error:", error);
     res

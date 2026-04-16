@@ -129,12 +129,19 @@ exports.createCourse = async (req, res) => {
 
 exports.getAllCourses = async (req, res) => {
   try {
-    const { search, page, limit, status, from_date, to_date } = req.query;
-    const result = await OuthouseCourseDao.getAll(search, page, limit, {
-      status,
-      from_date,
-      to_date,
-    });
+    const { search, page, limit, status, from_date, to_date, sort_by, sort_order } = req.query;
+    const result = await OuthouseCourseDao.getAll(
+      search,
+      page,
+      limit,
+      {
+        status,
+        from_date,
+        to_date,
+      },
+      sort_by,
+      sort_order,
+    );
     res.status(200).json(result);
   } catch (error) {
     console.error("Error fetching outhouse courses:", error);
