@@ -9,6 +9,29 @@ const getNominatorDisplayName = (nominator = {}) =>
   nominator.email ||
   "Nominator";
 
+const pad = (value) => String(value).padStart(2, "0");
+
+const formatEmailDateTime = (value) => {
+  if (!value) return "-";
+
+  if (typeof value === "string") {
+    const dateMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const timeMatch = value.match(/(?:T|\s)(\d{2}):(\d{2})/);
+
+    if (dateMatch) {
+      const [, year, month, day] = dateMatch;
+      const hour = timeMatch?.[1] || "00";
+      const minute = timeMatch?.[2] || "00";
+      return `${day}-${month}-${year}, ${hour}:${minute}`;
+    }
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+
+  return `${pad(parsed.getDate())}-${pad(parsed.getMonth() + 1)}-${parsed.getFullYear()}, ${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+};
+
 // ==========================================
 // Pre-Active Course Management
 // ==========================================
@@ -135,8 +158,8 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const html = `
                   <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
                   <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
-                  <p><strong>Start Date:</strong> ${course.start_date}</p>
-                  <p><strong>End Date:</strong> ${course.end_date}</p>
+                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
+                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
                   <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
                   <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
                   <br><br>
@@ -230,8 +253,8 @@ exports.nominatorAddCandidate = async (req, res) => {
         const html = `
                     <h3>Dear ${enrollment.first_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${course.start_date}</p>
-                    <p><strong>End Date:</strong> ${course.end_date}</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
                     <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
                     <br><br>
@@ -299,8 +322,8 @@ exports.notifyCandidates = async (req, res) => {
         const html = `
                     <h3>Dear ${candidate.candidate_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${course.start_date}</p>
-                    <p><strong>End Date:</strong> ${course.end_date}</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
                     <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
                     <br><br>
