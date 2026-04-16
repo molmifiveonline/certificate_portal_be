@@ -11,26 +11,36 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
-const allowedOrigins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001", "http://localhost:3002"];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://molmi.fiveonline.in",
+  "http://localhost:3001",
+  "http://localhost:3002",
+];
 
 if (process.env.FRONTEND_URL) {
-  const urls = process.env.FRONTEND_URL.split(",").map((url) => url.trim());
+  const urls = process.env.FRONTEND_URL.split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
   allowedOrigins.push(...urls);
 }
+
+console.log("Allowed CORS origins:", allowedOrigins);
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // console.log("Incoming request origin:", origin);
+      console.log("Incoming request origin:", origin);
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.log("Blocked by CORS:", origin);
+        console.log("Allowed origins are:", allowedOrigins);
         callback(new Error("Not allowed by CORS"));
       }
     },
     allowedHeaders: ["Content-Type", "Authorization"],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
   }),
 );
