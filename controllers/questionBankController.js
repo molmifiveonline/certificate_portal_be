@@ -1,4 +1,4 @@
-const QuestionBankDao = require("../dao/questionBankDao");
+const QuestionBankDao = require("../dao/QuestionBankDao");
 const { v4: uuidv4 } = require("uuid");
 const XLSX = require("xlsx");
 const fs = require("fs");
