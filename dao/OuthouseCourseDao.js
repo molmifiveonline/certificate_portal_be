@@ -137,7 +137,7 @@ class OuthouseCourseDao {
     return result.affectedRows > 0;
   }
 
-  static async getAll(search = "", page, limit, filters = {}) {
+  static async getAll(search = "", page, limit, filters = {}, sortBy = "created_at", sortOrder = "DESC") {
     const predicate = await this.buildOuthousePredicate("c");
     let whereClause = `WHERE ${predicate} AND c.status != 'Deleted'`;
     const params = [];
@@ -162,29 +162,41 @@ class OuthouseCourseDao {
     }
 
     const countQuery = `SELECT COUNT(*) as total FROM courses c ${whereClause}`;
-    const [countRows] = await pool.execute(countQuery, params);
+    const [countRows] = await pool.query(countQuery, params);
     const total = countRows[0].total;
+
+    // Sanitize sort column and order
+    const allowedSortFields = ["course_id", "course_name", "topic", "master_course_name", "start_date", "end_date", "status", "created_at"];
+    const verifiedSortBy = allowedSortFields.includes(sortBy) ? sortBy : "created_at";
+    const verifiedSortOrder = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
     let query = `
       SELECT c.*
       FROM courses c
       ${whereClause}
-      ORDER BY c.created_at DESC
+      ORDER BY c.${verifiedSortBy} ${verifiedSortOrder}
     `;
+
     const queryParams = [...params];
-    if (page && limit) {
-      const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    
+    // Robustly parse page and limit
+    const parsedPage = parseInt(page, 10);
+    const parsedLimit = parseInt(limit, 10);
+
+    if (!isNaN(parsedPage) && !isNaN(parsedLimit) && parsedPage > 0 && parsedLimit > 0) {
+      const offset = (parsedPage - 1) * parsedLimit;
       query += " LIMIT ? OFFSET ?";
-      queryParams.push(parseInt(limit, 10), offset);
+      queryParams.push(parsedLimit, offset);
     }
-    const [rows] = await pool.execute(query, queryParams);
+
+    const [rows] = await pool.query(query, queryParams);
 
     return {
       data: rows,
       total,
-      page: parseInt(page || 1, 10),
-      limit: parseInt(limit || total || 10, 10),
-      totalPages: limit ? Math.ceil(total / parseInt(limit, 10)) : 1,
+      page: isNaN(parsedPage) ? 1 : parsedPage,
+      limit: isNaN(parsedLimit) ? (total || 10) : parsedLimit,
+      totalPages: !isNaN(parsedLimit) && parsedLimit > 0 ? Math.ceil(total / parsedLimit) : 1,
     };
   }
 
