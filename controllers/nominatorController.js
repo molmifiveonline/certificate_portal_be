@@ -14,10 +14,9 @@ const normalizeNominatorPayload = async (body, isEditMode = false) => {
     gender,
   } = body;
 
-  if (!first_name || !email || !mobile || !location || !gender) {
+  if (!first_name || !email || !mobile || !location) {
     return {
-      error:
-        "First name, email, mobile, location, and gender are required",
+      error: "First name, email, mobile, and location are required",
     };
   }
 
