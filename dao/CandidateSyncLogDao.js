@@ -17,7 +17,7 @@ class CandidateSyncLogDao {
         nationality varchar(100) DEFAULT NULL,
         passport_no varchar(100) DEFAULT NULL,
         manager varchar(255) DEFAULT NULL,
-        rank varchar(255) DEFAULT NULL,
+        \`rank\` varchar(255) DEFAULT NULL,
         registration_type varchar(50) DEFAULT NULL,
         source_sync_date date DEFAULT NULL,
         created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -68,7 +68,7 @@ class CandidateSyncLogDao {
         nationality,
         passport_no,
         manager,
-        rank,
+        \`rank\`,
         registration_type,
         source_sync_date
       ) VALUES ?`,
@@ -105,7 +105,7 @@ class CandidateSyncLogDao {
         email LIKE ? OR
         passport_no LIKE ? OR
         manager LIKE ? OR
-        rank LIKE ? OR
+        \`rank\` LIKE ? OR
         sync_status LIKE ?
       )`;
       const searchTerm = `%${search}%`;
