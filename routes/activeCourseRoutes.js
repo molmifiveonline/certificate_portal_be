@@ -2,36 +2,37 @@ const express = require("express");
 const router = express.Router();
 const activeCourseController = require("../controllers/activeCourseController");
 const { protect, authorize } = require("../middleware/authMiddleware");
+const checkPermission = require("../middleware/permissionMiddleware");
 const venueUpload = require("../middleware/venueUploadMiddleware");
 
 router.post(
   "/",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("create_active_course", ["Trainer"]),
   activeCourseController.createCourse,
 );
 router.get(
   "/",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer", "Candidate"),
+  checkPermission("view_active_courses", ["Trainer", "Candidate"]),
   activeCourseController.getAllCourses,
 );
 router.get(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer", "Candidate"),
+  checkPermission("view_active_courses", ["Trainer", "Candidate"]),
   activeCourseController.getCourseById,
 );
 router.put(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("edit_active_course", ["Trainer"]),
   activeCourseController.updateCourse,
 );
 router.delete(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("delete_active_course"),
   activeCourseController.deleteCourse,
 );
 
@@ -39,7 +40,7 @@ router.delete(
 router.get(
   "/:id/my-attendance",
   protect,
-  authorize("Candidate"),
+  checkPermission([], ["Candidate"]),
   activeCourseController.getCandidateAttendance,
 );
 
@@ -47,13 +48,13 @@ router.get(
 router.post(
   "/:id/cancel",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("cancel_active_course"),
   activeCourseController.cancelCourse,
 );
 router.post(
   "/:id/complete",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("complete_active_course"),
   activeCourseController.completeCourse,
 );
 
@@ -61,31 +62,31 @@ router.post(
 router.get(
   "/:id/candidates",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
   activeCourseController.getEnrolledCandidates,
 );
 router.post(
   "/:id/candidates",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
   activeCourseController.enrollCandidates,
 );
 router.delete(
   "/:id/candidates/:candidateId",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_active_course_enrollment"),
   activeCourseController.removeCandidate,
 );
 router.put(
   "/:id/candidates/:candidateId/status-pool",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
   activeCourseController.updateStatusPool,
 );
 router.get(
   "/:id/available-candidates",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
   activeCourseController.getAvailableCandidates,
 );
 
@@ -98,13 +99,13 @@ router.post(
 router.post(
   "/:id/email-primary-trainer",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("edit_active_course", ["Trainer"]),
   activeCourseController.emailPrimaryTrainer,
 );
 router.post(
   "/:id/candidates/:candidateId/email",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("edit_active_course", ["Trainer"]),
   activeCourseController.emailCandidate,
 );
 
@@ -112,13 +113,13 @@ router.post(
 router.get(
   "/:id/candidates/:candidateId/venue",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
   activeCourseController.getCandidateVenue,
 );
 router.post(
   "/:id/candidates/:candidateId/venue",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
   venueUpload.array("venue_files"),
   activeCourseController.updateCandidateVenue,
 );
@@ -127,19 +128,19 @@ router.post(
 router.get(
   "/:id/attendance",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_attendance", ["Trainer"]),
   activeCourseController.getAttendance,
 );
 router.post(
   "/:id/attendance/single",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_attendance", ["Trainer"]),
   activeCourseController.saveAttendanceSingle,
 );
 router.post(
   "/:id/attendance/absent-reason",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_attendance", ["Trainer"]),
   activeCourseController.saveAbsentReason,
 );
 
@@ -147,26 +148,26 @@ router.post(
 router.get(
   "/:id/assessment-scores",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_assessment", ["Trainer"]),
   activeCourseController.getAssessmentScores,
 );
 router.get(
   "/:id/training-report",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_assessment", ["Trainer"]),
   activeCourseController.generateTrainingReport,
 );
 router.post(
   "/:id/email/assessment",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_assessment", ["Trainer"]),
   activeCourseController.sendAssessmentEmail,
 );
 
 router.put(
   "/:id/trainer-comment",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_assessment", ["Trainer"]),
   activeCourseController.updateTrainerComment,
 );
 
@@ -174,13 +175,13 @@ router.put(
 router.get(
   "/:id/feedback-status",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_feedback", ["Trainer"]),
   activeCourseController.getFeedbackStatus,
 );
 router.post(
   "/:id/email/feedback",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_feedback", ["Trainer"]),
   activeCourseController.sendFeedbackEmail,
 );
 
@@ -188,25 +189,25 @@ router.post(
 router.get(
   "/:id/certificates",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer"),
+  checkPermission("manage_active_course_certificates", ["Trainer"]),
   activeCourseController.getCertificateData,
 );
 router.post(
   "/:id/certificates/generate",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_active_course_certificates"),
   activeCourseController.generateCertificate,
 );
 router.put(
   "/:id/certificates/active",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_active_course_certificates"),
   activeCourseController.updateCertificateActive,
 );
 router.put(
   "/:id/certificates/:certificateId/hide",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_active_course_certificates"),
   activeCourseController.updateCertificateHide,
 );
 

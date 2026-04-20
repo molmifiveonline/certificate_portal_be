@@ -7,33 +7,30 @@ const checkPermission = require("../middleware/permissionMiddleware");
 router.post(
   "/",
   protect,
-  authorize("Admin", "SuperAdmin"),
   checkPermission("create_master_course"),
   masterCourseController.createMasterCourse,
 );
 router.get(
   "/",
   protect,
-  authorize("Admin", "SuperAdmin", "Trainer", "Candidate"),
+  checkPermission("view_master_courses", ["Trainer", "Candidate"]),
   masterCourseController.getAllMasterCourses,
 );
 router.get(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("view_master_courses"),
   masterCourseController.getMasterCourseById,
 );
 router.put(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin"),
   checkPermission("edit_master_course"),
   masterCourseController.updateMasterCourse,
 );
 router.delete(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin"),
   checkPermission("delete_master_course"),
   masterCourseController.deleteMasterCourse,
 );

@@ -12,6 +12,7 @@ const {
   bulkUpload,
 } = require("../controllers/questionBankController");
 const { protect, authorize } = require("../middleware/authMiddleware");
+const checkPermission = require("../middleware/permissionMiddleware");
 
 // Dedicated upload config for question bank images
 const questionUploadDir = "uploads/question";
@@ -63,13 +64,12 @@ const handleUpload = (req, res, next) => {
   });
 };
 
-// All question bank routes require auth and admin/superadmin role
+// All question bank routes require auth
 router.use(protect);
-router.use(authorize("Admin", "SuperAdmin"));
 
-router.post("/create", handleUpload, createQuestion);
-router.get("/", getAllQuestions);
-router.get("/sample-template", (req, res) => {
+router.post("/create", checkPermission("create_question"), handleUpload, createQuestion);
+router.get("/", checkPermission("view_questions"), getAllQuestions);
+router.get("/sample-template", checkPermission("view_questions"), (req, res) => {
   const XLSX = require("xlsx");
   const wb = XLSX.utils.book_new();
   const sampleData = [
@@ -99,11 +99,12 @@ router.get("/sample-template", (req, res) => {
 });
 router.post(
   "/bulk-upload",
+  checkPermission("create_question"),
   multer({ dest: "uploads/temp/" }).single("file"),
   bulkUpload,
 );
-router.get("/:id", getQuestionById);
-router.put("/update/:id", handleUpload, updateQuestion);
-router.delete("/delete/:id", deleteQuestion);
+router.get("/:id", checkPermission("view_questions"), getQuestionById);
+router.put("/update/:id", checkPermission("edit_question"), handleUpload, updateQuestion);
+router.delete("/delete/:id", checkPermission("delete_question"), deleteQuestion);
 
 module.exports = router;

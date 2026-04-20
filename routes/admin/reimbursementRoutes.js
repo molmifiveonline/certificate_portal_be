@@ -2,41 +2,42 @@ const express = require("express");
 const router = express.Router();
 const reimbursementController = require("../../controllers/reimbursementController");
 const { protect, authorize } = require("../../middleware/authMiddleware");
+const checkPermission = require("../../middleware/permissionMiddleware");
 
 router.get(
   "/",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("view_reimbursements"),
   reimbursementController.getAdminReimbursements,
 );
 router.get(
   "/:id",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("view_reimbursements"),
   reimbursementController.getAdminReimbursementById,
 );
 router.post(
   "/:id/approve",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_reimbursements"),
   reimbursementController.approveReimbursement,
 );
 router.post(
   "/:id/disapprove",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_reimbursements"),
   reimbursementController.disapproveReimbursement,
 );
 router.post(
   "/:id/request-resubmission",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_reimbursements"),
   reimbursementController.requestResubmission,
 );
 router.post(
   "/:id/resend-approved-email",
   protect,
-  authorize("Admin", "SuperAdmin"),
+  checkPermission("manage_reimbursements"),
   reimbursementController.resendApprovedEmail,
 );
 

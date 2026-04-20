@@ -11,7 +11,7 @@ const getNominatorDisplayName = (nominator = {}) =>
 
 const pad = (value) => String(value).padStart(2, "0");
 
-const formatEmailDateTime = (value) => {
+const formatEmailDateTime = (value, type = "none") => {
   if (!value) return "-";
 
   if (typeof value === "string") {
@@ -22,6 +22,12 @@ const formatEmailDateTime = (value) => {
       const [, year, month, day] = dateMatch;
       const hour = timeMatch?.[1] || "00";
       const minute = timeMatch?.[2] || "00";
+      
+      if (hour === "00" && minute === "00") {
+        if (type === "start") return `${day}-${month}-${year}, 00:00`;
+        if (type === "end") return `${day}-${month}-${year}, 23:59`;
+        return `${day}-${month}-${year}`;
+      }
       return `${day}-${month}-${year}, ${hour}:${minute}`;
     }
   }
@@ -29,7 +35,19 @@ const formatEmailDateTime = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
 
-  return `${pad(parsed.getDate())}-${pad(parsed.getMonth() + 1)}-${parsed.getFullYear()}, ${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+  const day = pad(parsed.getDate());
+  const month = pad(parsed.getMonth() + 1);
+  const year = parsed.getFullYear();
+  const hours = parsed.getHours();
+  const minutes = parsed.getMinutes();
+
+  if (hours === 0 && minutes === 0) {
+    if (type === "start") return `${day}-${month}-${year}, 00:00`;
+    if (type === "end") return `${day}-${month}-${year}, 23:59`;
+    return `${day}-${month}-${year}`;
+  }
+
+  return `${day}-${month}-${year}, ${pad(hours)}:${pad(minutes)}`;
 };
 
 // ==========================================
@@ -158,8 +176,8 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const html = `
                   <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
                   <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
-                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
-                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
+                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                   <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
                   <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
                   <br><br>
@@ -253,8 +271,8 @@ exports.nominatorAddCandidate = async (req, res) => {
         const html = `
                     <h3>Dear ${enrollment.first_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
                     <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
                     <br><br>
@@ -322,8 +340,8 @@ exports.notifyCandidates = async (req, res) => {
         const html = `
                     <h3>Dear ${candidate.candidate_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
                     <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
                     <br><br>
