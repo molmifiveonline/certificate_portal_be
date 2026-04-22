@@ -198,10 +198,6 @@ const updatePreActiveCourse = async (id, updateData) => {
 
   if (fields.length === 0) return null;
 
-  // Special logic: If master_course_id was changed, we might want to update master_course_name and topic too
-  // But for now, we'll assume the frontend/controller might pass those or we update them manually if needed.
-  // Given how the form works, let's just make it work for the standard fields.
-
   values.push(id);
   const query = `UPDATE courses SET ${fields.join(", ")} WHERE id = ? AND is_pre_active = 1 AND status = 'Pre-Active'`;
   const [result] = await pool.execute(query, values);
@@ -445,6 +441,60 @@ const getAdminRemarksReport = async (filters = {}) => {
   return rows;
 };
 
+/**
+ * Returns candidates of type 'Others' that are not already nominated for the course.
+ */
+const getAvailableOthersCandidates = async (courseId) => {
+  const query = `
+    SELECT 
+      u.id, u.first_name, u.last_name, u.email, u.mobile,
+      cp.middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type
+    FROM users u
+    JOIN candidate_profiles cp ON u.id = cp.user_id
+    JOIN roles r ON u.role_id = r.id
+    WHERE r.name = 'candidate' 
+      AND cp.registration_type = 'Others'
+      AND u.status = 1
+      AND u.id NOT IN (
+        SELECT candidate_id FROM courses_enrollment WHERE course_id = ?
+      )
+    ORDER BY u.first_name ASC
+  `;
+  const [rows] = await pool.execute(query, [courseId]);
+  return rows;
+};
+
+/**
+ * Returns pre-active courses that the given nominator has been notified about,
+ * i.e. courses for which a course_token entry exists for this nominator.
+ */
+const getNominatorNotifiedCourses = async (nominatorId) => {
+  const [rows] = await pool.execute(
+    `SELECT DISTINCT c.*
+     FROM courses c
+     INNER JOIN course_tokens ct ON ct.course_id = c.id
+     WHERE c.is_pre_active = 1
+       AND ct.entity_id = ?
+       AND ct.entity_type = 'Nominator'
+     ORDER BY c.created_at DESC`,
+    [nominatorId],
+  );
+  return rows;
+};
+
+const getNominatorEnrollments = async (courseId, nominatorId) => {
+  const [rows] = await pool.execute(
+    `SELECT ce.id, u.first_name, u.last_name, u.email, u.mobile as mobile_no, 
+            cp.dob as date_of_birth, cp.indos_number, ce.candidate_id, ce.candidate_approval_status as status
+     FROM courses_enrollment ce
+     JOIN users u ON ce.candidate_id = u.id
+     LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
+     WHERE ce.course_id = ? AND ce.nominator_id = ?`,
+    [courseId, nominatorId],
+  );
+  return rows;
+};
+
 const getExistingCourseIds = async (courseIds) => {
   if (!courseIds || courseIds.length === 0) return [];
   const [rows] = await pool.query(
@@ -461,7 +511,9 @@ const bulkUpsert = async (courses) => {
   try {
     await connection.beginTransaction();
 
-    const courseIds = courses.map((c) => String(c.course_id)).filter((id) => id);
+    const courseIds = courses
+      .map((c) => String(c.course_id))
+      .filter((id) => id);
     if (courseIds.length === 0) return stats;
 
     const [existingRows] = await connection.query(
@@ -569,6 +621,9 @@ module.exports = {
   getPendingAdminApprovals,
   convertToActiveCourse,
   getAdminRemarksReport,
+  getNominatorNotifiedCourses,
+  getNominatorEnrollments,
+  getAvailableOthersCandidates,
   getExistingCourseIds,
   bulkUpsert,
 };

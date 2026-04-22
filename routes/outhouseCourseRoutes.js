@@ -5,6 +5,8 @@ const verifyToken = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 const outhouseUpload = require("../middleware/outhouseUploadMiddleware");
 
+router.post("/acknowledge-enrollment", controller.acknowledgeEnrollment);
+
 router.use(verifyToken);
 
 router.get(

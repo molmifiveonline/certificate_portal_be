@@ -7,6 +7,10 @@ const checkPermission = require("../middleware/permissionMiddleware");
 
 // Public portal routes (using custom tokens)
 router.get("/public/token/:token", controller.getCourseByToken);
+router.get(
+  "/public/token/:token/available-candidates",
+  controller.getAvailableOthersCandidatesByToken,
+);
 router.post("/public/token/:token/nominate", controller.nominatorAddCandidate);
 router.post(
   "/public/token/:token/candidate-approval",
@@ -56,6 +60,12 @@ router.delete(
   "/:id",
   checkPermission("delete_pre_active_course"),
   controller.deleteCourse,
+);
+
+router.get(
+  "/:id/token",
+  checkPermission("view_pre_active_courses"),
+  controller.getNominatorToken,
 );
 
 // Actions on a specific pre-active course
