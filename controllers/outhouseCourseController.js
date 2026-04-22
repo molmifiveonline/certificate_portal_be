@@ -462,3 +462,25 @@ exports.saveCertificate = async (req, res) => {
     res.status(500).json({ message: "Error saving certificate details", error: error.message });
   }
 };
+
+exports.acknowledgeEnrollment = async (req, res) => {
+  try {
+    const { token, action, remark } = req.body;
+    if (!token) return res.status(400).json({ message: "Token is required" });
+
+    const enrollment = await CourseEnrollmentDao.getByAckToken(token);
+    if (!enrollment) return res.status(404).json({ message: "Invalid or expired token" });
+
+    const status = action === "approve" ? "Approved" : "Rejected";
+    await CourseEnrollmentDao.updateAcknowledgmentStatus(
+      token,
+      status,
+      remark || null,
+    );
+
+    res.status(200).json({ message: `Enrollment ${status.toLowerCase()} successfully` });
+  } catch (error) {
+    console.error("Error acknowledging enrollment:", error);
+    res.status(500).json({ message: "Error acknowledging enrollment", error: error.message });
+  }
+};

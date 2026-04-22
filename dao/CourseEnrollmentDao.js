@@ -463,6 +463,14 @@ class CourseEnrollmentDao {
     return result.affectedRows > 0;
   }
 
+  static async getByAckToken(token) {
+    const [rows] = await pool.execute(
+      "SELECT * FROM courses_enrollment WHERE ack_token = ?",
+      [token],
+    );
+    return rows[0];
+  }
+
   static async getEnrollmentById(id) {
     const [rows] = await pool.execute(
       `SELECT ce.*, u.first_name, u.last_name, u.email

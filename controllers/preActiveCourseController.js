@@ -4,14 +4,17 @@ const CourseEnrollmentDao = require("../dao/CourseEnrollmentDao");
 const emailService = require("../utils/emailService");
 
 const getNominatorDisplayName = (nominator = {}) =>
-  [nominator.first_name, nominator.last_name].filter(Boolean).join(" ").trim() ||
+  [nominator.first_name, nominator.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim() ||
   nominator.name ||
   nominator.email ||
   "Nominator";
 
 const pad = (value) => String(value).padStart(2, "0");
 
-const formatEmailDateTime = (value) => {
+const formatEmailDateTime = (value, type = "none") => {
   if (!value) return "-";
 
   if (typeof value === "string") {
@@ -22,6 +25,12 @@ const formatEmailDateTime = (value) => {
       const [, year, month, day] = dateMatch;
       const hour = timeMatch?.[1] || "00";
       const minute = timeMatch?.[2] || "00";
+
+      if (hour === "00" && minute === "00") {
+        if (type === "start") return `${day}-${month}-${year}, 00:00`;
+        if (type === "end") return `${day}-${month}-${year}, 23:59`;
+        return `${day}-${month}-${year}`;
+      }
       return `${day}-${month}-${year}, ${hour}:${minute}`;
     }
   }
@@ -29,7 +38,19 @@ const formatEmailDateTime = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
 
-  return `${pad(parsed.getDate())}-${pad(parsed.getMonth() + 1)}-${parsed.getFullYear()}, ${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+  const day = pad(parsed.getDate());
+  const month = pad(parsed.getMonth() + 1);
+  const year = parsed.getFullYear();
+  const hours = parsed.getHours();
+  const minutes = parsed.getMinutes();
+
+  if (hours === 0 && minutes === 0) {
+    if (type === "start") return `${day}-${month}-${year}, 00:00`;
+    if (type === "end") return `${day}-${month}-${year}, 23:59`;
+    return `${day}-${month}-${year}`;
+  }
+
+  return `${day}-${month}-${year}, ${pad(hours)}:${pad(minutes)}`;
 };
 
 // ==========================================
@@ -42,7 +63,10 @@ exports.createCourse = async (req, res) => {
     if (course) {
       // Trigger automatic notification to nominators (Centres)
       sendCourseNotificationsToNominators(course.id).catch((err) => {
-        console.error("Automatic notifications failed on course creation:", err);
+        console.error(
+          "Automatic notifications failed on course creation:",
+          err,
+        );
       });
 
       res
@@ -51,7 +75,6 @@ exports.createCourse = async (req, res) => {
     } else {
       res.status(400).json({ message: "Failed to create course" });
     }
-
   } catch (error) {
     console.error("Error creating pre-active course:", error);
     res
@@ -63,6 +86,15 @@ exports.createCourse = async (req, res) => {
 exports.getAllCourses = async (req, res) => {
   try {
     const { search, page, limit, status, from_date, to_date } = req.query;
+
+    // If the logged in user is a Nominator, only show courses they've been notified about
+    if (req.user && req.user.nominator_id) {
+      const courses = await PreActiveCourseDao.getNominatorNotifiedCourses(
+        req.user.nominator_id,
+      );
+      return res.status(200).json({ data: courses });
+    }
+
     const filters = { status, from_date, to_date };
     const result = await PreActiveCourseDao.getAllPreActiveCourses(
       search,
@@ -139,7 +171,11 @@ const sendCourseNotificationsToNominators = async (courseId) => {
   const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
   if (!course) throw new Error("Course not found");
 
-  const nominatorsResult = await NominatorDao.getAllNominators(null, null, null);
+  const nominatorsResult = await NominatorDao.getAllNominators(
+    null,
+    null,
+    null,
+  );
   const nominators = nominatorsResult.data || []; // Fix iteration bug
   let sentCount = 0;
 
@@ -148,7 +184,7 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const token = await PreActiveCourseDao.createToken(
         courseId,
         nominator.id,
-        "Nominator"
+        "Nominator",
       );
 
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -158,8 +194,8 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const html = `
                   <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
                   <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
-                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
-                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
+                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                   <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
                   <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
                   <br><br>
@@ -177,13 +213,16 @@ exports.notifyNominators = async (req, res) => {
   try {
     const courseId = req.params.id;
     const sentCount = await sendCourseNotificationsToNominators(courseId);
-    res.status(200).json({ message: `Emails sent to ${sentCount} nominators.` });
+    res
+      .status(200)
+      .json({ message: `Emails sent to ${sentCount} nominators.` });
   } catch (error) {
     console.error("Error notifying nominators:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
 
 exports.getCourseByToken = async (req, res) => {
   try {
@@ -198,13 +237,39 @@ exports.getCourseByToken = async (req, res) => {
     if (!course)
       return res.status(404).json({ message: "Course no longer available" });
 
+    const nominations = await PreActiveCourseDao.getNominatorEnrollments(
+      details.course_id,
+      details.entity_id,
+    );
+
     res.status(200).json({
       course,
       entity_type: details.entity_type,
       entity_id: details.entity_id,
+      nominations,
     });
   } catch (error) {
     console.error("Error validating token:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getAvailableOthersCandidatesByToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const details = await PreActiveCourseDao.getTokenDetails(token);
+    if (!details || details.entity_type !== "Nominator") {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
+    const candidates = await PreActiveCourseDao.getAvailableOthersCandidates(
+      details.course_id,
+    );
+    res.status(200).json(candidates);
+  } catch (error) {
+    console.error("Error fetching available candidates by token:", error);
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });
@@ -240,7 +305,8 @@ exports.nominatorAddCandidate = async (req, res) => {
       // Automatically notify the candidate
       // We need candidate_id which is determined inside enrollCandidateByNominator
       // Let's fetch the enrollment to get the candidate_id for token generation
-      const enrollment = await CourseEnrollmentDao.getEnrollmentById(enrollmentId);
+      const enrollment =
+        await CourseEnrollmentDao.getEnrollmentById(enrollmentId);
       if (enrollment && enrollment.email) {
         const candidateToken = await PreActiveCourseDao.createToken(
           courseId,
@@ -253,8 +319,8 @@ exports.nominatorAddCandidate = async (req, res) => {
         const html = `
                     <h3>Dear ${enrollment.first_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
                     <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
                     <br><br>
@@ -322,8 +388,8 @@ exports.notifyCandidates = async (req, res) => {
         const html = `
                     <h3>Dear ${candidate.candidate_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date)}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date)}</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
                     <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
                     <br><br>
@@ -471,6 +537,30 @@ exports.getAdminRemarksReport = async (req, res) => {
     res.status(200).json(rows);
   } catch (error) {
     console.error("Error getting admin remarks report:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getNominatorToken = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const nominatorId = req.user.nominator_id;
+    if (!nominatorId) {
+      return res
+        .status(403)
+        .json({ message: "Only nominators can access this functionality." });
+    }
+
+    const token = await PreActiveCourseDao.createToken(
+      courseId,
+      nominatorId,
+      "Nominator",
+    );
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error("Error getting nominator token:", error);
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });

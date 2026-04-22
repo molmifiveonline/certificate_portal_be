@@ -15,7 +15,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://molmi.fiveonline.in",
   "http://localhost:3001",
-  "http://localhost:3002",
+  "http://molmicertificatestaging-frontend-jw0yao-743c18-72-62-229-205.traefik.me",
 ];
 
 if (process.env.FRONTEND_URL) {

@@ -5,12 +5,9 @@ const NominatorDao = require("../dao/nominatorDao");
 const LogDao = require("../dao/LogDao");
 const db = require("../config/db");
 
-const NOMINATOR_ADMIN_PERMISSIONS = [
-  "view_master_courses",
-  "view_pre_active_courses",
-  "view_active_courses",
-  "view_outhouse_courses",
-];
+// Nominators can ONLY see pre-active courses that the admin has notified them about.
+// Master, Active, and Outhouse courses are NOT accessible to nominators.
+const NOMINATOR_ADMIN_PERMISSIONS = ["view_pre_active_courses"];
 
 const signAuthToken = (payload) =>
   jwt.sign(payload, process.env.JWT_SECRET || "fallback_secret", {
@@ -246,7 +243,7 @@ const registerCandidate = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
-      req.skipActivityLog = true;
+    req.skipActivityLog = true;
 
     res.status(201).json({ message: "Candidate registered successfully" });
   } catch (error) {
@@ -382,6 +379,7 @@ const login = async (req, res) => {
         last_name: nominator.last_name,
         email: nominator.email,
         role: "admin",
+        nominator_id: nominator.id, // Flag to identify nominator sessions on frontend
         permissions: [],
         adminRolePermissions: NOMINATOR_ADMIN_PERMISSIONS,
       },
@@ -445,7 +443,7 @@ const forgotPassword = async (req, res) => {
       ip_address: req.ip,
       user_agent: req.get("User-Agent"),
     });
-      req.skipActivityLog = true;
+    req.skipActivityLog = true;
 
     res.json({ message: "A password reset link has been sent to your email." });
   } catch (error) {

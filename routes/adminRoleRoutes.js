@@ -4,17 +4,16 @@ const adminRoleController = require("../controllers/adminRoleController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 
-// All admin role routes require auth and admin/superadmin role
+// All admin role routes require auth
 router.use(protect);
-router.use(authorize("Admin", "SuperAdmin"));
 
 router.post(
   "/",
   checkPermission("create_admin_role"),
   adminRoleController.createAdminRole,
 );
-router.get("/", adminRoleController.getAllAdminRoles);
-router.get("/:id", adminRoleController.getAdminRoleById);
+router.get("/", checkPermission("view_admin_roles"), adminRoleController.getAllAdminRoles);
+router.get("/:id", checkPermission("view_admin_roles"), adminRoleController.getAdminRoleById);
 router.put(
   "/:id",
   checkPermission("edit_admin_role"),

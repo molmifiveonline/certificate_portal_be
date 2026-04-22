@@ -4,12 +4,11 @@ const adminUserController = require("../../controllers/admin/adminUserController
 const { protect, authorize } = require("../../middleware/authMiddleware");
 const checkPermission = require("../../middleware/permissionMiddleware");
 
-// All admin user routes require auth and admin/superadmin role
+// All admin user routes require auth
 router.use(protect);
-router.use(authorize("Admin", "SuperAdmin"));
 
-router.get("/", adminUserController.getAdmins);
-router.get("/:id", adminUserController.getAdminById);
+router.get("/", checkPermission("view_admin_users"), adminUserController.getAdmins);
+router.get("/:id", checkPermission("view_admin_users"), adminUserController.getAdminById);
 router.post(
   "/",
   checkPermission("create_admin_user"),

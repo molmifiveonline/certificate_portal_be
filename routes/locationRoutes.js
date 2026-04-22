@@ -1,35 +1,35 @@
 const express = require("express");
 const router = express.Router();
 const locationController = require("../controllers/locationController");
-const verifyToken = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 
 // All location routes require authentication
-router.use(verifyToken);
+router.use(protect);
 
 router.get(
   "/",
-  checkPermission("view_location", ["trainer"]),
+  checkPermission("view_locations", ["trainer"]),
   locationController.getLocations,
 );
 router.get(
   "/:id",
-  checkPermission("view_location"),
+  checkPermission("view_locations"),
   locationController.getLocationById,
 );
 router.post(
   "/",
-  checkPermission("create_location"),
+  checkPermission("manage_locations"),
   locationController.createLocation,
 );
 router.put(
   "/:id",
-  checkPermission("edit_location"),
+  checkPermission("manage_locations"),
   locationController.updateLocation,
 );
 router.delete(
   "/:id",
-  checkPermission("delete_location"),
+  checkPermission("manage_locations"),
   locationController.deleteLocation,
 );
 

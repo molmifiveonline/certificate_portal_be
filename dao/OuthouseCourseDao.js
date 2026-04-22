@@ -4,18 +4,7 @@ const { hasColumn, hasTable } = require("../utils/schemaUtils");
 
 class OuthouseCourseDao {
   static async buildOuthousePredicate(alias = "c") {
-    const hasIsOuthouse = await hasColumn("courses", "is_outhouse");
-    const hasIsPreActive = await hasColumn("courses", "is_pre_active");
-
-    if (hasIsOuthouse) {
-      return `COALESCE(${alias}.is_outhouse, 0) = 1`;
-    }
-
-    const parts = [`${alias}.course_type = 'Out house'`];
-    if (hasIsPreActive) {
-      parts.push(`COALESCE(${alias}.is_pre_active, 0) = 0`);
-    }
-    return parts.join(" AND ");
+    return `COALESCE(${alias}.is_outhouse, 0) = 1`;
   }
 
   static async getLastCourseId(topic) {
@@ -56,11 +45,9 @@ class OuthouseCourseDao {
       zoom_username: data.zoom_id || null,
       zoom_password: data.zoom_password || null,
       no_of_days: data.days || null,
+      is_outhouse: 1,
     };
 
-    if (await hasColumn("courses", "is_outhouse")) {
-      payload.is_outhouse = 1;
-    }
     if (await hasColumn("courses", "feedback_type")) {
       payload.feedback_type = data.feedback_type || "Document";
     }
@@ -137,7 +124,14 @@ class OuthouseCourseDao {
     return result.affectedRows > 0;
   }
 
-  static async getAll(search = "", page, limit, filters = {}, sortBy = "created_at", sortOrder = "DESC") {
+  static async getAll(
+    search = "",
+    page,
+    limit,
+    filters = {},
+    sortBy = "created_at",
+    sortOrder = "DESC",
+  ) {
     const predicate = await this.buildOuthousePredicate("c");
     let whereClause = `WHERE ${predicate} AND c.status != 'Deleted'`;
     const params = [];
@@ -166,9 +160,21 @@ class OuthouseCourseDao {
     const total = countRows[0].total;
 
     // Sanitize sort column and order
-    const allowedSortFields = ["course_id", "course_name", "topic", "master_course_name", "start_date", "end_date", "status", "created_at"];
-    const verifiedSortBy = allowedSortFields.includes(sortBy) ? sortBy : "created_at";
-    const verifiedSortOrder = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
+    const allowedSortFields = [
+      "course_id",
+      "course_name",
+      "topic",
+      "master_course_name",
+      "start_date",
+      "end_date",
+      "status",
+      "created_at",
+    ];
+    const verifiedSortBy = allowedSortFields.includes(sortBy)
+      ? sortBy
+      : "created_at";
+    const verifiedSortOrder =
+      sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
     let query = `
       SELECT c.*
@@ -178,12 +184,17 @@ class OuthouseCourseDao {
     `;
 
     const queryParams = [...params];
-    
+
     // Robustly parse page and limit
     const parsedPage = parseInt(page, 10);
     const parsedLimit = parseInt(limit, 10);
 
-    if (!isNaN(parsedPage) && !isNaN(parsedLimit) && parsedPage > 0 && parsedLimit > 0) {
+    if (
+      !isNaN(parsedPage) &&
+      !isNaN(parsedLimit) &&
+      parsedPage > 0 &&
+      parsedLimit > 0
+    ) {
       const offset = (parsedPage - 1) * parsedLimit;
       query += " LIMIT ? OFFSET ?";
       queryParams.push(parsedLimit, offset);
@@ -195,8 +206,11 @@ class OuthouseCourseDao {
       data: rows,
       total,
       page: isNaN(parsedPage) ? 1 : parsedPage,
-      limit: isNaN(parsedLimit) ? (total || 10) : parsedLimit,
-      totalPages: !isNaN(parsedLimit) && parsedLimit > 0 ? Math.ceil(total / parsedLimit) : 1,
+      limit: isNaN(parsedLimit) ? total || 10 : parsedLimit,
+      totalPages:
+        !isNaN(parsedLimit) && parsedLimit > 0
+          ? Math.ceil(total / parsedLimit)
+          : 1,
     };
   }
 
@@ -240,7 +254,8 @@ class OuthouseCourseDao {
     `;
     const params = [courseId];
     if (search) {
-      query += " AND (cp.employee_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
+      query +=
+        " AND (cp.employee_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
       const term = `%${search}%`;
       params.push(term, term, term);
     }

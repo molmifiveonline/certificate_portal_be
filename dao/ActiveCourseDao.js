@@ -4,18 +4,11 @@ const { hasColumn } = require("../utils/schemaUtils");
 
 class ActiveCourseDao {
   static async buildActivePredicate(alias = "c") {
-    const parts = [`${alias}.status != "Deleted"`];
-
-    if (await hasColumn("courses", "is_pre_active")) {
-      parts.push(`COALESCE(${alias}.is_pre_active, 0) = 0`);
-    }
-
-    if (await hasColumn("courses", "is_outhouse")) {
-      parts.push(`COALESCE(${alias}.is_outhouse, 0) = 0`);
-    } else {
-      parts.push(`COALESCE(${alias}.course_type, '') != 'Out house'`);
-    }
-
+    const parts = [
+      `${alias}.status != "Deleted"`,
+      `COALESCE(${alias}.is_pre_active, 0) = 0`,
+      `COALESCE(${alias}.is_outhouse, 0) = 0`,
+    ];
     return parts.join(" AND ");
   }
 
