@@ -1,5 +1,6 @@
 const CandidateDao = require("../dao/candidateDao");
 const LogDao = require("../dao/LogDao");
+const { Parser } = require("json2csv");
 
 const getAllCandidates = async (req, res) => {
   try {
@@ -98,12 +99,24 @@ const updateCandidate = async (req, res) => {
 
     res.status(200).json({ message: "Candidate updated successfully" });
   } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      let detailMessage = "A record with this information already exists.";
+      if (error.sqlMessage && error.sqlMessage.includes('users.email')) {
+        detailMessage = "This email is already in use by another user.";
+      }
+      return res.status(400).json({ 
+        message: detailMessage, 
+        error: detailMessage 
+      });
+    }
     console.error("Update Candidate Error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ 
+      message: statusCode < 500 ? error.message : "Server error", 
+      error: error.message 
+    });
   }
 };
-
-const { Parser } = require("json2csv");
 
 const exportCandidates = async (req, res) => {
   try {

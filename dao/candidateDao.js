@@ -134,6 +134,19 @@ class CandidateDao {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
+      
+      // Check if email already exists for another user
+      if (updateData.email) {
+        const [existingEmail] = await connection.query(
+          "SELECT id FROM users WHERE email = ? AND id != ?",
+          [updateData.email, id]
+        );
+        if (existingEmail.length > 0) {
+          const error = new Error(`Email '${updateData.email}' is already in use by another user.`);
+          error.statusCode = 400;
+          throw error;
+        }
+      }
 
       // Update User fields
       const userFields = [
