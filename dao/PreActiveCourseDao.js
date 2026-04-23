@@ -147,7 +147,10 @@ const getAllPreActiveCourses = async (
 
 const getPreActiveCourseById = async (id) => {
   const [rows] = await pool.execute(
-    "SELECT * FROM courses WHERE id = ? AND is_pre_active = 1",
+    `SELECT c.*, l.location_name 
+     FROM courses c
+     LEFT JOIN locations l ON c.location_id = l.id COLLATE utf8mb4_general_ci
+     WHERE c.id = ? AND c.is_pre_active = 1`,
     [id],
   );
   return rows[0];
