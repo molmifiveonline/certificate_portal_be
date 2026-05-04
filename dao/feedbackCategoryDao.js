@@ -20,8 +20,12 @@ class FeedbackCategoryDao {
     }
 
     // Sorting
-    const sortOrder = filters.sort_order === "desc" ? "DESC" : "ASC";
-    query += ` ORDER BY name ${sortOrder}`;
+    const allowedSortColumns = ["name", "created_at", "updated_at"];
+    const finalSortBy = allowedSortColumns.includes(filters.sort_by)
+      ? filters.sort_by
+      : "created_at";
+    const finalSortOrder = filters.sort_order === "asc" ? "ASC" : "DESC";
+    query += ` ORDER BY ${finalSortBy} ${finalSortOrder}`;
 
     // Pagination
     let page = 1;
