@@ -387,6 +387,13 @@ const getPendingAdminApprovals = async (course_id) => {
     `SELECT ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark, 
                 ce.admin_approval_status, ce.admin_remark, ce.admin_action_date, ce.nominator_id,
                 u.first_name, u.last_name, u.email, cp.indos_number,
+                (
+                  SELECT MAX(cert.issue_date)
+                  FROM certificates cert
+                  WHERE cert.candidate_id = ce.candidate_id
+                    AND cert.active_course_id <> ce.course_id
+                    AND cert.issue_date IS NOT NULL
+                ) as previous_certificate_date,
                 COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) as nominator_name
          FROM courses_enrollment ce
          JOIN users u ON ce.candidate_id = u.id

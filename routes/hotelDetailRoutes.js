@@ -20,10 +20,10 @@ router.use(protect);
 router.use(authorize("Admin", "SuperAdmin"));
 
 // View routes
-router.get("/", checkPermission("view_hotel_details"), getHotels);
+router.get("/", checkPermission(["view_hotels", "view_hotel_details"]), getHotels);
 router.get(
   "/:id",
-  checkPermission("view_hotel_details"),
+  checkPermission(["view_hotels", "view_hotel_details"]),
   getHotel,
 );
 

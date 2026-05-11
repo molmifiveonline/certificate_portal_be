@@ -1,5 +1,32 @@
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
+const { hasColumn } = require("../utils/schemaUtils");
+
+const ACKNOWLEDGMENT_COLUMNS = [
+  "ack_token",
+  "ack_status",
+  "ack_date",
+  "ack_remark",
+];
+
+async function assertAcknowledgmentColumns() {
+  const checks = await Promise.all(
+    ACKNOWLEDGMENT_COLUMNS.map(async (columnName) => ({
+      columnName,
+      exists: await hasColumn("courses_enrollment", columnName),
+    })),
+  );
+
+  const missingColumns = checks
+    .filter((check) => !check.exists)
+    .map((check) => check.columnName);
+
+  if (missingColumns.length > 0) {
+    throw new Error(
+      `Database schema missing courses_enrollment acknowledgment columns (${missingColumns.join(", ")}). Apply database_changes.sql active course migration.`,
+    );
+  }
+}
 
 class CourseEnrollmentDao {
   static async enrollCandidates(courseId, candidateIds, trainerId) {
@@ -72,7 +99,14 @@ class CourseEnrollmentDao {
         u.first_name, u.last_name, u.email, u.mobile, 
         CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
         cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
-        cp.dob, cp.nationality, cp.designation, ce.trainer_comment
+        cp.dob, cp.nationality, cp.designation, ce.trainer_comment,
+        (
+          SELECT MAX(cert.issue_date)
+          FROM certificates cert
+          WHERE cert.candidate_id = ce.candidate_id
+            AND cert.active_course_id <> ce.course_id
+            AND cert.issue_date IS NOT NULL
+        ) as previous_certificate_date
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -448,6 +482,7 @@ class CourseEnrollmentDao {
   }
 
   static async saveAcknowledgmentToken(courseId, candidateId, token) {
+    await assertAcknowledgmentColumns();
     const [result] = await pool.execute(
       "UPDATE courses_enrollment SET ack_token = ?, ack_status = 'Pending', ack_date = NULL, ack_remark = NULL WHERE course_id = ? AND candidate_id = ?",
       [token, courseId, candidateId],
@@ -456,6 +491,7 @@ class CourseEnrollmentDao {
   }
 
   static async updateAcknowledgmentStatus(token, status, remark = null) {
+    await assertAcknowledgmentColumns();
     const [result] = await pool.execute(
       "UPDATE courses_enrollment SET ack_status = ?, ack_date = NOW(), ack_remark = ? WHERE ack_token = ?",
       [status, remark, token],
@@ -464,6 +500,7 @@ class CourseEnrollmentDao {
   }
 
   static async getByAckToken(token) {
+    await assertAcknowledgmentColumns();
     const [rows] = await pool.execute(
       "SELECT * FROM courses_enrollment WHERE ack_token = ?",
       [token],
