@@ -1,7 +1,32 @@
 const QuestionBankDao = require("../dao/QuestionBankDao");
-const { v4: uuidv4 } = require("uuid");
+const MasterCourseDao = require("../dao/MasterCourseDao");
 const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 const fs = require("fs");
+
+const QUESTION_TEMPLATE_HEADERS = [
+  "Question",
+  "Master Course ID",
+  "Type of Test",
+  "Option A",
+  "Option B",
+  "Option C",
+  "Option D",
+  "Correct Option",
+];
+const MASTER_COURSE_DROPDOWN_START_ROW = 2;
+const MASTER_COURSE_DROPDOWN_END_ROW = 1001;
+const UUID_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+const buildMasterCourseDisplayValue = (course) =>
+  `${course.topic || "-"} - ${course.master_course_name || "-"} (${course.id})`;
+
+const extractMasterCourseId = (value) => {
+  const normalizedValue = (value || "").toString().trim();
+  const match = normalizedValue.match(UUID_PATTERN);
+  return match ? match[0] : normalizedValue;
+};
 
 exports.createQuestion = async (req, res) => {
   try {
@@ -181,6 +206,102 @@ exports.deleteQuestion = async (req, res) => {
   }
 };
 
+exports.downloadSampleTemplate = async (req, res) => {
+  try {
+    const masterCourses = await MasterCourseDao.getOptions();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "Certificate Portal";
+    workbook.created = new Date();
+
+    const questionsSheet = workbook.addWorksheet("Questions");
+    questionsSheet.addRow(QUESTION_TEMPLATE_HEADERS);
+    questionsSheet.addRow([
+      "What is food safety?",
+      masterCourses[0]
+        ? buildMasterCourseDisplayValue(masterCourses[0])
+        : "<paste-course-uuid>",
+      "1,2",
+      "Handling food properly",
+      "Cooking only",
+      "Cleaning only",
+      "None of the above",
+      "opt_a",
+    ]);
+
+    questionsSheet.columns = [
+      { width: 45 },
+      { width: 80 },
+      { width: 18 },
+      { width: 28 },
+      { width: 24 },
+      { width: 24 },
+      { width: 24 },
+      { width: 18 },
+    ];
+
+    questionsSheet.getRow(1).font = { bold: true };
+    questionsSheet.getRow(1).alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+
+    const lookupSheet = workbook.addWorksheet("_MasterCourses");
+    lookupSheet.state = "veryHidden";
+    lookupSheet.addRow(["ID", "Topic", "Master Course Name", "Dropdown Value"]);
+    masterCourses.forEach((course) => {
+      lookupSheet.addRow([
+        course.id,
+        course.topic || "",
+        course.master_course_name || "",
+        buildMasterCourseDisplayValue(course),
+      ]);
+    });
+
+    lookupSheet.columns = [
+      { width: 40 },
+      { width: 30 },
+      { width: 40 },
+      { width: 80 },
+    ];
+
+    if (masterCourses.length > 0) {
+      const lastLookupRow = masterCourses.length + 1;
+      for (
+        let row = MASTER_COURSE_DROPDOWN_START_ROW;
+        row <= MASTER_COURSE_DROPDOWN_END_ROW;
+        row++
+      ) {
+        questionsSheet.getCell(`B${row}`).dataValidation = {
+          type: "list",
+          allowBlank: false,
+          formulae: [`'_MasterCourses'!$D$2:$D$${lastLookupRow}`],
+          showErrorMessage: true,
+          errorTitle: "Invalid Master Course",
+          error: "Please select a Master Course from the dropdown list.",
+        };
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=question_bank_template.xlsx",
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.send(buffer);
+  } catch (error) {
+    console.error("Error generating question bank template:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate sample template",
+      error: error.message,
+    });
+  }
+};
+
 exports.bulkUpload = async (req, res) => {
   try {
     if (!req.file) {
@@ -214,6 +335,10 @@ exports.bulkUpload = async (req, res) => {
         .json({ success: false, message: "No data found in Excel file" });
     }
 
+    const masterCourses = await MasterCourseDao.getOptions();
+    const activeMasterCourseIds = new Set(
+      masterCourses.map((course) => course.id.toLowerCase()),
+    );
     const results = { success: 0, failed: 0, errors: [] };
 
     for (let i = 0; i < rows.length; i++) {
@@ -223,13 +348,16 @@ exports.bulkUpload = async (req, res) => {
       const question = (row["Question"] || row["question"] || "")
         .toString()
         .trim();
-      const master_course_id = (
+      const masterCourseInput = (
         row["Master Course ID"] ||
         row["master_course_id"] ||
         ""
       )
         .toString()
         .trim();
+      const master_course_id = extractMasterCourseId(
+        masterCourseInput,
+      ).toLowerCase();
       const type_of_test = (row["Type of Test"] || row["type_of_test"] || "")
         .toString()
         .trim();
@@ -261,6 +389,13 @@ exports.bulkUpload = async (req, res) => {
       if (!master_course_id) {
         results.failed++;
         results.errors.push(`Row ${rowNum}: Master Course ID is required`);
+        continue;
+      }
+      if (!activeMasterCourseIds.has(master_course_id)) {
+        results.failed++;
+        results.errors.push(
+          `Row ${rowNum}: Master Course ID is invalid or inactive`,
+        );
         continue;
       }
       if (!correct_option) {

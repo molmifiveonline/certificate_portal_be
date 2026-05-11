@@ -9,6 +9,7 @@ const {
   getQuestionById,
   updateQuestion,
   deleteQuestion,
+  downloadSampleTemplate,
   bulkUpload,
 } = require("../controllers/questionBankController");
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -69,34 +70,11 @@ router.use(protect);
 
 router.post("/create", checkPermission("create_question"), handleUpload, createQuestion);
 router.get("/", checkPermission("view_questions"), getAllQuestions);
-router.get("/sample-template", checkPermission("view_questions"), (req, res) => {
-  const XLSX = require("xlsx");
-  const wb = XLSX.utils.book_new();
-  const sampleData = [
-    {
-      Question: "What is food safety?",
-      "Master Course ID": "<paste-course-uuid>",
-      "Type of Test": "1,2",
-      "Option A": "Handling food properly",
-      "Option B": "Cooking only",
-      "Option C": "Cleaning only",
-      "Option D": "None of the above",
-      "Correct Option": "opt_a",
-    },
-  ];
-  const ws = XLSX.utils.json_to_sheet(sampleData);
-  XLSX.utils.book_append_sheet(wb, ws, "Questions");
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-  res.setHeader(
-    "Content-Disposition",
-    "attachment; filename=question_bank_template.xlsx",
-  );
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
-  res.send(buf);
-});
+router.get(
+  "/sample-template",
+  checkPermission("view_questions"),
+  downloadSampleTemplate,
+);
 router.post(
   "/bulk-upload",
   checkPermission("create_question"),

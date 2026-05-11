@@ -77,7 +77,11 @@ const activityLogger = (req, res, next) => {
       const actionString = `${actionPrefix} ${moduleName}`;
 
       // Basic details representing the footprint
-      const details = `Method: ${req.method}, URL: ${req.originalUrl}, Status: ${res.statusCode}`;
+      let details = `Method: ${req.method}, URL: ${req.originalUrl}, Status: ${res.statusCode}`;
+
+      if (req.method === "POST" && urlPath === "/api/feedback-categories" && req.body?.name) {
+        details = `Created Feedback Category: ${req.body.name}`;
+      }
 
       // Insert Log
       await LogDao.createLog({
