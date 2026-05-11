@@ -67,6 +67,17 @@ class MasterCourseDao {
     };
   }
 
+  static async getOptions() {
+    const query = `
+      SELECT id, topic, master_course_name
+      FROM master_course
+      WHERE status = 1
+      ORDER BY topic, master_course_name
+    `;
+    const [rows] = await pool.execute(query);
+    return rows;
+  }
+
   static async getById(id) {
     const query = "SELECT * FROM master_course WHERE id = ? AND status = 1";
     const [rows] = await pool.execute(query, [id]);
