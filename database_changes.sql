@@ -711,6 +711,22 @@ ALTER TABLE courses_enrollment
   ADD COLUMN IF NOT EXISTS ack_date DATETIME NULL,
   ADD COLUMN IF NOT EXISTS ack_remark TEXT NULL;
 
+SET @ack_token_index_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'courses_enrollment'
+    AND index_name = 'courses_enrollment_ack_token_idx'
+);
+SET @ack_token_index_sql := IF(
+  @ack_token_index_exists = 0,
+  'CREATE INDEX courses_enrollment_ack_token_idx ON courses_enrollment (ack_token)',
+  'SELECT 1'
+);
+PREPARE ack_token_index_stmt FROM @ack_token_index_sql;
+EXECUTE ack_token_index_stmt;
+DEALLOCATE PREPARE ack_token_index_stmt;
+
 -- Add venue details for offline/manual welcome letters to courses_enrollment table
 ALTER TABLE courses_enrollment 
   ADD COLUMN IF NOT EXISTS venue_name VARCHAR(255) NULL,
