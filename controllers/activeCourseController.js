@@ -158,6 +158,7 @@ exports.updateCourse = async (req, res) => {
     if (req.body.topic) {
       const masterCourse = await MasterCourseDao.getById(req.body.topic);
       if (masterCourse) {
+        req.body.master_course_id = req.body.topic;
         req.body.topic = masterCourse.topic;
         if (!req.body.master_course_name) {
           req.body.master_course_name = masterCourse.master_course_name;
@@ -332,6 +333,26 @@ exports.emailPrimaryTrainer = async (req, res) => {
     res.status(500).json({ message: "Error sending email", error: error.message });
   }
 };
+const isOnlineCourse = (course) => course?.type_of_location === "Online";
+const normalizeWelcomeEmailType = (type) =>
+  String(type || "").trim().toLowerCase();
+
+const validateWelcomeEmailType = (course, type) => {
+  if (!["online", "offline"].includes(type)) {
+    return "Welcome letter type must be online or offline.";
+  }
+
+  if (isOnlineCourse(course) && type !== "online") {
+    return "Online courses can only send online welcome letters.";
+  }
+
+  if (!isOnlineCourse(course) && type !== "offline") {
+    return "Offline or manual courses can only send offline welcome letters.";
+  }
+
+  return null;
+};
+
 const sendCandidateEmailNotification = async (course, candidateEnrollment, type) => {
   const crypto = require("crypto");
   const ackToken = crypto.randomBytes(32).toString("hex");
@@ -372,17 +393,22 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
 exports.emailCandidate = async (req, res) => {
   try {
     const { id: courseId, candidateId } = req.params;
-    const { type } = req.body; // 'online' or 'offline'
+    const type = normalizeWelcomeEmailType(req.body.type);
 
     const course = await ActiveCourseDao.getById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
+    const typeError = validateWelcomeEmailType(course, type);
+    if (typeError) {
+      return res.status(400).json({ message: typeError });
+    }
+
     // Enforce strict check for Offline Course Welcome Letter
     if (type === "offline") {
       const venue = await CourseEnrollmentDao.getCandidateVenueDetails(courseId, candidateId);
-      if (!venue || !venue.venue_name || !venue.venue_address || !venue.venue_contact || !venue.offline_date) {
+      if (!venue || !venue.venue_name || !venue.venue_address || !venue.venue_contact || !venue.from_date || !venue.to_date) {
         return res.status(400).json({ 
-          message: "Hotel details and offline dates must be entered for candidate before sending offline welcome letter." 
+          message: "Hotel details and venue date range must be entered for candidate before sending offline welcome letter." 
         });
       }
     }
@@ -400,6 +426,71 @@ exports.emailCandidate = async (req, res) => {
   } catch (error) {
     console.error("Error emailing candidate:", error);
     res.status(500).json({ message: "Error sending email", error: error.message });
+  }
+};
+
+exports.emailCandidatesBulk = async (req, res) => {
+  try {
+    const { id: courseId } = req.params;
+    const { candidateIds } = req.body;
+
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "At least one candidate is required." });
+    }
+
+    const course = await ActiveCourseDao.getById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    if (!isOnlineCourse(course)) {
+      return res.status(400).json({
+        message: "Bulk welcome mail is available for online courses only.",
+      });
+    }
+
+    const uniqueCandidateIds = [...new Set(candidateIds.filter(Boolean))];
+    if (uniqueCandidateIds.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "At least one candidate is required." });
+    }
+
+    const enrollments = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
+    const enrollmentByCandidateId = new Map(
+      enrollments.map((enrollment) => [enrollment.candidate_id, enrollment]),
+    );
+    const failed = [];
+    let sentCount = 0;
+
+    for (const candidateId of uniqueCandidateIds) {
+      const candidateEnrollment = enrollmentByCandidateId.get(candidateId);
+      if (!candidateEnrollment) {
+        failed.push({ candidateId, message: "Candidate not found in enrollment" });
+        continue;
+      }
+
+      try {
+        await sendCandidateEmailNotification(
+          course,
+          candidateEnrollment,
+          "online",
+        );
+        sentCount++;
+      } catch (error) {
+        failed.push({ candidateId, message: error.message });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      requestedCount: uniqueCandidateIds.length,
+      sentCount,
+      failed,
+    });
+  } catch (error) {
+    console.error("Error bulk emailing candidates:", error);
+    res.status(500).json({ message: "Error sending emails", error: error.message });
   }
 };
 

@@ -415,7 +415,7 @@ exports.notifyCandidates = async (req, res) => {
 exports.candidateApproval = async (req, res) => {
   try {
     const { token } = req.params;
-    const { status, remark } = req.body; // 'Approved' or 'Rejected'
+    const { status, remark, rejection_reason, available_date } = req.body; // 'Approved' or 'Rejected'
 
     const details = await PreActiveCourseDao.getTokenDetails(token);
     if (!details || details.entity_type !== "Candidate") {
@@ -427,6 +427,8 @@ exports.candidateApproval = async (req, res) => {
       details.entity_id,
       status,
       remark,
+      rejection_reason,
+      available_date,
     );
 
     if (success) {
@@ -456,6 +458,25 @@ exports.getPendingAdminApprovals = async (req, res) => {
     res.status(200).json(rows);
   } catch (error) {
     console.error("Error fetching admin approvals:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getRejectedCandidateApprovals = async (req, res) => {
+  try {
+    const result = await PreActiveCourseDao.getRejectedCandidateApprovals({
+      page: req.query.page,
+      limit: req.query.limit,
+      search: req.query.search,
+      admin_status: req.query.admin_status,
+      sort_by: req.query.sort_by,
+      sort_order: req.query.sort_order,
+    });
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error fetching rejected candidate approvals:", error);
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });

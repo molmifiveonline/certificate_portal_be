@@ -108,6 +108,12 @@ router.post(
   checkPermission("edit_active_course", ["Trainer"]),
   activeCourseController.emailCandidate,
 );
+router.post(
+  "/:id/candidates/email/bulk",
+  protect,
+  checkPermission("edit_active_course", ["Trainer"]),
+  activeCourseController.emailCandidatesBulk,
+);
 
 // Venue Operations (Offline Courses)
 router.get(

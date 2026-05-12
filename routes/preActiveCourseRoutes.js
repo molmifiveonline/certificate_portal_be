@@ -45,6 +45,11 @@ router.get(
   checkPermission("view_admin_remarks"),
   controller.getAdminRemarksReport,
 ); // Make sure this is above /:id
+router.get(
+  "/rejected-approvals",
+  checkPermission("view_pre_active_approvals"),
+  controller.getRejectedCandidateApprovals,
+);
 
 router.get(
   "/:id",
