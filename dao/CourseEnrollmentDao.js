@@ -186,7 +186,7 @@ class CourseEnrollmentDao {
   static async getCandidateVenueDetails(courseId, candidateId) {
     const query = `
       SELECT 
-        id, venue_name, venue_address, venue_contact, venue_map_link, venue_email, offline_date, remarks
+        id, venue_name, venue_address, venue_contact, venue_map_link, venue_email, offline_date, from_date, to_date, remarks
       FROM courses_enrollment
       WHERE course_id = ? AND candidate_id = ?
     `;
@@ -195,6 +195,15 @@ class CourseEnrollmentDao {
   }
 
   static async updateVenueDetails(courseId, candidateId, details) {
+    const hasOfflineDate = Object.prototype.hasOwnProperty.call(
+      details,
+      "offline_date",
+    );
+    const hasFromDate = Object.prototype.hasOwnProperty.call(
+      details,
+      "from_date",
+    );
+    const hasToDate = Object.prototype.hasOwnProperty.call(details, "to_date");
     const {
       venue_name,
       venue_address,
@@ -202,11 +211,17 @@ class CourseEnrollmentDao {
       venue_map_link,
       venue_email,
       offline_date,
+      from_date,
+      to_date,
       remarks,
     } = details;
     const query = `
       UPDATE courses_enrollment
-      SET venue_name = ?, venue_address = ?, venue_contact = ?, venue_map_link = ?, venue_email = ?, offline_date = ?, remarks = ?
+      SET venue_name = ?, venue_address = ?, venue_contact = ?, venue_map_link = ?, venue_email = ?,
+          offline_date = CASE WHEN ? THEN ? ELSE offline_date END,
+          from_date = CASE WHEN ? THEN ? ELSE from_date END,
+          to_date = CASE WHEN ? THEN ? ELSE to_date END,
+          remarks = ?
       WHERE course_id = ? AND candidate_id = ?
     `;
     const [result] = await pool.execute(query, [
@@ -215,7 +230,12 @@ class CourseEnrollmentDao {
       venue_contact,
       venue_map_link,
       venue_email,
-      offline_date,
+      hasOfflineDate,
+      offline_date || null,
+      hasFromDate,
+      from_date || null,
+      hasToDate,
+      to_date || null,
       remarks,
       courseId,
       candidateId,

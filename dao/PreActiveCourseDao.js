@@ -366,10 +366,12 @@ const updateCandidateApproval = async (
   candidate_id,
   status,
   remark,
+  rejection_reason,
+  available_date,
 ) => {
   const [result] = await pool.execute(
-    "UPDATE courses_enrollment SET candidate_approval_status = ?, candidate_remark = ? WHERE course_id = ? AND candidate_id = ?",
-    [status, remark || null, course_id, candidate_id],
+    "UPDATE courses_enrollment SET candidate_approval_status = ?, candidate_remark = ?, candidate_rejection_reason = ?, candidate_available_date = ? WHERE course_id = ? AND candidate_id = ?",
+    [status, remark || null, rejection_reason || null, available_date || null, course_id, candidate_id],
   );
   return result.affectedRows > 0;
 };
@@ -384,7 +386,8 @@ const updateAdminApproval = async (enrollmentId, status, remark) => {
 
 const getPendingAdminApprovals = async (course_id) => {
   const [rows] = await pool.execute(
-    `SELECT ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark, 
+    `SELECT ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark,
+                ce.candidate_rejection_reason, ce.candidate_available_date,
                 ce.admin_approval_status, ce.admin_remark, ce.admin_action_date, ce.nominator_id,
                 u.first_name, u.last_name, u.email, cp.indos_number,
                 (
@@ -405,6 +408,140 @@ const getPendingAdminApprovals = async (course_id) => {
   return rows;
 };
 
+const getRejectedCandidateApprovals = async (options = {}) => {
+  const {
+    search = "",
+    page = 1,
+    limit = 10,
+    admin_status,
+    sort_by = "created_at",
+    sort_order = "desc",
+  } = options;
+
+  const sortColumns = {
+    course_id: "c.course_id",
+    course_name: "c.course_name",
+    start_date: "c.start_date",
+    candidate_name: "u.first_name",
+    candidate_email: "u.email",
+    rejection_reason: "ce.candidate_rejection_reason",
+    available_date: "ce.candidate_available_date",
+    admin_status: "COALESCE(ce.admin_approval_status, 'Pending')",
+    admin_action_date: "ce.admin_action_date",
+    created_at: "ce.created_at",
+  };
+  const sortColumn = sortColumns[sort_by] || sortColumns.created_at;
+  const sortDirection =
+    String(sort_order).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+  let whereClause = `
+    WHERE c.is_pre_active = 1
+      AND ce.candidate_approval_status = 'Rejected'
+  `;
+  const params = [];
+  const countParams = [];
+
+  if (
+    admin_status &&
+    ["Pending", "Approved", "Rejected"].includes(admin_status)
+  ) {
+    whereClause += " AND COALESCE(ce.admin_approval_status, 'Pending') = ?";
+    params.push(admin_status);
+    countParams.push(admin_status);
+  }
+
+  if (search) {
+    whereClause += `
+      AND (
+        c.course_id LIKE ?
+        OR c.course_name LIKE ?
+        OR u.first_name LIKE ?
+        OR u.last_name LIKE ?
+        OR CONCAT_WS(' ', u.first_name, u.last_name) LIKE ?
+        OR u.email LIKE ?
+        OR COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) LIKE ?
+        OR ce.candidate_rejection_reason LIKE ?
+      )
+    `;
+    const searchValue = `%${search}%`;
+    params.push(
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+    );
+    countParams.push(
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+      searchValue,
+    );
+  }
+
+  const parsedLimit = Math.max(parseInt(limit, 10) || 10, 1);
+  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+  const offset = (parsedPage - 1) * parsedLimit;
+
+  const countQuery = `
+    SELECT COUNT(*) as total
+    FROM courses_enrollment ce
+    JOIN courses c ON ce.course_id = c.id
+    JOIN users u ON ce.candidate_id = u.id
+    LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
+    LEFT JOIN nominators n ON ce.nominator_id = n.id
+    ${whereClause}
+  `;
+
+  const query = `
+    SELECT ce.id, ce.course_id, ce.candidate_id,
+           ce.candidate_approval_status, ce.candidate_remark,
+           ce.candidate_rejection_reason, ce.candidate_available_date,
+           COALESCE(ce.admin_approval_status, 'Pending') as admin_approval_status,
+           ce.admin_remark, ce.admin_action_date,
+           ce.nominator_id, ce.created_at,
+           c.course_id as course_code, c.course_name, c.start_date, c.end_date,
+           u.first_name, u.last_name, u.email, cp.indos_number,
+           (
+             SELECT MAX(cert.issue_date)
+             FROM certificates cert
+             WHERE cert.candidate_id = ce.candidate_id
+               AND cert.active_course_id <> ce.course_id
+               AND cert.issue_date IS NOT NULL
+           ) as previous_certificate_date,
+           COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) as nominator_name
+    FROM courses_enrollment ce
+    JOIN courses c ON ce.course_id = c.id
+    JOIN users u ON ce.candidate_id = u.id
+    LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
+    LEFT JOIN nominators n ON ce.nominator_id = n.id
+    ${whereClause}
+    ORDER BY ${sortColumn} ${sortDirection}
+    LIMIT ? OFFSET ?
+  `;
+
+  const [countRows] = await pool.query(countQuery, countParams);
+  const [rows] = await pool.query(query, [...params, parsedLimit, offset]);
+  const total = countRows[0]?.total || 0;
+
+  return {
+    data: rows,
+    meta: {
+      total,
+      page: parsedPage,
+      limit: parsedLimit,
+      totalPages: Math.ceil(total / parsedLimit),
+    },
+  };
+};
+
 // ==========================================
 // Convert and Reports
 // ==========================================
@@ -422,6 +559,7 @@ const getAdminRemarksReport = async (filters = {}) => {
         SELECT ce.id, c.course_name, c.start_date, c.end_date, 
                u.first_name, u.last_name, u.email,
                ce.candidate_approval_status, ce.candidate_remark,
+               ce.candidate_rejection_reason, ce.candidate_available_date,
                ce.admin_approval_status, ce.admin_remark, ce.admin_action_date
         FROM courses_enrollment ce
         JOIN courses c ON ce.course_id = c.id
@@ -629,6 +767,7 @@ module.exports = {
   updateCandidateApproval,
   updateAdminApproval,
   getPendingAdminApprovals,
+  getRejectedCandidateApprovals,
   convertToActiveCourse,
   getAdminRemarksReport,
   getNominatorNotifiedCourses,

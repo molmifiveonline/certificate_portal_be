@@ -735,7 +735,16 @@ ALTER TABLE courses_enrollment
   ADD COLUMN IF NOT EXISTS venue_map_link TEXT NULL,
   ADD COLUMN IF NOT EXISTS venue_email VARCHAR(255) NULL,
   ADD COLUMN IF NOT EXISTS offline_date DATE NULL,
+  ADD COLUMN IF NOT EXISTS from_date DATE NULL,
+  ADD COLUMN IF NOT EXISTS to_date DATE NULL,
   ADD COLUMN IF NOT EXISTS remarks TEXT NULL;
+
+UPDATE courses_enrollment ce
+JOIN courses c ON c.id = ce.course_id
+SET
+  ce.from_date = COALESCE(ce.from_date, DATE(c.start_date)),
+  ce.to_date = COALESCE(ce.to_date, DATE(c.end_date))
+WHERE ce.from_date IS NULL OR ce.to_date IS NULL;
 
 -- Create table for venue hotel files
 CREATE TABLE IF NOT EXISTS hotel_files (
@@ -824,3 +833,11 @@ CREATE TABLE IF NOT EXISTS `candidate_sync_logs` (
   KEY `candidate_sync_logs_employee_id_idx` (`employee_id`),
   KEY `candidate_sync_logs_candidate_user_id_idx` (`candidate_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Date: 2026-05-12 - Candidate Rejection Reason Enhancement
+-- ---------------------------------------------------------
+-- Add rejection reason and available date columns for candidate course approval rejection
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `candidate_rejection_reason` VARCHAR(100) NULL DEFAULT NULL AFTER `candidate_remark`,
+  ADD COLUMN `candidate_available_date` DATE NULL DEFAULT NULL AFTER `candidate_rejection_reason`;
+
