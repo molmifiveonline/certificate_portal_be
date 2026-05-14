@@ -873,7 +873,7 @@ exports.sendFeedbackEmail = async (req, res) => {
 
       // Check if already submitted feedback
       const [existing] = await pool.execute(
-        "SELECT id FROM feedback_answers WHERE candidate_id = ? AND active_course_id = ? LIMIT 1",
+        "SELECT id FROM feedback_question_answer WHERE candidate_id = ? AND active_course_id = ? LIMIT 1",
         [candidate.candidate_id || candidate.id, id]
       );
       if (existing.length > 0) continue; // Skip if already submitted
