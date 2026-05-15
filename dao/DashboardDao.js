@@ -144,7 +144,7 @@ class DashboardDao {
         ca.candidate_id, 
         ca.course_id, 
         ca.certificate_expiry_date,
-        u.first_name, u.last_name,
+        u.first_name, u.last_name, u.email,
         cp.employee_id,
         c.course_name
       FROM course_attendance ca

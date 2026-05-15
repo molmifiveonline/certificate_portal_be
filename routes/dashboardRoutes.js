@@ -23,5 +23,11 @@ router.get(
   checkPermission("view_reports"),
   dashboardController.getExpiryAlerts,
 );
+router.post(
+  "/expiry/notify",
+  protect,
+  checkPermission("view_reports"),
+  dashboardController.notifyExpiryCandidate,
+);
 
 module.exports = router;
