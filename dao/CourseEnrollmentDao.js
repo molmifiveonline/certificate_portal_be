@@ -95,7 +95,7 @@ class CourseEnrollmentDao {
   static async getEnrolledCandidates(courseId) {
     const query = `
       SELECT 
-        ce.*,
+        ce.*, ce.is_observer,
         u.first_name, u.last_name, u.email, u.mobile, 
         CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
         cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
@@ -383,6 +383,7 @@ class CourseEnrollmentDao {
         cp.employee_id as empId,
         CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
         ce.trainer_comment,
+        ce.is_observer,
         pre_res.assessment_id as pre_assessment_id,
         pre_res.score as pre_score,
         pre_res.total_questions as pre_total,
@@ -441,6 +442,17 @@ class CourseEnrollmentDao {
     return rows;
   }
 
+  static async updateObserverStatus(courseId, candidateId, isObserver) {
+    const query =
+      "UPDATE courses_enrollment SET is_observer = ? WHERE course_id = ? AND candidate_id = ?";
+    const [result] = await pool.execute(query, [
+      isObserver ? 1 : 0,
+      courseId,
+      candidateId,
+    ]);
+    return result.affectedRows > 0;
+  }
+
   // ==========================================
   // Certificate Tab Methods
   // ==========================================
@@ -471,6 +483,7 @@ class CourseEnrollmentDao {
         SELECT DISTINCT candidate_id FROM feedback_question_answer WHERE active_course_id = ?
       ) fqa ON ce.candidate_id = fqa.candidate_id
       WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
+        AND (ce.is_observer = 0 OR ce.is_observer IS NULL)
     `;
     const [rows] = await pool.execute(query, [courseId, courseId, courseId]);
     return rows;

@@ -189,7 +189,8 @@ class ReportDao {
     const query = `
             SELECT course_id, COUNT(DISTINCT candidate_id) as total_participants 
             FROM courses_enrollment 
-            WHERE course_id IN (${placeholders}) 
+            WHERE course_id IN (${placeholders})
+              AND (is_observer = 0 OR is_observer IS NULL)
             GROUP BY course_id
         `;
     const [rows] = await pool.execute(query, courseIds);
@@ -286,6 +287,7 @@ class ReportDao {
       JOIN candidate_profiles cp ON u.id = cp.user_id
       JOIN courses c ON ce.course_id = c.id
       WHERE ce.venue_name IS NOT NULL AND ce.venue_name != ''
+        AND (ce.is_observer = 0 OR ce.is_observer IS NULL)
     `;
     const params = [];
 
