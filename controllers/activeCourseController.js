@@ -645,6 +645,17 @@ exports.updateStatusPool = async (req, res) => {
   }
 };
 
+exports.updateObserverStatus = async (req, res) => {
+  try {
+    const { isObserver } = req.body;
+    await CourseEnrollmentDao.updateObserverStatus(req.params.id, req.params.candidateId, isObserver);
+    res.status(200).json({ message: "Observer status updated" });
+  } catch (error) {
+    console.error("Error updating observer status:", error);
+    res.status(500).json({ message: "Error updating observer status", error: error.message });
+  }
+};
+
 exports.saveAbsentReason = async (req, res) => {
   try {
     const { id } = req.params;
@@ -714,7 +725,10 @@ exports.generateTrainingReport = async (req, res) => {
       course.primary_trainer_id ? trainerDao.getTrainerById(course.primary_trainer_id) : null,
     ]);
 
-    const buffer = await generateTrainingReportPdf(course, scores, trainer);
+    // Exclude observer candidates from the training report
+    const filteredScores = scores.filter(s => !s.is_observer);
+
+    const buffer = await generateTrainingReportPdf(course, filteredScores, trainer);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename=Training_Report_${id}.pdf`);
@@ -755,6 +769,15 @@ exports.generateCertificate = async (req, res) => {
     const { candidateId, issueDate } = req.body;
     const existing = await CertificateDao.getByCandidateAndCourse(candidateId, activeCourseId);
     if (existing) return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
+
+    // Check if candidate is an observer — observers cannot generate certificates
+    const [observerCheck] = await pool.execute(
+      "SELECT is_observer FROM courses_enrollment WHERE course_id = ? AND candidate_id = ?",
+      [activeCourseId, candidateId],
+    );
+    if (observerCheck.length > 0 && observerCheck[0].is_observer) {
+      return res.status(400).json({ success: false, message: "Observer candidates cannot generate certificates" });
+    }
 
     const course = await ActiveCourseDao.getById(activeCourseId);
     const masterCourse = await MasterCourseDao.getById(course.master_course_id);
@@ -870,10 +893,11 @@ exports.sendFeedbackEmail = async (req, res) => {
     let count = 0;
     for (const candidate of candidates) {
       if (candidate.status === "Deleted") continue;
+      if (candidate.is_observer) continue; // Skip observer candidates
 
       // Check if already submitted feedback
       const [existing] = await pool.execute(
-        "SELECT id FROM feedback_answers WHERE candidate_id = ? AND active_course_id = ? LIMIT 1",
+        "SELECT id FROM feedback_question_answer WHERE candidate_id = ? AND active_course_id = ? LIMIT 1",
         [candidate.candidate_id || candidate.id, id]
       );
       if (existing.length > 0) continue; // Skip if already submitted

@@ -841,3 +841,10 @@ ALTER TABLE `courses_enrollment`
   ADD COLUMN `candidate_rejection_reason` VARCHAR(100) NULL DEFAULT NULL AFTER `candidate_remark`,
   ADD COLUMN `candidate_available_date` DATE NULL DEFAULT NULL AFTER `candidate_rejection_reason`;
 
+-- Date: 2026-05-19 - Observer Candidate Feature
+-- ---------------------------------------------------------
+-- Add is_observer flag to courses_enrollment table
+-- Observer candidates attend the course but are excluded from
+-- certificate generation, all reports, and participant counts.
+ALTER TABLE `courses_enrollment`
+  ADD COLUMN `is_observer` TINYINT(1) DEFAULT 0;
