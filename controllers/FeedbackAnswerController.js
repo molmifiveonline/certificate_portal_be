@@ -4,6 +4,9 @@ const ActiveCourseDao = require("../dao/ActiveCourseDao");
 const MasterCourseDao = require("../dao/MasterCourseDao");
 const TrainerDao = require("../dao/trainerDao");
 
+const getFeedbackCourseTypeForCourse = (course) =>
+  course?.type_of_location === "Online" ? "Online" : "Offline";
+
 class FeedbackAnswerController {
   static async submitFeedback(req, res) {
     try {
@@ -399,12 +402,17 @@ class FeedbackAnswerController {
       }
 
       const FeedbackFormDao = require("../dao/FeedbackFormDao");
-      const form = await FeedbackFormDao.getByCourseType(course.course_type);
+      const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
+      const form = await FeedbackFormDao.getByCourseType(feedbackCourseType);
 
       res.json({
         hasSubmitted,
         submittedDate: hasSubmitted ? existingAnswers[0].created_at : null,
-        form: form,
+        form,
+        feedbackCourseType,
+        message: form
+          ? undefined
+          : `No active ${feedbackCourseType} feedback form configured`,
       });
     } catch (error) {
       console.error(error);

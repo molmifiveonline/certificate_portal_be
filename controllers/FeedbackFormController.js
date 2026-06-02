@@ -1,15 +1,61 @@
 const FeedbackFormDao = require("../dao/FeedbackFormDao");
 
+const FEEDBACK_COURSE_TYPES = new Set(["Online", "Offline"]);
+
+const normalizeFeedbackCourseType = (typeOfCourse) => {
+  const normalized = String(typeOfCourse || "").trim();
+  if (!FEEDBACK_COURSE_TYPES.has(normalized)) return null;
+  return normalized;
+};
+
+const hasCategoryQuestions = (categoryQuestions) => {
+  if (
+    !categoryQuestions ||
+    typeof categoryQuestions !== "object" ||
+    Array.isArray(categoryQuestions)
+  ) {
+    return false;
+  }
+
+  return Object.values(categoryQuestions).some(
+    (questions) => Array.isArray(questions) && questions.length > 0,
+  );
+};
+
+const buildFeedbackFormPayload = (body) => {
+  const { title, type_of_course, category_questions } = body;
+  const courseType = normalizeFeedbackCourseType(type_of_course);
+
+  if (!title || !String(title).trim()) {
+    return { error: "Title is required" };
+  }
+
+  if (!courseType) {
+    return { error: "type_of_course must be Online or Offline" };
+  }
+
+  if (!hasCategoryQuestions(category_questions)) {
+    return { error: "category_questions must contain at least one question" };
+  }
+
+  return {
+    payload: {
+      ...body,
+      title: String(title).trim(),
+      type_of_course: courseType,
+    },
+  };
+};
+
 class FeedbackFormController {
   static async create(req, res) {
     try {
-      const { title, type_of_course, status, category_questions } = req.body;
-
-      if (!title || !type_of_course || !category_questions) {
-        return res.status(400).json({ message: "Missing required fields" });
+      const { error, payload } = buildFeedbackFormPayload(req.body);
+      if (error) {
+        return res.status(400).json({ message: error });
       }
 
-      await FeedbackFormDao.create(req.body);
+      await FeedbackFormDao.create(payload);
       res.status(201).json({ message: "Feedback Form created successfully" });
     } catch (error) {
       console.error(error);
@@ -57,12 +103,12 @@ class FeedbackFormController {
 
   static async update(req, res) {
     try {
-      const { title, type_of_course, status, category_questions } = req.body;
-      if (!title || !type_of_course || !category_questions) {
-        return res.status(400).json({ message: "Missing required fields" });
+      const { error, payload } = buildFeedbackFormPayload(req.body);
+      if (error) {
+        return res.status(400).json({ message: error });
       }
 
-      await FeedbackFormDao.update(req.params.id, req.body);
+      await FeedbackFormDao.update(req.params.id, payload);
       res.json({ message: "Feedback Form updated successfully" });
     } catch (error) {
       console.error(error);
