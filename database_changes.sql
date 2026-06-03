@@ -848,3 +848,22 @@ ALTER TABLE `courses_enrollment`
 -- certificate generation, all reports, and participant counts.
 ALTER TABLE `courses_enrollment`
   ADD COLUMN `is_observer` TINYINT(1) DEFAULT 0;
+
+-- Date: 2026-06-02 - Duplicate Candidate Merge
+-- ---------------------------------------------------------
+-- Audit table for admin-driven duplicate candidate merges.
+CREATE TABLE IF NOT EXISTS `candidate_merge_audits` (
+  `id` CHAR(36) PRIMARY KEY,
+  `master_candidate_id` CHAR(36) NOT NULL,
+  `duplicate_candidate_ids` JSON NOT NULL,
+  `selected_field_sources` JSON NOT NULL,
+  `moved_record_counts` JSON NOT NULL,
+  `remarks` TEXT NULL,
+  `merged_by` CHAR(36) NOT NULL,
+  `merged_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Trace soft-deleted duplicate users back to the surviving master candidate.
+ALTER TABLE `users`
+  ADD COLUMN IF NOT EXISTS `merged_into_user_id` CHAR(36) NULL,
+  ADD COLUMN IF NOT EXISTS `merged_at` DATETIME NULL;

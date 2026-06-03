@@ -83,6 +83,10 @@ const activityLogger = (req, res, next) => {
         details = `Created Feedback Category: ${req.body.name}`;
       }
 
+      if (req.method === "POST" && urlPath === "/api/feedback-forms" && req.body?.title) {
+        details = `Created Feedback Form: ${req.body.title}`;
+      }
+
       // Insert Log
       await LogDao.createLog({
         user_id: userId,
