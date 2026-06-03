@@ -11,6 +11,7 @@ const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  timezone: 'Z',
 });
 
 pool.on("acquire", (connection) => {
