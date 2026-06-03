@@ -35,6 +35,53 @@ const getAllCandidates = async (req, res) => {
   }
 };
 
+const getMergePreview = async (req, res) => {
+  try {
+    const { candidate_ids } = req.body;
+    const preview = await CandidateDao.getMergePreview(candidate_ids);
+    res.status(200).json(preview);
+  } catch (error) {
+    console.error("Candidate Merge Preview Error:", error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
+      message: statusCode < 500 ? error.message : "Server error",
+      error: error.message,
+    });
+  }
+};
+
+const mergeCandidates = async (req, res) => {
+  try {
+    const result = await CandidateDao.mergeDuplicateCandidates(
+      req.body,
+      req.user?.id || null,
+    );
+
+    if (req.user && req.user.id) {
+      await LogDao.createLog({
+        user_id: req.user.id,
+        action: "MERGE_CANDIDATES",
+        details: `Merged duplicate candidates ${result.duplicate_candidate_ids.join(", ")} into ${result.master_candidate_id}`,
+        ip_address: req.ip,
+        user_agent: req.get("User-Agent"),
+      });
+      req.skipActivityLog = true;
+    }
+
+    res.status(200).json({
+      message: "Candidates merged successfully",
+      ...result,
+    });
+  } catch (error) {
+    console.error("Merge Candidates Error:", error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
+      message: statusCode < 500 ? error.message : "Server error",
+      error: error.message,
+    });
+  }
+};
+
 const deleteCandidate = async (req, res) => {
   try {
     const { id } = req.params;
@@ -185,6 +232,8 @@ const exportCandidates = async (req, res) => {
 
 module.exports = {
   getAllCandidates,
+  getMergePreview,
+  mergeCandidates,
   deleteCandidate,
   getCandidateById,
   updateCandidate,

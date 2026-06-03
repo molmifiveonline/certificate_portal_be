@@ -239,7 +239,7 @@ class AssessmentDao {
     // Create placeholders ?, ?, ? for the IN clause
     const placeholders = questionIds.map(() => "?").join(",");
     const query = `
-      SELECT id, question, option_a, option_b, option_c, option_d, image, opt_img_a, opt_img_b, opt_img_c, opt_img_d
+      SELECT id, question, option_a, option_b, option_c, option_d, correct_option, image, opt_img_a, opt_img_b, opt_img_c, opt_img_d
       FROM question_bank
       WHERE id IN (${placeholders}) AND status = 1
     `;
@@ -255,12 +255,13 @@ class AssessmentDao {
         a.title, 
         a.type_of_test,
         a.num_of_questions,
-        ar.score,
+        ar.score AS latest_score,
         ar.total_questions,
         ar.correct_answers,
         ar.status as test_status,
-        ar.created_at as test_date,
-        ar.attempt_number
+        ar.created_at as latest_attempt_date,
+        ar.attempt_number AS attempts,
+        3 AS max_attempts
       FROM assessment a
       LEFT JOIN assessment_results ar ON a.id = ar.assessment_id 
         AND ar.candidate_id = ? 

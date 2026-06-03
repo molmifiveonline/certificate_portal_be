@@ -3,6 +3,8 @@ const router = express.Router();
 const {
   getAllCandidates,
   getCandidateById,
+  getMergePreview,
+  mergeCandidates,
   updateCandidate,
   deleteCandidate,
   exportCandidates,
@@ -43,6 +45,18 @@ router.post(
 router.use(protect);
 
 router.get("/", authorize("Admin", "SuperAdmin"), getAllCandidates);
+router.post(
+  "/merge-preview",
+  authorize("Admin", "SuperAdmin"),
+  checkPermission("edit_candidate"),
+  getMergePreview,
+);
+router.post(
+  "/merge",
+  authorize("Admin", "SuperAdmin"),
+  checkPermission("edit_candidate"),
+  mergeCandidates,
+);
 router.get(
   "/export",
   authorize("Admin", "SuperAdmin"),

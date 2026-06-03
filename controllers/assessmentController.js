@@ -958,9 +958,23 @@ exports.submitAssessment = async (req, res) => {
     let correctCount = 0;
     const processedAnswers = answers.map((ans) => {
       const question = questions.find((q) => q.id === ans.question_id);
-      const isCorrect = question
-        ? question.correct_option === ans.selected_option
-        : false;
+      let isCorrect = false;
+      if (question && question.correct_option) {
+        // correct_option may be comma-separated for multi-correct questions.
+        // DB stores e.g. "opt_a", frontend sends "option_a" or "opt_a"
+        const correctOpts = question.correct_option.split(',').map(o => o.trim());
+        const selected = ans.selected_option; // e.g. "option_a"
+        isCorrect = correctOpts.some(co => {
+          if (co === selected) return true;
+          // Map "opt_a" -> "option_a"
+          const mappedOpt = co.replace(/^opt_/, 'option_');
+          if (mappedOpt === selected) return true;
+          // Map "option_a" -> "opt_a" just in case
+          const mappedOptReverse = co.replace(/^option_/, 'opt_');
+          if (mappedOptReverse === selected) return true;
+          return false;
+        });
+      }
       if (isCorrect) correctCount++;
       return {
         ...ans,
