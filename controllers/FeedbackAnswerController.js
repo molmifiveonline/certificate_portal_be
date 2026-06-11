@@ -4,8 +4,11 @@ const ActiveCourseDao = require("../dao/ActiveCourseDao");
 const MasterCourseDao = require("../dao/MasterCourseDao");
 const TrainerDao = require("../dao/trainerDao");
 
-const getFeedbackCourseTypeForCourse = (course) =>
-  course?.type_of_location === "Online" ? "Online" : "Offline";
+const getFeedbackCourseTypeForCourse = (course) => {
+  const locationType = (course?.type_of_location || "").toLowerCase().trim();
+  if (locationType === "online") return "Online";
+  return "Offline";
+};
 
 class FeedbackAnswerController {
   static async submitFeedback(req, res) {
@@ -136,6 +139,7 @@ class FeedbackAnswerController {
       res.json({
         candidate,
         active_course_id: resolvedActiveCourseId,
+        feedback_type: answers[0]?.feedback_type || "N/A",
         answers,
       });
     } catch (error) {
@@ -302,6 +306,7 @@ class FeedbackAnswerController {
           buildLabeledValue("Trainer Name", trainerName),
           buildLabeledValue("Course Date", formatDate(courseDetails?.start_date)),
           buildLabeledValue("Course Location", courseDetails?.type_of_location),
+          buildLabeledValue("Feedback Type", answers[0]?.feedback_type || "N/A"),
           buildLabeledValue("Name of Manager (last served)", candidate?.manager),
           {
             text: "Feedback Details",

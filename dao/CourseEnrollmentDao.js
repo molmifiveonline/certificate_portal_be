@@ -159,7 +159,13 @@ class CourseEnrollmentDao {
     // Note: The previous query used role name which is safer if IDs change, but standardizing.
     // Reverting to role name join for safety as per previous snippet.
     const safeQuery = `
-        SELECT u.id, u.first_name, u.last_name, cp.rank, cp.employee_id as empId, cp.passport_no as cdc_passport, cp.seaman_book_no, cp.manning_company as manager
+        SELECT u.id, u.first_name, u.last_name, cp.rank, cp.employee_id as empId, cp.passport_no as cdc_passport, cp.seaman_book_no, cp.manning_company as manager,
+        (
+          SELECT MAX(cert.issue_date)
+          FROM certificates cert
+          WHERE cert.candidate_id = u.id
+            AND cert.issue_date IS NOT NULL
+        ) as previous_certificate_date
         FROM users u
         JOIN candidate_profiles cp ON u.id = cp.user_id
         JOIN roles r ON u.role_id = r.id
