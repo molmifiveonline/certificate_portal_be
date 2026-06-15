@@ -402,7 +402,7 @@ const getPendingAdminApprovals = async (course_id) => {
          JOIN users u ON ce.candidate_id = u.id
          LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
          LEFT JOIN nominators n ON ce.nominator_id = n.id
-         WHERE ce.course_id = ? AND ce.candidate_approval_status IN ('Approved', 'Rejected')`,
+         WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)`,
     [course_id],
   );
   return rows;
@@ -437,6 +437,7 @@ const getRejectedCandidateApprovals = async (options = {}) => {
   let whereClause = `
     WHERE c.is_pre_active = 1
       AND ce.candidate_approval_status = 'Rejected'
+      AND (ce.status != 'Deleted' OR ce.status IS NULL)
   `;
   const params = [];
   const countParams = [];
@@ -637,7 +638,7 @@ const getNominatorEnrollments = async (courseId, nominatorId) => {
      FROM courses_enrollment ce
      JOIN users u ON ce.candidate_id = u.id
      LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
-     WHERE ce.course_id = ? AND ce.nominator_id = ?`,
+     WHERE ce.course_id = ? AND ce.nominator_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)`,
     [courseId, nominatorId],
   );
   return rows;

@@ -26,7 +26,6 @@ const getSystemManual = async (req, res) => {
     if (!manual) {
       return error(res, 404, "System Manual not found");
     }
-
     return ok(res, "System Manual fetched successfully", manual);
   } catch (err) {
     console.error("Get System Manual Error:", err);
@@ -36,7 +35,7 @@ const getSystemManual = async (req, res) => {
 
 const addSystemManual = async (req, res) => {
   try {
-    const { title, document_type, url_link } = req.body;
+    const { title, category_id, document_type, url_link } = req.body;
 
     if (!title) {
       return error(res, 400, "Title is required");
@@ -69,6 +68,7 @@ const addSystemManual = async (req, res) => {
 
     const manualId = await SystemManualDao.createSystemManual({
       title,
+      category_id: category_id || null,
       document_type,
       file_name,
       file_original_name,
@@ -97,9 +97,9 @@ const addSystemManual = async (req, res) => {
 const updateSystemManual = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, document_type, url_link } = req.body;
+    const { title, category_id, document_type, url_link } = req.body;
 
-    // Fetch existing logic to maintain state if needed
+    // Fetch existing to maintain state
     const existing = await SystemManualDao.getSystemManualById(id);
     if (!existing) {
       return error(res, 404, "System Manual not found");
@@ -107,6 +107,7 @@ const updateSystemManual = async (req, res) => {
 
     const updateData = {};
     if (title !== undefined) updateData.title = title;
+    if (category_id !== undefined) updateData.category_id = category_id || null;
 
     if (document_type !== undefined) {
       if (!["file", "url"].includes(document_type)) {
@@ -124,13 +125,8 @@ const updateSystemManual = async (req, res) => {
           updateData.file_original_name = req.file.originalname;
           updateData.url_link = null; // Clear URL if switching to file
         }
-        // If no req.file but moving to 'file', we might want to keep old file if it existed, or throw an error based on frontend logic.
-        // Here we assume if they send form with 'file' type, they must provide file OR the old file continues.
       } else if (document_type === "url") {
-        if (!url_link) {
-          // Keep old URL if new is blank, or override? We assume override since it's an update
-          if (url_link !== undefined) updateData.url_link = url_link;
-        } else {
+        if (url_link !== undefined) {
           updateData.url_link = url_link;
         }
         updateData.file_name = null; // Clear files if switching to url

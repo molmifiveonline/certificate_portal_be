@@ -56,6 +56,8 @@ class FeedbackAnswerDao {
         cp.manning_company,
         cp.employee_id,
         c.course_name as active_course_name,
+        c.start_date,
+        c.end_date,
         COALESCE(ff.type_of_course, 'N/A') as feedback_type,
         AVG(CASE WHEN fq.type = 'rating' THEN CAST(fa.answer AS DECIMAL(10, 2)) ELSE NULL END) as average_rating
       FROM feedback_question_answer fa
@@ -91,7 +93,7 @@ class FeedbackAnswerDao {
       baseQuery += ` WHERE ` + whereClauses.join(" AND ");
     }
 
-    baseQuery += ` GROUP BY fa.candidate_id, fa.active_course_id, u.first_name, u.last_name, u.email, cp.rank, cp.manning_company, cp.employee_id, c.course_name, ff.type_of_course`;
+    baseQuery += ` GROUP BY fa.candidate_id, fa.active_course_id, u.first_name, u.last_name, u.email, cp.rank, cp.manning_company, cp.employee_id, c.course_name, c.start_date, c.end_date, ff.type_of_course`;
     baseQuery += ` ORDER BY effective_date DESC`;
 
     // Pagination

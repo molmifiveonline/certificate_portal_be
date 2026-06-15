@@ -157,7 +157,7 @@ class ActiveCourseDao {
   static async getById(id) {
     const predicate = await this.buildActivePredicate("c");
     const query = `
-      SELECT c.*, mc.certificate_type 
+      SELECT c.*, mc.certificate_type, mc.trainer_material_link, mc.candidate_material_link, mc.study_material_link
       FROM courses c
       LEFT JOIN master_course mc ON c.master_course_id = mc.id
       WHERE c.id = ? AND ${predicate}

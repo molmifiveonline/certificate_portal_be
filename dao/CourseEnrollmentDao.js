@@ -110,7 +110,7 @@ class CourseEnrollmentDao {
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
-      WHERE ce.course_id = ?
+      WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
     `;
     const [rows] = await pool.execute(query, [courseId]);
     return rows;

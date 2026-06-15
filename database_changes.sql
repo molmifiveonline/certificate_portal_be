@@ -867,3 +867,35 @@ CREATE TABLE IF NOT EXISTS `candidate_merge_audits` (
 ALTER TABLE `users`
   ADD COLUMN IF NOT EXISTS `merged_into_user_id` CHAR(36) NULL,
   ADD COLUMN IF NOT EXISTS `merged_at` DATETIME NULL;
+
+-- Date: 2026-06-15
+-- ---------------------------------------------------------
+-- Replace single material_link with trainer, candidate, and study material links
+ALTER TABLE `master_course`
+  ADD COLUMN `trainer_material_link` TEXT DEFAULT NULL AFTER `remarks`,
+  ADD COLUMN `candidate_material_link` TEXT DEFAULT NULL AFTER `trainer_material_link`,
+  ADD COLUMN `study_material_link` TEXT DEFAULT NULL AFTER `candidate_material_link`;
+
+-- Migrate existing material_link data to candidate_material_link
+UPDATE `master_course` SET `candidate_material_link` = `material_link`;
+
+-- Drop the old material_link column
+ALTER TABLE `master_course` DROP COLUMN `material_link`;
+
+-- Date: 2026-06-15 - System Manual Category Master
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `system_manual_categories` (
+  `id` VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` TEXT COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `status` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `system_manuals`
+  ADD COLUMN `category_id` VARCHAR(255) COLLATE utf8mb4_unicode_ci NULL AFTER `title`,
+  ADD CONSTRAINT `fk_system_manuals_category` FOREIGN KEY (`category_id`) REFERENCES `system_manual_categories` (`id`) ON DELETE SET NULL;
+
+
