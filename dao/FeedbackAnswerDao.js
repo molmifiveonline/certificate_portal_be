@@ -56,12 +56,16 @@ class FeedbackAnswerDao {
         cp.manning_company,
         cp.employee_id,
         c.course_name as active_course_name,
+        c.start_date,
+        c.end_date,
+        COALESCE(ff.type_of_course, 'N/A') as feedback_type,
         AVG(CASE WHEN fq.type = 'rating' THEN CAST(fa.answer AS DECIMAL(10, 2)) ELSE NULL END) as average_rating
       FROM feedback_question_answer fa
       JOIN users u ON fa.candidate_id = u.id
       LEFT JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN courses c ON fa.active_course_id = c.id
       LEFT JOIN feedback_questions fq ON fa.feedback_question_id = fq.id
+      LEFT JOIN feedback_forms ff ON fa.feedback_id = ff.id
     `;
 
     const params = [];
@@ -89,7 +93,7 @@ class FeedbackAnswerDao {
       baseQuery += ` WHERE ` + whereClauses.join(" AND ");
     }
 
-    baseQuery += ` GROUP BY fa.candidate_id, fa.active_course_id, u.first_name, u.last_name, u.email, cp.rank, cp.manning_company, cp.employee_id, c.course_name`;
+    baseQuery += ` GROUP BY fa.candidate_id, fa.active_course_id, u.first_name, u.last_name, u.email, cp.rank, cp.manning_company, cp.employee_id, c.course_name, c.start_date, c.end_date, ff.type_of_course`;
     baseQuery += ` ORDER BY effective_date DESC`;
 
     // Pagination
@@ -215,11 +219,13 @@ class FeedbackAnswerDao {
         fa.*,
         fq.question,
         fq.type,
-        COALESCE(fcq.name, fca.name) as category_name
+        COALESCE(fcq.name, fca.name) as category_name,
+        COALESCE(ff.type_of_course, 'N/A') as feedback_type
       FROM feedback_question_answer fa
       JOIN feedback_questions fq ON fa.feedback_question_id = fq.id
       LEFT JOIN feedback_categories fcq ON fq.category_id = fcq.id
       LEFT JOIN feedback_categories fca ON fa.feedback_category_id = fca.id
+      LEFT JOIN feedback_forms ff ON fa.feedback_id = ff.id
       WHERE fa.candidate_id = ? AND fa.active_course_id = ?
       ORDER BY fa.created_at ASC, fa.id ASC
     `;

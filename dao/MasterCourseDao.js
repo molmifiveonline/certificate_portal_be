@@ -11,11 +11,13 @@ class MasterCourseDao {
       expiry_date = null,
       description = null,
       remarks = null,
-      material_link = null,
+      trainer_material_link = null,
+      candidate_material_link = null,
+      study_material_link = null,
     } = data;
     const query = `
-            INSERT INTO master_course (id, topic, master_course_name, certificate_type, expiry_date, description, remarks, material_link, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            INSERT INTO master_course (id, topic, master_course_name, certificate_type, expiry_date, description, remarks, trainer_material_link, candidate_material_link, study_material_link, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `;
     await pool.execute(query, [
       id,
@@ -25,7 +27,9 @@ class MasterCourseDao {
       expiry_date,
       description,
       remarks,
-      material_link,
+      trainer_material_link,
+      candidate_material_link,
+      study_material_link,
     ]);
     return { id, ...data };
   }
@@ -92,11 +96,13 @@ class MasterCourseDao {
       expiry_date = null,
       description = null,
       remarks = null,
-      material_link = null,
+      trainer_material_link = null,
+      candidate_material_link = null,
+      study_material_link = null,
     } = data;
     const query = `
             UPDATE master_course 
-            SET topic = ?, master_course_name = ?, certificate_type = ?, expiry_date = ?, description = ?, remarks = ?, material_link = ?
+            SET topic = ?, master_course_name = ?, certificate_type = ?, expiry_date = ?, description = ?, remarks = ?, trainer_material_link = ?, candidate_material_link = ?, study_material_link = ?
             WHERE id = ?
         `;
     const [result] = await pool.execute(query, [
@@ -106,7 +112,9 @@ class MasterCourseDao {
       expiry_date,
       description,
       remarks,
-      material_link,
+      trainer_material_link,
+      candidate_material_link,
+      study_material_link,
       id,
     ]);
     if (result.affectedRows > 0) {

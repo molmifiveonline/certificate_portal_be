@@ -91,12 +91,17 @@ class CandidateDao {
   }
 
   static async getAllCandidates(filters = {}) {
+    const hasMergedIntoColumn = await hasColumn("users", "merged_into_user_id");
     let baseQuery = `
       FROM users u
       JOIN candidate_profiles cp ON u.id = cp.user_id
       JOIN roles r ON u.role_id = r.id
       WHERE r.name = 'candidate'
     `;
+
+    if (hasMergedIntoColumn) {
+      baseQuery += " AND u.merged_into_user_id IS NULL";
+    }
 
     const params = [];
 
@@ -322,12 +327,17 @@ class CandidateDao {
   }
 
   static async exportCandidates(filters = {}) {
+    const hasMergedIntoColumn = await hasColumn("users", "merged_into_user_id");
     let baseQuery = `
       FROM users u
       JOIN candidate_profiles cp ON u.id = cp.user_id
       JOIN roles r ON u.role_id = r.id
       WHERE r.name = 'candidate'
     `;
+
+    if (hasMergedIntoColumn) {
+      baseQuery += " AND u.merged_into_user_id IS NULL";
+    }
 
     const params = [];
 
