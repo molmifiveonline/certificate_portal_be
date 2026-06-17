@@ -112,13 +112,13 @@ class CandidateDao {
     }
 
     if (filters.manager) {
-      baseQuery += ` AND cp.manager = ?`;
-      params.push(filters.manager);
+      baseQuery += ` AND cp.manager LIKE ?`;
+      params.push(`%${filters.manager}%`);
     }
 
     if (filters.rank) {
-      baseQuery += ` AND cp.rank = ?`;
-      params.push(filters.rank);
+      baseQuery += ` AND cp.rank LIKE ?`;
+      params.push(`%${filters.rank}%`);
     }
 
     if (filters.nationality) {
@@ -348,13 +348,13 @@ class CandidateDao {
     }
 
     if (filters.manager) {
-      baseQuery += ` AND cp.manager = ?`;
-      params.push(filters.manager);
+      baseQuery += ` AND cp.manager LIKE ?`;
+      params.push(`%${filters.manager}%`);
     }
 
     if (filters.rank) {
-      baseQuery += ` AND cp.rank = ?`;
-      params.push(filters.rank);
+      baseQuery += ` AND cp.rank LIKE ?`;
+      params.push(`%${filters.rank}%`);
     }
 
     if (filters.nationality) {
