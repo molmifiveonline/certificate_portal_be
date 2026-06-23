@@ -9,6 +9,7 @@ router.use(protect);
 
 router.get("/filter-options", checkPermission("view_reports"), ReportController.getFilterOptions);
 router.post("/feedback/export", checkPermission("export_reports"), ReportController.exportFeedbackReport);
+router.post("/training-record/export", checkPermission("export_reports"), ReportController.exportTrainingRecordReport);
 router.post(
   "/feedback/bulk-download-pdf",
   checkPermission("export_reports"),

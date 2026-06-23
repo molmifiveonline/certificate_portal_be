@@ -8,6 +8,23 @@ const ActiveCourseDao = require("../../dao/ActiveCourseDao");
 const MasterCourseDao = require("../../dao/MasterCourseDao");
 const TrainerDao = require("../../dao/trainerDao");
 
+const TRAINING_RECORD_MONTH_HEADERS = [
+  "Jan.",
+  "Feb.",
+  "Mar.",
+  "Apr.",
+  "May",
+  "June",
+  "July",
+  "Aug.",
+  "Sep.",
+  "Oct.",
+  "Nov.",
+  "Dec.",
+];
+
+const TRAINING_RECORD_SECTION_ORDER = ["Online", "Offline", "Outhouse"];
+
 exports.getFilterOptions = async (req, res) => {
   try {
     const [topics, managers, companies] = await Promise.all([
@@ -506,6 +523,54 @@ exports.exportCertificateReport = async (req, res) => {
   }
 };
 
+exports.exportTrainingRecordReport = async (req, res) => {
+  try {
+    const { year } = req.body;
+    const parsedYear = Number(year);
+    const currentYear = new Date().getUTCFullYear();
+
+    if (
+      !year ||
+      !Number.isInteger(parsedYear) ||
+      parsedYear < 2000 ||
+      parsedYear > currentYear
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid year.",
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const reportData = await ReportDao.getTrainingRecordReport(parsedYear, today);
+
+    if (reportData.length === 0) {
+      return res.status(404).json({
+        message: "No completed training data found for the specified year.",
+      });
+    }
+
+    const normalizedRows = normalizeTrainingRecordRows(reportData);
+    const workbook = buildTrainingRecordWorkbook(parsedYear, normalizedRows);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="TRG-218_Training_Record_${parsedYear}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export Training Record Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
 exports.bulkDownloadFeedbackPDFs = async (req, res) => {
   try {
     const { start_date, end_date, topic, manager } = req.body;
@@ -805,3 +870,397 @@ exports.getHotelReport = async (req, res) => {
       .json({ message: "Internal Server Error", error: error.message });
   }
 };
+
+function normalizeTrainingRecordRows(courseInstances) {
+  const grouped = new Map();
+
+  courseInstances.forEach((item) => {
+    const courseName = item.course_name || "Untitled Course";
+    const trainingPeriodDays = Number(item.training_period_days) || 0;
+    const monthIndex = Math.max(0, (Number(item.end_month) || 1) - 1);
+    const traineeCount = Number(item.trainee_count) || 0;
+    const section = getTrainingRecordSection(item);
+    const key = `${section}__${courseName}__${trainingPeriodDays}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        section,
+        courseName,
+        trainingPeriodDays,
+        monthlyTime: Array(12).fill(0),
+        monthlyTrainees: Array(12).fill(0),
+      });
+    }
+
+    const current = grouped.get(key);
+    current.monthlyTime[monthIndex] += 1;
+    current.monthlyTrainees[monthIndex] += traineeCount;
+  });
+
+  return Array.from(grouped.values())
+    .map((item, index) => {
+      const totalTime = item.monthlyTime.reduce((sum, value) => sum + value, 0);
+      const totalTrainees = item.monthlyTrainees.reduce(
+        (sum, value) => sum + value,
+        0,
+      );
+
+      return {
+        serialNo: index + 1,
+        section: item.section,
+        courseName: item.courseName,
+        trainingPeriodDays: item.trainingPeriodDays,
+        monthlyTime: item.monthlyTime,
+        monthlyTrainees: item.monthlyTrainees,
+        totalTime,
+        totalTrainees,
+        totalMandays: totalTrainees * item.trainingPeriodDays,
+      };
+    })
+    .sort((a, b) => {
+      const sectionDifference =
+        TRAINING_RECORD_SECTION_ORDER.indexOf(a.section) -
+        TRAINING_RECORD_SECTION_ORDER.indexOf(b.section);
+      if (sectionDifference !== 0) {
+        return sectionDifference;
+      }
+      if (a.courseName !== b.courseName) {
+        return a.courseName.localeCompare(b.courseName);
+      }
+      return a.trainingPeriodDays - b.trainingPeriodDays;
+    })
+    .map((item, index) => ({
+      ...item,
+      serialNo: index + 1,
+    }));
+}
+
+function buildTrainingRecordWorkbook(year, rows) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("SFGMO - Monthly Completed list");
+
+  worksheet.columns = [
+    { width: 14 },
+    { width: 52.11 },
+    { width: 12.33 },
+    { width: 20.11 },
+    { width: 10.66 },
+    { width: 10.11 },
+    { width: 9 },
+    { width: 10.66 },
+    { width: 10.11 },
+    { width: 10 },
+    { width: 10.44 },
+    { width: 10.33 },
+    { width: 10.78 },
+    { width: 10.33 },
+    { width: 10 },
+    { width: 10.11 },
+    { width: 10.33 },
+    { width: 12.78 },
+    { width: 13.44 },
+    { width: 9.33 },
+  ];
+
+  addTrainingRecordHeader(worksheet, year);
+  addTrainingRecordRows(worksheet, rows);
+  const totalRowNumbers = addTrainingRecordTotals(worksheet, rows);
+  styleTrainingRecordSheet(worksheet, totalRowNumbers);
+
+  return workbook;
+}
+
+function addTrainingRecordHeader(worksheet, year) {
+  worksheet.getCell("A1").value = "MOL Maritime (India) Pvt. Ltd.";
+  worksheet.mergeCells("A1:L2");
+  worksheet.getCell("S1").value = "TRG/218";
+  worksheet.getCell("S2").value = "Rev. No. 6.0";
+
+  worksheet.getCell("A3").value = `TRAINING RECORD ${year}`;
+  worksheet.mergeCells("A3:R4");
+  worksheet.getCell("S3").value = "02 May 2019";
+  worksheet.getCell("S4").value = "Page 2 of 2";
+
+  worksheet.getCell("A5").value = "Venue: MOLMI";
+  worksheet.getCell("A6").value =
+    "THESE FIGURES DO NOT INCLUDE MAKER SPECIFIC TRAINING";
+  worksheet.getCell("A7").value =
+    "Training Location: ONLINE / OFFLINE / OUTHOUSE";
+}
+
+function addTrainingRecordTableHeader(worksheet) {
+  const rowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "No",
+    "Course name",
+    "Training \r\nPeriod\r\n (day)",
+    "",
+    ...TRAINING_RECORD_MONTH_HEADERS,
+    "Total\r\nTime",
+    "Total \r\nTrainees",
+    "TOTAL MANDAYS",
+    "",
+  ]);
+  return rowNumber;
+}
+
+function addTrainingRecordRows(worksheet, rows) {
+  let currentSection = "";
+
+  rows.forEach((item) => {
+    if (item.section !== currentSection) {
+      currentSection = item.section;
+      addTrainingRecordSectionHeader(worksheet, currentSection);
+      addTrainingRecordTableHeader(worksheet);
+    }
+
+    const timeRowNumber = worksheet.rowCount + 1;
+    const traineeRowNumber = timeRowNumber + 1;
+
+    worksheet.addRow([
+      item.serialNo,
+      item.courseName,
+      item.trainingPeriodDays,
+      " Time of Training",
+      ...item.monthlyTime.map(toDisplayValue),
+      toDisplayValue(item.totalTime),
+      "",
+      "",
+      "",
+    ]);
+
+    worksheet.addRow([
+      "",
+      "",
+      "",
+      " Total trainees",
+      ...item.monthlyTrainees.map(toDisplayValue),
+      "",
+      toDisplayValue(item.totalTrainees),
+      toDisplayValue(item.totalMandays),
+      "",
+    ]);
+
+    worksheet.mergeCells(`A${timeRowNumber}:A${traineeRowNumber}`);
+    worksheet.mergeCells(`B${timeRowNumber}:B${traineeRowNumber}`);
+    worksheet.getCell(`A${timeRowNumber}`).alignment = {
+      horizontal: "center",
+      vertical: "middle",
+    };
+    worksheet.getCell(`B${timeRowNumber}`).alignment = {
+      vertical: "middle",
+      wrapText: true,
+    };
+  });
+}
+
+function addTrainingRecordSectionHeader(worksheet, section) {
+  const rowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([getTrainingRecordSectionLabel(section)]);
+  worksheet.mergeCells(`A${rowNumber}:T${rowNumber}`);
+  const cell = worksheet.getCell(`A${rowNumber}`);
+  cell.font = { name: "Arial", bold: true, size: 11 };
+  cell.alignment = { horizontal: "left", vertical: "middle" };
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "D9EEF9" },
+  };
+  cell.border = {
+    top: { style: "thin" },
+    left: { style: "thin" },
+    bottom: { style: "thin" },
+    right: { style: "thin" },
+  };
+}
+
+function addTrainingRecordTotals(worksheet, rows) {
+  const monthlyTimeTotals = Array(12).fill(0);
+  const monthlyTraineeTotals = Array(12).fill(0);
+  const monthlyMandaysTotals = Array(12).fill(0);
+
+  let totalTime = 0;
+  let totalTrainees = 0;
+  let totalMandays = 0;
+
+  rows.forEach((item) => {
+    totalTime += item.totalTime;
+    totalTrainees += item.totalTrainees;
+    totalMandays += item.totalMandays;
+
+    item.monthlyTime.forEach((value, index) => {
+      monthlyTimeTotals[index] += value;
+    });
+
+    item.monthlyTrainees.forEach((value, index) => {
+      monthlyTraineeTotals[index] += value;
+      monthlyMandaysTotals[index] += value * item.trainingPeriodDays;
+    });
+  });
+
+  const totalTimeRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "TOTAL TIME",
+    "",
+    "",
+    "",
+    ...monthlyTimeTotals.map(toDisplayValue),
+    toDisplayValue(totalTime),
+    "",
+    "",
+    "",
+  ]);
+
+  const totalTraineesRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "Total \r\nTrainees",
+    "",
+    "",
+    "",
+    ...monthlyTraineeTotals.map(toDisplayValue),
+    toDisplayValue(totalTime),
+    toDisplayValue(totalTrainees),
+    toDisplayValue(totalMandays),
+    "",
+  ]);
+
+  const spacerRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([]);
+
+  const totalMandaysRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "",
+    "TOTAL MAN DAYS",
+    "",
+    "Outhouse",
+    ...monthlyMandaysTotals.map(toDisplayValue),
+    "",
+    "",
+    toDisplayValue(totalMandays),
+    "",
+  ]);
+
+  return {
+    totalTimeRowNumber,
+    totalTraineesRowNumber,
+    spacerRowNumber,
+    totalMandaysRowNumber,
+  };
+}
+
+function styleTrainingRecordSheet(worksheet, totalRowNumbers) {
+  [1, 2, 3, 4, 5, 6, 7].forEach((rowNumber) => {
+    worksheet.getRow(rowNumber).font = { name: "Arial", bold: rowNumber <= 7 };
+  });
+
+  worksheet.getCell("A1").font = { name: "Arial", bold: true, size: 18 };
+  worksheet.getCell("A3").font = { name: "Arial", bold: true, size: 18 };
+  worksheet.getCell("S1").font = { name: "Arial", bold: true, size: 12 };
+  worksheet.getCell("S2").font = { name: "Arial", bold: true, size: 12 };
+  worksheet.getCell("S3").font = { name: "Arial", bold: true, size: 12 };
+  worksheet.getCell("S4").font = { name: "Arial", bold: true, size: 12 };
+  worksheet.getCell("A6").font = { name: "Arial", bold: true, italic: true };
+
+  for (let rowNumber = 8; rowNumber <= worksheet.rowCount; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+      const rowLabel = row.getCell(1).value;
+      const isSectionHeader =
+        typeof rowLabel === "string" &&
+        rowLabel.startsWith("Training Location:");
+      const isTableHeader = isTrainingRecordTableHeaderRow(row);
+
+      cell.font = cell.font || { name: "Arial", size: 10 };
+      if (isSectionHeader) {
+        return;
+      }
+      if (isTableHeader) {
+        cell.font = { name: "Arial", bold: true, size: 10 };
+      }
+      cell.alignment = {
+        horizontal:
+          columnNumber === 2 || columnNumber === 4 ? "left" : "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    if (isTrainingRecordTableHeaderRow(row)) {
+      row.height = 34;
+    }
+  }
+
+  worksheet.getRow(totalRowNumbers.totalTimeRowNumber).font = {
+    name: "Arial",
+    bold: true,
+    size: 10,
+  };
+  worksheet.getRow(totalRowNumbers.totalTraineesRowNumber).font = {
+    name: "Arial",
+    bold: true,
+    size: 10,
+  };
+  worksheet.getRow(totalRowNumbers.totalMandaysRowNumber).font = {
+    name: "Arial",
+    bold: true,
+    size: 10,
+  };
+  worksheet.getRow(totalRowNumbers.spacerRowNumber).eachCell(
+    { includeEmpty: true },
+    (cell) => {
+      cell.border = {};
+    },
+  );
+
+  for (let rowNumber = 9; rowNumber <= worksheet.rowCount; rowNumber += 2) {
+    const row = worksheet.getRow(rowNumber);
+    if (row.getCell(4).value === " Time of Training") {
+      row.height = 20;
+    }
+  }
+}
+
+function toDisplayValue(value) {
+  return value ? value : "";
+}
+
+function getTrainingRecordSection(item) {
+  const courseType = (item.course_type || "").trim().toLowerCase();
+  const location = (item.type_of_location || "").trim().toLowerCase();
+
+  if (courseType.includes("out house") || courseType.includes("outhouse")) {
+    return "Outhouse";
+  }
+
+  if (location === "online") {
+    return "Online";
+  }
+
+  return "Offline";
+}
+
+function getTrainingRecordSectionLabel(section) {
+  if (section === "Online") {
+    return "Training Location:MOLMI - ONLINE";
+  }
+
+  if (section === "Outhouse") {
+    return "Training Location: OUTHOUSE";
+  }
+
+  return "Training Location:MOLMI - OFFLINE";
+}
+
+function isTrainingRecordTableHeaderRow(row) {
+  return (
+    row.getCell(1).value === "No" &&
+    row.getCell(2).value === "Course name" &&
+    row.getCell(3).value === "Training \r\nPeriod\r\n (day)"
+  );
+}
