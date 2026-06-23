@@ -24,6 +24,65 @@ const TRAINING_RECORD_MONTH_HEADERS = [
 ];
 
 const TRAINING_RECORD_SECTION_ORDER = ["Online", "Offline", "Outhouse"];
+const TRG219_DOCUMENT_CODE = "TRG/219";
+const TRG219_DOCUMENT_REVISION = "Rev. 6.1";
+const TRG219_DOCUMENT_DATE = "18 Jun 2024";
+const TRG219_SECTION_DEFINITIONS = [
+  {
+    key: "SIMULATOR_BASED_COURSE",
+    title: "SIMULATOR BASED COURSE",
+    codes: [
+      "LNGSTDMNG",
+      "LNGSTDOPR",
+      "CCRRM",
+      "SHS",
+      "BRM",
+      "ERM",
+      "LICOS",
+      "ECDIS",
+      "NWS",
+      "PEK",
+      "ESDC",
+      "MOLSEC",
+      "MEC",
+      "NCIC",
+    ],
+  },
+  {
+    key: "VESSEL_SPECIFIC_COURSES",
+    title: "VESSEL SPECIFIC COURSES",
+    codes: [
+      "CNTRFAM",
+      "CCHA",
+      "PCCFAM",
+      "PCCADVVER2014",
+      "PCCADV",
+      "PCCR",
+      "PCCA",
+      "PCCAFAM",
+      "BULKA",
+      "BULKADV",
+    ],
+  },
+  {
+    key: "LEADERSHIP_AND_MANAGEMENT",
+    title: "LEADERSHIP AND MANAGEMENT",
+    codes: ["LMC", "RMII", "SSOC", "SIRE", "MOLSEC"],
+  },
+  {
+    key: "MOLMI_OUTHOUSE_COURSES",
+    title: "MOLMI OUTHOUSE COURSES",
+    codes: [],
+  },
+  {
+    key: "OTHER_COURSES",
+    title: "OTHER COURSES",
+    codes: [],
+  },
+];
+const TRG219_SECTION_ORDER = TRG219_SECTION_DEFINITIONS.map(
+  (section) => section.key,
+);
 
 exports.getFilterOptions = async (req, res) => {
   try {
@@ -565,6 +624,74 @@ exports.exportTrainingRecordReport = async (req, res) => {
     res.end();
   } catch (error) {
     console.error("Export Training Record Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
+exports.exportTrainingActivitiesReport = async (req, res) => {
+  try {
+    const { start_month, year } = req.body;
+    const parsedMonth = Number(start_month);
+    const parsedYear = Number(year);
+
+    if (
+      !start_month ||
+      !Number.isInteger(parsedMonth) ||
+      parsedMonth < 1 ||
+      parsedMonth > 12
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid start_month between 1 and 12.",
+      });
+    }
+
+    if (
+      !year ||
+      !Number.isInteger(parsedYear) ||
+      parsedYear < 2000 ||
+      parsedYear > 2100
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid year.",
+      });
+    }
+
+    const windowBounds = getTrainingActivitiesWindow(parsedYear, parsedMonth);
+    const reportData = await ReportDao.getTrainingActivitiesReport(
+      windowBounds.windowStart,
+      windowBounds.windowEnd,
+    );
+
+    if (reportData.length === 0) {
+      return res.status(404).json({
+        message: "No training activity data found for the selected period.",
+      });
+    }
+
+    const normalizedRows = normalizeTrainingActivitiesRows(
+      reportData,
+      windowBounds.weeks,
+    );
+    const workbook = buildTrainingActivitiesWorkbook(
+      normalizedRows,
+      windowBounds,
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="TRG-219_Training_Activities_${windowBounds.fileLabel}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export Training Activities Error:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -1263,4 +1390,491 @@ function isTrainingRecordTableHeaderRow(row) {
     row.getCell(2).value === "Course name" &&
     row.getCell(3).value === "Training \r\nPeriod\r\n (day)"
   );
+}
+
+function getTrainingActivitiesWindow(year, startMonth) {
+  const monthIndex = startMonth - 1;
+  const startDate = new Date(Date.UTC(year, monthIndex, 1));
+  const endDate = new Date(Date.UTC(year, monthIndex + 3, 0));
+  const gridStartDate = new Date(startDate);
+  gridStartDate.setUTCDate(gridStartDate.getUTCDate() - gridStartDate.getUTCDay());
+
+  const gridEndDate = new Date(endDate);
+  gridEndDate.setUTCDate(gridEndDate.getUTCDate() + (6 - gridEndDate.getUTCDay()));
+
+  const weeks = [];
+  const cursor = new Date(gridStartDate);
+  while (cursor <= gridEndDate) {
+    const weekStart = new Date(cursor);
+    const weekEnd = new Date(cursor);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+    weeks.push({
+      start: weekStart,
+      end: weekEnd,
+      label: `${padDate(weekStart.getUTCDate())}-${padDate(weekEnd.getUTCDate())}`,
+      monthKey: `${weekStart.getUTCFullYear()}-${weekStart.getUTCMonth()}`,
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+
+  return {
+    windowStart: toIsoDate(startDate),
+    windowEnd: toIsoDate(endDate),
+    asOnDate: toDisplayDate(startDate),
+    pageLabel: "Page 1 of 1",
+    fileLabel: `${getShortMonthName(monthIndex)}_to_${getShortMonthName(endDate.getUTCMonth())}_${year}`,
+    weeks,
+  };
+}
+
+function normalizeTrainingActivitiesRows(courseInstances, weeks) {
+  const grouped = new Map();
+
+  courseInstances.forEach((item) => {
+    const normalizedCode = normalizeTrainingActivitiesCode(item.topic || item.course_id);
+    const sectionKey = getTrainingActivitiesSectionKey(item, normalizedCode);
+    const durationDays =
+      normalizeTrainingActivitiesDuration(
+        item.no_of_days,
+        item.start_date,
+        item.end_date,
+      );
+    const rowKey = [
+      sectionKey,
+      normalizedCode,
+      (item.master_course_name || item.course_name || "Untitled Course").trim(),
+      normalizeTrainingActivitiesMode(item.type_of_location),
+      durationDays,
+    ].join("__");
+
+    if (!grouped.has(rowKey)) {
+      grouped.set(rowKey, {
+        sectionKey,
+        courseCode: (item.topic || item.course_id || "").trim(),
+        courseName: (item.master_course_name || item.course_name || "Untitled Course").trim(),
+        mode: normalizeTrainingActivitiesMode(item.type_of_location),
+        durationDays,
+        weeklyEntries: weeks.map(() => []),
+      });
+    }
+
+    const current = grouped.get(rowKey);
+    weeks.forEach((week, index) => {
+      const overlap = getDateRangeOverlap(
+        item.start_date,
+        item.end_date,
+        week.start,
+        week.end,
+      );
+      if (overlap) {
+        current.weeklyEntries[index].push(
+          `${padDate(overlap.start.getUTCDate())}-${padDate(overlap.end.getUTCDate())}`,
+        );
+      }
+    });
+  });
+
+  const rows = Array.from(grouped.values())
+    .map((item) => ({
+      ...item,
+      weeklyEntries: item.weeklyEntries.map((weekEntries) =>
+        weekEntries.join("\n"),
+      ),
+    }))
+    .sort((a, b) => {
+      const sectionDifference =
+        TRG219_SECTION_ORDER.indexOf(a.sectionKey) -
+        TRG219_SECTION_ORDER.indexOf(b.sectionKey);
+      if (sectionDifference !== 0) {
+        return sectionDifference;
+      }
+      if (a.courseCode !== b.courseCode) {
+        return a.courseCode.localeCompare(b.courseCode);
+      }
+      return a.courseName.localeCompare(b.courseName);
+    });
+
+  let serialNo = 1;
+  let lastSection = null;
+  return rows.map((row) => {
+    const nextRow = {
+      ...row,
+      serialNo: row.sectionKey === lastSection ? serialNo++ : 1,
+    };
+    if (row.sectionKey !== lastSection) {
+      serialNo = 2;
+      nextRow.serialNo = 1;
+      lastSection = row.sectionKey;
+    }
+    return nextRow;
+  });
+}
+
+function buildTrainingActivitiesWorkbook(rows, windowBounds) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("TRG-219");
+  const weekCount = windowBounds.weeks.length;
+  const totalColumns = 7 + weekCount;
+  const lastColumnLetter = worksheet.getColumn(totalColumns).letter;
+
+  worksheet.columns = [
+    { width: 12 },
+    { width: 18 },
+    { width: 42 },
+    { width: 18 },
+    { width: 14 },
+    { width: 14 },
+    { width: 12 },
+    ...windowBounds.weeks.map(() => ({ width: 12 })),
+  ];
+
+  worksheet.mergeCells(`A1:${worksheet.getColumn(totalColumns - 1).letter}1`);
+  worksheet.getCell("A1").value = sanitizeExcelText("MOL Maritime (India) Pvt. Ltd.");
+  worksheet.getCell(`${lastColumnLetter}1`).value = sanitizeExcelText(TRG219_DOCUMENT_CODE);
+  worksheet.getCell(`${lastColumnLetter}2`).value = sanitizeExcelText(TRG219_DOCUMENT_REVISION);
+  worksheet.getCell(`${lastColumnLetter}3`).value = sanitizeExcelText(TRG219_DOCUMENT_DATE);
+  worksheet.getCell(`${lastColumnLetter}4`).value = sanitizeExcelText(windowBounds.pageLabel);
+
+  worksheet.mergeCells(`B5:E5`);
+  worksheet.getCell("B5").value = sanitizeExcelText(`As on: ${windowBounds.asOnDate}`);
+
+  addTrainingActivitiesHeaderRows(worksheet, windowBounds.weeks);
+  addTrainingActivitiesDataRows(worksheet, rows, weekCount);
+  styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount);
+
+  return workbook;
+}
+
+function addTrainingActivitiesHeaderRows(worksheet, weeks) {
+  const monthRow = worksheet.addRow([
+    sanitizeExcelText("Sr. No."),
+    sanitizeExcelText("Course Code"),
+    sanitizeExcelText("Course Name"),
+    sanitizeExcelText("Mode"),
+    sanitizeExcelText("Duration Days"),
+    "",
+    sanitizeExcelText("Month"),
+    ...weeks.map((week) => sanitizeExcelText(formatMonthHeaderLabel(week.start))),
+  ]);
+  const weekRow = worksheet.addRow([
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    sanitizeExcelText("Week"),
+    ...weeks.map((week) => sanitizeExcelText(week.label)),
+  ]);
+
+  mergeRepeatedMonthCells(worksheet, monthRow.number, weeks);
+  mergeFixedHeaderCells(worksheet, monthRow.number, weekRow.number);
+}
+
+function addTrainingActivitiesDataRows(worksheet, rows, weekCount) {
+  let currentSection = "";
+
+  rows.forEach((item) => {
+    if (item.sectionKey !== currentSection) {
+      currentSection = item.sectionKey;
+      const sectionTitle = sanitizeExcelText(
+        getTrainingActivitiesSectionTitle(currentSection),
+      );
+      const sectionRow = worksheet.addRow([sectionTitle]);
+      worksheet.mergeCells(
+        `A${sectionRow.number}:${worksheet.getColumn(7 + weekCount).letter}${sectionRow.number}`,
+      );
+    }
+
+    worksheet.addRow([
+      item.serialNo,
+      sanitizeExcelText(item.courseCode),
+      sanitizeExcelText(item.courseName),
+      sanitizeExcelText(item.mode),
+      item.durationDays,
+      "",
+      "",
+      ...item.weeklyEntries.map((entry) => sanitizeExcelText(entry)),
+    ]);
+  });
+}
+
+function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
+  worksheet.views = [{ state: "frozen", ySplit: 7, xSplit: 7 }];
+
+  worksheet.getCell("A1").font = { name: "Arial", bold: true, size: 16 };
+  worksheet.getCell("B5").font = { name: "Arial", bold: true, size: 11 };
+
+  for (let rowNumber = 1; rowNumber <= 4; rowNumber++) {
+    const cell = worksheet.getCell(`${worksheet.getColumn(totalColumns).letter}${rowNumber}`);
+    cell.font = { name: "Arial", bold: true, size: 11 };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  }
+
+  [6, 7].forEach((rowNumber) => {
+    const row = worksheet.getRow(rowNumber);
+    row.font = { name: "Arial", bold: true, size: 10 };
+    row.height = 22;
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "D9EEF9" },
+      };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+  });
+
+  for (let rowNumber = 8; rowNumber <= worksheet.rowCount; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const firstCellValue = row.getCell(1).value;
+    const isSectionHeader =
+      typeof firstCellValue === "string" &&
+      TRG219_SECTION_DEFINITIONS.some(
+        (section) => section.title === firstCellValue,
+      );
+
+    row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+      cell.font = cell.font || { name: "Arial", size: 10 };
+      cell.alignment = {
+        horizontal: columnNumber === 3 ? "left" : "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    if (isSectionHeader) {
+      row.font = { name: "Arial", bold: true, size: 11 };
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "E2F0D9" },
+        };
+      });
+      row.height = 20;
+    } else {
+      row.height = 32;
+    }
+  }
+
+  for (let columnNumber = 8; columnNumber <= 7 + weekCount; columnNumber++) {
+    worksheet.getColumn(columnNumber).alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true,
+    };
+  }
+}
+
+function mergeRepeatedMonthCells(worksheet, rowNumber, weeks) {
+  let startIndex = 0;
+
+  while (startIndex < weeks.length) {
+    const monthKey = weeks[startIndex].monthKey;
+    let endIndex = startIndex;
+    while (
+      endIndex + 1 < weeks.length &&
+      weeks[endIndex + 1].monthKey === monthKey
+    ) {
+      endIndex++;
+    }
+
+    const startColumn = worksheet.getColumn(8 + startIndex).letter;
+    const endColumn = worksheet.getColumn(8 + endIndex).letter;
+    if (startIndex !== endIndex) {
+      worksheet.mergeCells(`${startColumn}${rowNumber}:${endColumn}${rowNumber}`);
+    }
+
+    startIndex = endIndex + 1;
+  }
+}
+
+function mergeFixedHeaderCells(worksheet, monthRowNumber, weekRowNumber) {
+  ["A", "B", "C", "D", "E", "F"].forEach((columnLetter) => {
+    worksheet.mergeCells(
+      `${columnLetter}${monthRowNumber}:${columnLetter}${weekRowNumber}`,
+    );
+  });
+}
+
+function getTrainingActivitiesSectionKey(item, normalizedCode) {
+  if (Number(item.is_outhouse) === 1) {
+    return "MOLMI_OUTHOUSE_COURSES";
+  }
+
+  const matchedSection = TRG219_SECTION_DEFINITIONS.find(
+    (section) =>
+      section.key !== "MOLMI_OUTHOUSE_COURSES" &&
+      section.key !== "OTHER_COURSES" &&
+      section.codes.includes(normalizedCode),
+  );
+
+  return matchedSection ? matchedSection.key : "OTHER_COURSES";
+}
+
+function getTrainingActivitiesSectionTitle(sectionKey) {
+  const section = TRG219_SECTION_DEFINITIONS.find(
+    (item) => item.key === sectionKey,
+  );
+  return section ? section.title : "OTHER COURSES";
+}
+
+function normalizeTrainingActivitiesCode(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeTrainingActivitiesMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "Offline";
+  if (normalized.includes("online") && normalized.includes("offline")) {
+    return "Online/ Offline";
+  }
+  if (normalized.includes("online")) return "Online";
+  if (normalized.includes("offline")) return "Offline";
+  return String(value).trim();
+}
+
+function calculateDurationDays(startDate, endDate) {
+  const start = toUtcDateOnly(startDate);
+  const end = toUtcDateOnly(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+  return Math.max(
+    0,
+    Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+  );
+}
+
+function getDateRangeOverlap(startA, endA, startB, endB) {
+  const normalizedStartA = toUtcDateOnly(startA);
+  const normalizedEndA = toUtcDateOnly(endA);
+  const normalizedStartB = toUtcDateOnly(startB);
+  const normalizedEndB = toUtcDateOnly(endB);
+
+  if (
+    Number.isNaN(normalizedStartA.getTime()) ||
+    Number.isNaN(normalizedEndA.getTime()) ||
+    Number.isNaN(normalizedStartB.getTime()) ||
+    Number.isNaN(normalizedEndB.getTime())
+  ) {
+    return null;
+  }
+
+  const start = new Date(
+    Math.max(normalizedStartA.getTime(), normalizedStartB.getTime()),
+  );
+  const end = new Date(
+    Math.min(normalizedEndA.getTime(), normalizedEndB.getTime()),
+  );
+
+  if (start.getTime() > end.getTime()) {
+    return null;
+  }
+
+  return { start, end };
+}
+
+function formatMonthHeaderLabel(date) {
+  return date.toLocaleDateString("en-GB", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function getShortMonthName(monthIndex) {
+  return new Date(Date.UTC(2000, monthIndex, 1)).toLocaleDateString("en-GB", {
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+function padDate(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toIsoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function toDisplayDate(date) {
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function sanitizeExcelText(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "");
+}
+
+function toUtcDateOnly(value) {
+  if (!value) {
+    return new Date(NaN);
+  }
+
+  if (value instanceof Date) {
+    return new Date(
+      Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+    );
+  }
+
+  if (typeof value === "string") {
+    const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    }
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date(NaN);
+  }
+
+  return new Date(
+    Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()),
+  );
+}
+
+function normalizeTrainingActivitiesDuration(noOfDays, startDate, endDate) {
+  const numericDays = Number(noOfDays);
+  if (Number.isFinite(numericDays) && numericDays > 0) {
+    return numericDays;
+  }
+
+  const calculatedDays = calculateDurationDays(startDate, endDate);
+  return Number.isFinite(calculatedDays) && calculatedDays > 0
+    ? calculatedDays
+    : 0;
 }

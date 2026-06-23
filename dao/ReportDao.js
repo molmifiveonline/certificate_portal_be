@@ -306,6 +306,33 @@ class ReportDao {
     return rows;
   }
 
+  static async getTrainingActivitiesReport(startDate, endDate) {
+    const query = `
+      SELECT
+        c.id,
+        c.course_id,
+        c.topic,
+        c.master_course_name,
+        c.course_name,
+        c.type_of_location,
+        c.course_type,
+        c.no_of_days,
+        DATE(c.start_date) AS start_date,
+        DATE(c.end_date) AS end_date,
+        COALESCE(c.is_outhouse, 0) AS is_outhouse
+      FROM courses c
+      WHERE c.start_date IS NOT NULL
+        AND c.end_date IS NOT NULL
+        AND c.status NOT IN ('Deleted', 'Cancelled')
+        AND DATE(c.start_date) <= ?
+        AND DATE(c.end_date) >= ?
+      ORDER BY DATE(c.start_date) ASC, c.course_name ASC
+    `;
+
+    const [rows] = await pool.execute(query, [endDate, startDate]);
+    return rows;
+  }
+
   static async getHotelReport(filters = {}) {
     let query = `
       SELECT 
