@@ -898,4 +898,34 @@ ALTER TABLE `system_manuals`
   ADD COLUMN `category_id` VARCHAR(255) COLLATE utf8mb4_unicode_ci NULL AFTER `title`,
   ADD CONSTRAINT `fk_system_manuals_category` FOREIGN KEY (`category_id`) REFERENCES `system_manual_categories` (`id`) ON DELETE SET NULL;
 
+-- Date: 2026-06-23 - Legacy PHP Migration Support
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `legacy_id_map` (
+  `entity_type` VARCHAR(100) NOT NULL,
+  `legacy_id` VARCHAR(100) NOT NULL,
+  `new_id` VARCHAR(100) NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`entity_type`, `legacy_id`),
+  KEY `legacy_id_map_new_id_idx` (`new_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `legacy_migration_runs` (
+  `id` CHAR(36) NOT NULL,
+  `mode` VARCHAR(50) NOT NULL,
+  `started_at` DATETIME NOT NULL,
+  `finished_at` DATETIME NULL,
+  `status` VARCHAR(50) NOT NULL,
+  `summary_json` JSON NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `certificate_sequences` (
+  `scope_type` VARCHAR(50) NOT NULL,
+  `scope_key` VARCHAR(255) NOT NULL,
+  `sequence_year` INT NOT NULL DEFAULT 0,
+  `next_subid` INT NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`scope_type`, `scope_key`, `sequence_year`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

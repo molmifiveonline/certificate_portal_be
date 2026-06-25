@@ -403,13 +403,13 @@ class CourseEnrollmentDao {
         SELECT ar.candidate_id, ar.assessment_id, ar.score, ar.total_questions
         FROM assessment_results ar
         JOIN assessment a ON ar.assessment_id = a.id
-        WHERE ar.course_id = ? AND a.type_of_test = 'Pre' AND ar.status = 'Completed'
+        WHERE ar.course_id = ? AND a.type_of_test IN ('Pre', '1') AND ar.status = 'Completed'
       ) pre_res ON ce.candidate_id = pre_res.candidate_id
       LEFT JOIN (
         SELECT ar.candidate_id, ar.assessment_id, ar.score, ar.total_questions
         FROM assessment_results ar
         JOIN assessment a ON ar.assessment_id = a.id
-        WHERE ar.course_id = ? AND a.type_of_test = 'Post' AND ar.status = 'Completed'
+        WHERE ar.course_id = ? AND a.type_of_test IN ('Post', '2') AND ar.status = 'Completed'
       ) post_res ON ce.candidate_id = post_res.candidate_id
       WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
     `;
@@ -482,7 +482,7 @@ class CourseEnrollmentDao {
         SELECT ar.candidate_id, ar.score, ar.attempt_number
         FROM assessment_results ar
         JOIN assessment a ON ar.assessment_id = a.id
-        WHERE ar.course_id = ? AND a.type_of_test = 'Post' AND ar.status = 'Completed'
+        WHERE ar.course_id = ? AND a.type_of_test IN ('Post', '2') AND ar.status = 'Completed'
         ORDER BY ar.attempt_number DESC LIMIT 1
       ) post_res ON ce.candidate_id = post_res.candidate_id
       LEFT JOIN (

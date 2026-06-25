@@ -2,6 +2,91 @@ const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 
 class CertificateDao {
+  static async ensureCertificateSequenceTable(connection = pool) {
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS certificate_sequences (
+        scope_type VARCHAR(50) NOT NULL,
+        scope_key VARCHAR(255) NOT NULL,
+        sequence_year INT NOT NULL DEFAULT 0,
+        next_subid INT NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (scope_type, scope_key, sequence_year)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    `);
+  }
+
+  static async getMaxSubIdForScope(connection, scopeType, scopeKey, sequenceYear) {
+    if (scopeType === "topic_year") {
+      const [rows] = await connection.execute(
+        `SELECT MAX(subid) AS max_subid
+         FROM certificates
+         WHERE topic = ? AND YEAR(issue_date) = ?`,
+        [scopeKey, sequenceYear],
+      );
+      return rows[0]?.max_subid || 0;
+    }
+
+    const [rows] = await connection.execute(
+      `SELECT MAX(subid) AS max_subid
+       FROM certificates
+       WHERE type = ?`,
+      [scopeKey],
+    );
+    return rows[0]?.max_subid || 0;
+  }
+
+  static async allocateSubId(scopeType, scopeKey, sequenceYear = 0) {
+    const connection = await pool.getConnection();
+
+    try {
+      await this.ensureCertificateSequenceTable(connection);
+      await connection.beginTransaction();
+
+      const [sequenceRows] = await connection.execute(
+        `SELECT next_subid
+         FROM certificate_sequences
+         WHERE scope_type = ? AND scope_key = ? AND sequence_year = ?
+         FOR UPDATE`,
+        [scopeType, scopeKey, sequenceYear],
+      );
+
+      let subid;
+
+      if (sequenceRows.length === 0) {
+        const maxSubId = await this.getMaxSubIdForScope(
+          connection,
+          scopeType,
+          scopeKey,
+          sequenceYear,
+        );
+        subid = maxSubId + 1;
+        await connection.execute(
+          `INSERT INTO certificate_sequences
+             (scope_type, scope_key, sequence_year, next_subid)
+           VALUES (?, ?, ?, ?)`,
+          [scopeType, scopeKey, sequenceYear, subid + 1],
+        );
+      } else {
+        subid = sequenceRows[0].next_subid || 1;
+        await connection.execute(
+          `UPDATE certificate_sequences
+           SET next_subid = ?
+           WHERE scope_type = ? AND scope_key = ? AND sequence_year = ?`,
+          [subid + 1, scopeType, scopeKey, sequenceYear],
+        );
+      }
+
+      await connection.commit();
+      return subid;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   static async create(data) {
     const id = uuidv4();
     const {
@@ -256,23 +341,11 @@ class CertificateDao {
   }
 
   static async getNextSubId(topic, year) {
-    const query = `
-      SELECT MAX(subid) as max_subid 
-      FROM certificates 
-      WHERE topic = ? AND YEAR(issue_date) = ?
-    `;
-    const [rows] = await pool.execute(query, [topic, year]);
-    return (rows[0].max_subid || 0) + 1;
+    return this.allocateSubId("topic_year", topic, year);
   }
 
   static async getNextSubIdByType(type) {
-    const query = `
-      SELECT MAX(subid) as max_subid 
-      FROM certificates 
-      WHERE type = ?
-    `;
-    const [rows] = await pool.execute(query, [type]);
-    return (rows[0].max_subid || 0) + 1;
+    return this.allocateSubId("type", type, 0);
   }
 
   static async getByCandidateAndCourse(candidateId, activeCourseId) {
