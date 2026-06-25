@@ -57,8 +57,10 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath) => {
     return;
   }
 
-  const subject = `Approved Reimbursement - ${reimbursement.claim_number}`;
+  const disclaimer = `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 12px 16px; margin-bottom: 16px; border-radius: 4px; font-family: Arial, sans-serif; color: #856404; font-size: 14px;"><strong>⚠️ PLEASE IGNORE:</strong> This email is generated for internal review purposes only. Please ignore this email; no action is required.</div>`;
+  const subject = `[PLEASE IGNORE] Approved Reimbursement - ${reimbursement.claim_number}`;
   const html = `
+    ${disclaimer}
     <p>Hello Accounts Team,</p>
     <p>A reimbursement claim has been approved.</p>
     <p><strong>Claim No:</strong> ${reimbursement.claim_number}</p>

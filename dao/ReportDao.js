@@ -269,6 +269,70 @@ class ReportDao {
     return rows;
   }
 
+  static async getTrainingRecordReport(year, currentDate) {
+    const query = `
+      SELECT
+        c.id AS course_id,
+        c.course_name,
+        c.course_type,
+        c.type_of_location,
+        DATE(c.start_date) AS start_date,
+        DATE(c.end_date) AS end_date,
+        MONTH(c.end_date) AS end_month,
+        GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0) AS training_period_days,
+        COUNT(
+          DISTINCT CASE
+            WHEN (ce.is_observer = 0 OR ce.is_observer IS NULL)
+             AND (ce.status != 'Deleted' OR ce.status IS NULL)
+            THEN ce.candidate_id
+          END
+        ) AS trainee_count
+      FROM courses c
+      LEFT JOIN courses_enrollment ce ON ce.course_id = c.id
+      WHERE c.end_date IS NOT NULL
+        AND YEAR(c.end_date) = ?
+        AND DATE(c.end_date) < ?
+      GROUP BY
+        c.id,
+        c.course_name,
+        DATE(c.start_date),
+        DATE(c.end_date),
+        MONTH(c.end_date),
+        GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0)
+      ORDER BY c.course_name ASC, training_period_days ASC, DATE(c.end_date) ASC
+    `;
+
+    const [rows] = await pool.execute(query, [year, currentDate]);
+    return rows;
+  }
+
+  static async getTrainingActivitiesReport(startDate, endDate) {
+    const query = `
+      SELECT
+        c.id,
+        c.course_id,
+        c.topic,
+        c.master_course_name,
+        c.course_name,
+        c.type_of_location,
+        c.course_type,
+        c.no_of_days,
+        DATE(c.start_date) AS start_date,
+        DATE(c.end_date) AS end_date,
+        COALESCE(c.is_outhouse, 0) AS is_outhouse
+      FROM courses c
+      WHERE c.start_date IS NOT NULL
+        AND c.end_date IS NOT NULL
+        AND c.status NOT IN ('Deleted', 'Cancelled')
+        AND DATE(c.start_date) <= ?
+        AND DATE(c.end_date) >= ?
+      ORDER BY DATE(c.start_date) ASC, c.course_name ASC
+    `;
+
+    const [rows] = await pool.execute(query, [endDate, startDate]);
+    return rows;
+  }
+
   static async getHotelReport(filters = {}) {
     let query = `
       SELECT 

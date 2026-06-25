@@ -41,3 +41,8 @@ temp/
 # Custom Rules
 molmi-cer-rules.md
 .agents/rules/project-context.md
+
+# Generated files and uploads
+generated/
+uploads/
+

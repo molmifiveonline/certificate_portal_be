@@ -3,6 +3,27 @@ const { v4: uuidv4 } = require("uuid");
 const { hasColumn } = require("../utils/schemaUtils");
 
 class ActiveCourseDao {
+  static expandCourseSearchTerms(search = "") {
+    const text = String(search || "").trim();
+    if (!text) return [];
+
+    const terms = new Set([text]);
+    const match = text.match(/^(.*-)(\d+)$/);
+    if (match) {
+      const [, prefix, suffix] = match;
+      const unpadded = String(Number(suffix));
+
+      if (suffix.length < 3) {
+        terms.add(`${prefix}${suffix.padStart(3, "0")}`);
+      }
+      if (suffix.length > 1 && suffix.startsWith("0")) {
+        terms.add(`${prefix}${unpadded}`);
+      }
+    }
+
+    return [...terms];
+  }
+
   static async buildActivePredicate(alias = "c") {
     const parts = [`${alias}.status != "Deleted"`];
 
@@ -102,9 +123,14 @@ class ActiveCourseDao {
     }
 
     if (search) {
-      whereClause +=
-        " AND (c.course_name LIKE ? OR c.topic LIKE ? OR c.course_id LIKE ?)";
-      whereParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      const searchTerms = this.expandCourseSearchTerms(search);
+      const searchClauses = searchTerms.map(
+        () => "(c.course_name LIKE ? OR c.topic LIKE ? OR c.course_id LIKE ?)",
+      );
+      whereClause += ` AND (${searchClauses.join(" OR ")})`;
+      searchTerms.forEach((term) => {
+        whereParams.push(`%${term}%`, `%${term}%`, `%${term}%`);
+      });
     }
 
     if (filters.status) {
