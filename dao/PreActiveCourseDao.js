@@ -619,14 +619,16 @@ const getAvailableOthersCandidates = async (courseId) => {
  */
 const getNominatorNotifiedCourses = async (nominatorId) => {
   const [rows] = await pool.execute(
-    `SELECT DISTINCT c.*
+    `SELECT DISTINCT c.*, l.location_name,
+       (SELECT COUNT(*) FROM courses_enrollment ce WHERE ce.course_id = c.id AND ce.nominator_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)) as nominated_count
      FROM courses c
      INNER JOIN course_tokens ct ON ct.course_id = c.id
+     LEFT JOIN locations l ON c.location_id = l.id COLLATE utf8mb4_general_ci
      WHERE c.is_pre_active = 1
        AND ct.entity_id = ?
        AND ct.entity_type = 'Nominator'
      ORDER BY c.created_at DESC`,
-    [nominatorId],
+    [nominatorId, nominatorId],
   );
   return rows;
 };
