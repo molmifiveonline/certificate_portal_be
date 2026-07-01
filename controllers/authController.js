@@ -91,6 +91,7 @@ const registerCandidate = async (req, res) => {
     const userId = await UserDao.createUser({
       role_id: roleId,
       first_name,
+      middle_name,
       last_name,
       email,
       password: hashedPassword,

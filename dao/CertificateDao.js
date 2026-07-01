@@ -166,9 +166,9 @@ class CertificateDao {
     const values = [];
 
     if (search) {
-      baseQuery += ` AND (c.certificate_no LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
+      baseQuery += ` AND (c.certificate_no LIKE ? OR u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${search}%`;
-      values.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (filters.status !== undefined && filters.status !== "") {
@@ -196,7 +196,7 @@ class CertificateDao {
       SELECT c.*, 
              COALESCE(c.from_date, ac.start_date) as from_date,
              COALESCE(c.to_date, ac.end_date) as to_date,
-             CONCAT_WS(' ', u.first_name, u.last_name) as candidate_name,
+             CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
              u.email as candidate_email,
              cp.employee_id as empId,
              cp.dob,
@@ -238,7 +238,7 @@ class CertificateDao {
       SELECT c.*, 
              COALESCE(c.from_date, ac.start_date) as from_date,
              COALESCE(c.to_date, ac.end_date) as to_date,
-             CONCAT_WS(' ', u.first_name, u.last_name) as candidate_name,
+             CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
              cp.employee_id as empId,
              cp.dob,
              cp.officer,
@@ -271,7 +271,7 @@ class CertificateDao {
              c.status,
              c.location,
              c.issue_date,
-             CONCAT_WS(' ', cp.prefix, u.first_name, u.last_name) as candidate_name,
+             CONCAT_WS(' ', cp.prefix, u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
              cp.dob,
              mc.master_course_name,
              COALESCE(c.from_date, ac.start_date) as from_date,

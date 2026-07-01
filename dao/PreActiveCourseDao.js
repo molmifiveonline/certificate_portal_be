@@ -351,7 +351,7 @@ const enrollCandidateByNominator = async (
 
 const getCandidateEnrollmentById = async (candidateId, courseId) => {
   const [rows] = await pool.execute(
-    "SELECT ce.*, u.first_name, u.last_name, u.email FROM courses_enrollment ce JOIN users u ON ce.candidate_id = u.id WHERE ce.candidate_id = ? AND ce.course_id = ?",
+    "SELECT ce.*, u.first_name, u.middle_name, u.last_name, u.email FROM courses_enrollment ce JOIN users u ON ce.candidate_id = u.id WHERE ce.candidate_id = ? AND ce.course_id = ?",
     [candidateId, courseId],
   );
   return rows[0];
@@ -389,7 +389,7 @@ const getPendingAdminApprovals = async (course_id) => {
     `SELECT ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark,
                 ce.candidate_rejection_reason, ce.candidate_available_date,
                 ce.admin_approval_status, ce.admin_remark, ce.admin_action_date, ce.nominator_id,
-                u.first_name, u.last_name, u.email, cp.indos_number,
+                u.first_name, u.middle_name, u.last_name, u.email, cp.indos_number,
                 (
                   SELECT MAX(cert.issue_date)
                   FROM certificates cert
@@ -457,8 +457,9 @@ const getRejectedCandidateApprovals = async (options = {}) => {
         c.course_id LIKE ?
         OR c.course_name LIKE ?
         OR u.first_name LIKE ?
+        OR u.middle_name LIKE ?
         OR u.last_name LIKE ?
-        OR CONCAT_WS(' ', u.first_name, u.last_name) LIKE ?
+        OR CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) LIKE ?
         OR u.email LIKE ?
         OR COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) LIKE ?
         OR ce.candidate_rejection_reason LIKE ?
@@ -474,8 +475,10 @@ const getRejectedCandidateApprovals = async (options = {}) => {
       searchValue,
       searchValue,
       searchValue,
+      searchValue,
     );
     countParams.push(
+      searchValue,
       searchValue,
       searchValue,
       searchValue,
@@ -509,7 +512,7 @@ const getRejectedCandidateApprovals = async (options = {}) => {
            ce.admin_remark, ce.admin_action_date,
            ce.nominator_id, ce.created_at,
            c.course_id as course_code, c.course_name, c.start_date, c.end_date,
-           u.first_name, u.last_name, u.email, cp.indos_number,
+           u.first_name, u.middle_name, u.last_name, u.email, cp.indos_number,
            (
              SELECT MAX(cert.issue_date)
              FROM certificates cert
@@ -558,7 +561,7 @@ const convertToActiveCourse = async (id) => {
 const getAdminRemarksReport = async (filters = {}) => {
   let query = `
         SELECT ce.id, c.course_name, c.start_date, c.end_date, 
-               u.first_name, u.last_name, u.email,
+               u.first_name, u.middle_name, u.last_name, u.email,
                ce.candidate_approval_status, ce.candidate_remark,
                ce.candidate_rejection_reason, ce.candidate_available_date,
                ce.admin_approval_status, ce.admin_remark, ce.admin_action_date
@@ -579,9 +582,9 @@ const getAdminRemarksReport = async (filters = {}) => {
   }
   if (filters.search) {
     query +=
-      " AND (c.course_name LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
+      " AND (c.course_name LIKE ? OR u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
     const searchParam = `%${filters.search}%`;
-    params.push(searchParam, searchParam, searchParam, searchParam);
+    params.push(searchParam, searchParam, searchParam, searchParam, searchParam);
   }
 
   query += " ORDER BY ce.admin_action_date DESC";
@@ -596,7 +599,7 @@ const getAdminRemarksReport = async (filters = {}) => {
 const getAvailableOthersCandidates = async (courseId) => {
   const query = `
     SELECT 
-      u.id, u.first_name, u.last_name, u.email, u.mobile,
+      u.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile,
       cp.middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type
     FROM users u
     JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -635,7 +638,7 @@ const getNominatorNotifiedCourses = async (nominatorId) => {
 
 const getNominatorEnrollments = async (courseId, nominatorId) => {
   const [rows] = await pool.execute(
-    `SELECT ce.id, u.first_name, u.last_name, u.email, u.mobile as mobile_no, 
+    `SELECT ce.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile as mobile_no, 
             cp.dob as date_of_birth, cp.indos_number, ce.candidate_id, ce.candidate_approval_status as status
      FROM courses_enrollment ce
      JOIN users u ON ce.candidate_id = u.id

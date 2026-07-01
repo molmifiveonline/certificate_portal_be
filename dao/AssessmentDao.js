@@ -135,7 +135,7 @@ class AssessmentDao {
   // Get candidates enrolled in a course
   static async getCandidatesByCourse(courseId) {
     const query = `
-      SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) AS candidate_name, u.email
+      SELECT u.id, CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name, u.email
       FROM users u
       INNER JOIN courses_enrollment ce ON u.id = ce.candidate_id
       WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)

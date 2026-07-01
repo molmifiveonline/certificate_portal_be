@@ -106,9 +106,9 @@ class CandidateDao {
     const params = [];
 
     if (filters.search) {
-      baseQuery += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR cp.passport_no LIKE ? OR cp.employee_id LIKE ?)`;
+      baseQuery += ` AND (u.first_name LIKE ? OR u.middle_name LIKE ? OR cp.middle_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR cp.passport_no LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${filters.search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (filters.manager) {
@@ -242,6 +242,7 @@ class CandidateDao {
       // Update User fields
       const userFields = [
         "first_name",
+        "middle_name",
         "last_name",
         "email",
         "mobile",
@@ -342,9 +343,9 @@ class CandidateDao {
     const params = [];
 
     if (filters.search) {
-      baseQuery += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR cp.passport_no LIKE ? OR cp.employee_id LIKE ?)`;
+      baseQuery += ` AND (u.first_name LIKE ? OR u.middle_name LIKE ? OR cp.middle_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR cp.passport_no LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${filters.search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (filters.manager) {
@@ -461,8 +462,8 @@ class CandidateDao {
 
         if (existingUserId) {
           await connection.query(
-            "UPDATE users SET first_name = ?, last_name = ?, mobile = ? WHERE id = ?",
-            [first_name, last_name, mobile, existingUserId],
+            "UPDATE users SET first_name = ?, middle_name = ?, last_name = ?, mobile = ? WHERE id = ?",
+            [first_name, middle_name ?? null, last_name, mobile, existingUserId],
           );
 
           const [profiles] = await connection.query(
@@ -547,11 +548,12 @@ class CandidateDao {
         } else {
           const userId = uuidv4();
           await connection.query(
-            "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, role_id, first_name, middle_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               userId,
               roleId,
               first_name,
+              middle_name ?? null,
               last_name,
               email,
               hashedPassword,

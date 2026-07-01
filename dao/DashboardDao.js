@@ -54,7 +54,7 @@ class DashboardDao {
     }
 
     if (filters.start_date && filters.end_date) {
-      whereClause += ` AND c.start_date >= ? AND c.end_date <= ?`;
+      whereClause += ` AND DATE(c.start_date) >= ? AND DATE(c.end_date) <= ?`;
       params.push(filters.start_date, filters.end_date);
     }
 
@@ -73,7 +73,7 @@ class DashboardDao {
     let query = `
       SELECT c.*, 
              (SELECT COUNT(*) FROM courses_enrollment ce WHERE ce.course_id = c.id) as candidate_count,
-             (SELECT COUNT(*) FROM course_attendance ca WHERE ca.course_id = c.id AND (ca.absent_reasons IS NOT NULL AND ca.absent_reasons != '[]' AND ca.absent_reasons != '')) as absent_count
+             (SELECT COUNT(*) FROM course_attendance ca WHERE ca.course_id = c.id AND (ca.status = 'Absent' OR (ca.absent_reasons IS NOT NULL AND ca.absent_reasons NOT IN ('', '[]', '{}', 'null')))) as absent_count
       FROM courses c
       ${whereClause}
       ORDER BY c.start_date DESC

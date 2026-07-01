@@ -21,6 +21,7 @@ const ENTITY = {
   assessment: "assessment",
   assessmentResult: "assessment_result",
   assessmentAnswer: "assessment_answer",
+  courseAttendance: "course_attendance",
   feedbackCategory: "feedback_category",
   feedbackForm: "feedback",
   feedbackQuestion: "feedback_question",
@@ -28,6 +29,7 @@ const ENTITY = {
   feedbackAnswer: "feedback_question_answer",
   hotelFile: "hotel_file",
   hotelDetail: "hotel_detail",
+  location: "location",
   role: "role",
 };
 
@@ -38,15 +40,28 @@ function parseArgs() {
       ? "reset-imported"
       : args.includes("--copy-files-only")
         ? "copy-files-only"
-        : args.includes("--apply")
-          ? "apply"
-          : "dry-run";
+        : args.includes("--repair-attendance")
+          ? "repair-attendance"
+        : args.includes("--repair-course-dates")
+          ? "repair-course-dates"
+        : args.includes("--repair-locations")
+          ? "repair-locations"
+        : args.includes("--repair-candidate-names")
+          ? "repair-candidate-names"
+          : args.includes("--apply")
+            ? "apply"
+            : "dry-run";
 
   return {
     mode,
     dryRun:
       args.includes("--dry-run") ||
-      (mode !== "apply" && mode !== "reset-imported" && mode !== "copy-files-only"),
+      (mode === "repair-candidate-names" ||
+      mode === "repair-locations" ||
+      mode === "repair-course-dates" ||
+      mode === "repair-attendance"
+        ? !args.includes("--apply")
+        : mode !== "apply" && mode !== "reset-imported" && mode !== "copy-files-only"),
     reset: mode === "reset-imported",
     resumeFrom: resumeFromArg ? resumeFromArg.split("=")[1] : null,
   };
@@ -92,6 +107,11 @@ function normalizeText(value) {
   return text === "" ? null : text;
 }
 
+function normalizeNamePart(value) {
+  const text = normalizeText(value);
+  return text ? text.replace(/\s+/g, " ") : null;
+}
+
 function normalizeStatus(value, activeWords = ["active", "1"]) {
   if (value === undefined || value === null) return 1;
   const normalized = String(value).trim().toLowerCase();
@@ -104,10 +124,28 @@ function dateOrNull(value) {
   return text.slice(0, 10);
 }
 
+function legacyAttendanceDateOrNull(value) {
+  const text = normalizeText(value);
+  if (!text || text === "[]" || text === "{}") return null;
+  const direct = dateOrNull(text);
+  if (direct && /^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+
+  const match = text.match(/^(\d{1,2})-(\d{1,2})-(\d{2}|\d{4})$/);
+  if (!match) return null;
+  const [, day, month, yearPart] = match;
+  const year = yearPart.length === 2 ? `20${yearPart}` : yearPart;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
 function dateTimeOrNull(value) {
   const text = normalizeText(value);
   if (!text || text === "0000-00-00 00:00:00") return null;
   return text;
+}
+
+function courseDateTimeOrNull(value) {
+  const text = dateOrNull(value);
+  return text ? `${text} 00:00:00` : null;
 }
 
 function splitName(name) {
@@ -117,12 +155,106 @@ function splitName(name) {
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
+function splitCandidateFullName(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { firstName: "Legacy", middleName: null, lastName: "" };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], middleName: null, lastName: "" };
+  }
+  if (parts.length === 2) {
+    return { firstName: parts[0], middleName: null, lastName: parts[1] };
+  }
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(" "),
+    lastName: parts[parts.length - 1],
+  };
+}
+
+function parseCandidateName(row) {
+  const candidateName = normalizeNamePart(row.candidate_name);
+  const firstName = normalizeNamePart(row.first_name);
+  const middleName = normalizeNamePart(row.middle_name);
+  const lastName = normalizeNamePart(row.last_name);
+  const explicitLooksClean =
+    firstName && lastName && !/\s/.test(firstName) && (!middleName || !/\s{2,}/.test(middleName));
+
+  if (explicitLooksClean) {
+    return { firstName, middleName, lastName };
+  }
+
+  const sourceName =
+    candidateName || [firstName, middleName, lastName].filter(Boolean).join(" ");
+  return splitCandidateFullName(sourceName);
+}
+
 function registrationType(value) {
   const normalized = String(value || "").trim().toUpperCase();
   if (normalized === "MOLMI_EMPLOYEE" || normalized === "MOLMI EMPLOYEE") {
     return "MOLMI Employee";
   }
   return "Others";
+}
+
+function normalizeLocationKey(value) {
+  const text = normalizeNamePart(value);
+  return text ? text.toUpperCase() : null;
+}
+
+function fallbackLocationShortCode(row) {
+  const existing = normalizeText(row.short_code);
+  if (existing) return existing.slice(0, 50);
+
+  const name = normalizeText(row.location_name) || `Legacy Location ${row.id}`;
+  const code = name
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toUpperCase()
+    .slice(0, 12);
+  return code || `LOC${row.id}`;
+}
+
+function legacyLocationType(row) {
+  const name = String(row.location_name || "").toLowerCase();
+  if (name.includes("outhouse")) return "Outhouse";
+  return "Inhouse";
+}
+
+function buildLocationLookup(rows) {
+  const lookup = new Map();
+  const add = (key, id) => {
+    const normalized = normalizeLocationKey(key);
+    if (normalized && !lookup.has(normalized)) lookup.set(normalized, id);
+  };
+
+  for (const row of rows) {
+    const id = legacyUuid(ENTITY.location, row.id);
+    add(row.location_name, id);
+    add(row.short_code, id);
+  }
+
+  const nameToId = (name) => lookup.get(normalizeLocationKey(name));
+  const aliases = {
+    Online: nameToId("MOLTCI-ONLINE"),
+    Mumbai: nameToId("MOLMI-MUMBAI"),
+    MOLTC: nameToId("MOLTC-MUMBAI"),
+    "MOLTCI-MOLTC": nameToId("MOLTC-MUMBAI"),
+    "MOLTCI-MOLTCMUM": nameToId("MOLTC-MUMBAI"),
+    "MOLTCI-MOLMI": nameToId("MOLMI-MUMBAI"),
+  };
+
+  for (const [alias, id] of Object.entries(aliases)) {
+    if (id) add(alias, id);
+  }
+
+  return lookup;
+}
+
+function resolveCourseLocationId(row, locationLookup) {
+  const locationValue = normalizeLocationKey(row.type_of_location);
+  if (!locationValue) return null;
+  return locationLookup.get(locationValue) || null;
 }
 
 function courseDisplayName(row) {
@@ -522,10 +654,12 @@ async function resetImported(ctx) {
       ["assessment", ENTITY.assessment],
       ["question_bank", ENTITY.question],
       ["certificates", ENTITY.certificate],
+      ["course_attendance", ENTITY.courseAttendance],
       ["hotel_files", ENTITY.hotelFile],
       ["hotel_details", ENTITY.hotelDetail],
       ["courses_enrollment", ENTITY.enrollment],
       ["courses", ENTITY.course],
+      ["locations", ENTITY.location],
       ["master_course", ENTITY.masterCourse],
       ["trainer_profiles", ENTITY.trainer],
       ["candidate_profiles", ENTITY.candidate],
@@ -626,8 +760,7 @@ async function importCandidates(ctx) {
   for (const row of rows) {
     const userId = legacyUuid(ENTITY.candidate, row.id);
     const profileId = legacyUuid("candidate_profile", row.id);
-    const firstName = normalizeText(row.first_name) || normalizeText(row.candidate_name) || "Legacy";
-    const lastName = normalizeText(row.last_name) || "";
+    const { firstName, middleName, lastName } = parseCandidateName(row);
     const email =
       normalizeText(row.email) || `legacy-candidate-${row.id}@migration.local`;
     const profileImage = ctx.copyLegacyFile(
@@ -645,7 +778,7 @@ async function importCandidates(ctx) {
         role_id: candidateRoleId,
         user_type: registrationType(row.registration_type),
         first_name: firstName,
-        middle_name: row.middle_name || null,
+        middle_name: middleName,
         last_name: lastName,
         gender: row.gender || null,
         email,
@@ -663,7 +796,7 @@ async function importCandidates(ctx) {
       id: profileId,
       user_id: userId,
       prefix: row.prefix || null,
-      middle_name: row.middle_name || null,
+      middle_name: middleName,
       dob: dateOrNull(row.dob),
       gender: row.gender || null,
       nationality: row.nationality || null,
@@ -687,6 +820,109 @@ async function importCandidates(ctx) {
     });
     ctx.increment("candidate");
   }
+}
+
+function sameNameValue(current, desired) {
+  return (normalizeNamePart(current) || "") === (normalizeNamePart(desired) || "");
+}
+
+async function repairCandidateNames(ctx) {
+  const legacyRows = await ctx.selectLegacy("candidate");
+  const [mappedRows] = await ctx.target.query(
+    `SELECT
+       lim.legacy_id,
+       lim.new_id,
+       u.id AS user_id,
+       u.first_name,
+       u.middle_name,
+       u.last_name,
+       cp.id AS profile_id,
+       cp.middle_name AS profile_middle_name
+     FROM legacy_id_map lim
+     LEFT JOIN users u ON u.id = lim.new_id
+     LEFT JOIN candidate_profiles cp ON cp.user_id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [ENTITY.candidate],
+  );
+  const mappedByLegacyId = new Map(
+    mappedRows.map((row) => [String(row.legacy_id), row]),
+  );
+  const repairSummary = {
+    checked: 0,
+    changed: 0,
+    unchanged: 0,
+    missing_map: 0,
+    missing_user: 0,
+    samples: [],
+  };
+
+  for (const legacyRow of legacyRows) {
+    repairSummary.checked += 1;
+    const mapped = mappedByLegacyId.get(String(legacyRow.id));
+    if (!mapped) {
+      repairSummary.missing_map += 1;
+      continue;
+    }
+    if (!mapped.user_id) {
+      repairSummary.missing_user += 1;
+      continue;
+    }
+
+    const desired = parseCandidateName(legacyRow);
+    const userChanged =
+      !sameNameValue(mapped.first_name, desired.firstName) ||
+      !sameNameValue(mapped.middle_name, desired.middleName) ||
+      !sameNameValue(mapped.last_name, desired.lastName);
+    const profileChanged =
+      mapped.profile_id &&
+      !sameNameValue(mapped.profile_middle_name, desired.middleName);
+
+    if (!userChanged && !profileChanged) {
+      repairSummary.unchanged += 1;
+      continue;
+    }
+
+    repairSummary.changed += 1;
+    if (repairSummary.samples.length < 50) {
+      repairSummary.samples.push({
+        legacy_id: String(legacyRow.id),
+        candidate_name: normalizeNamePart(legacyRow.candidate_name),
+        before: {
+          first_name: mapped.first_name,
+          middle_name: mapped.middle_name,
+          last_name: mapped.last_name,
+          profile_middle_name: mapped.profile_middle_name,
+        },
+        after: {
+          first_name: desired.firstName,
+          middle_name: desired.middleName,
+          last_name: desired.lastName,
+          profile_middle_name: desired.middleName,
+        },
+      });
+    }
+
+    if (ctx.dryRun) continue;
+
+    await ctx.target.execute(
+      `UPDATE users
+       SET first_name = ?, middle_name = ?, last_name = ?
+       WHERE id = ?`,
+      [desired.firstName, desired.middleName, desired.lastName, mapped.user_id],
+    );
+    if (mapped.profile_id) {
+      await ctx.target.execute(
+        "UPDATE candidate_profiles SET middle_name = ? WHERE id = ?",
+        [desired.middleName, mapped.profile_id],
+      );
+    }
+  }
+
+  ctx.summary.candidate_name_repair = repairSummary;
+  ctx.increment("candidate_name_repair_checked", repairSummary.checked);
+  ctx.increment("candidate_name_repair_changed", repairSummary.changed);
+  ctx.increment("candidate_name_repair_missing_map", repairSummary.missing_map);
+  ctx.increment("candidate_name_repair_missing_user", repairSummary.missing_user);
 }
 
 async function importTrainers(ctx) {
@@ -757,6 +993,35 @@ async function importTrainers(ctx) {
   }
 }
 
+async function importLocations(ctx) {
+  const rows = await ctx.selectLegacy("location");
+  const lookup = buildLocationLookup(rows);
+
+  for (const row of rows) {
+    const id = legacyUuid(ENTITY.location, row.id);
+    await ctx.upsert(
+      "locations",
+      {
+        id,
+        location_name: normalizeText(row.location_name) || `Legacy Location ${row.id}`,
+        type: legacyLocationType(row),
+        short_code: fallbackLocationShortCode(row),
+        email: row.email || null,
+        phone_number: row.phone_number || null,
+        address: row.address || null,
+        google_map_link: row.google_map_link || null,
+        status: normalizeStatus(row.status),
+        created_at: dateTimeOrNull(row.created_at),
+        updated_at: dateTimeOrNull(row.updated_at),
+      },
+      { entityType: ENTITY.location, legacyId: row.id, newId: id },
+    );
+    ctx.increment("location");
+  }
+
+  return lookup;
+}
+
 function mapTrainerList(value) {
   return String(value || "")
     .split(",")
@@ -766,7 +1031,34 @@ function mapTrainerList(value) {
     .join(",");
 }
 
-async function importCourses(ctx, masterCourses) {
+function parseLegacyDateList(value) {
+  const text = normalizeText(value);
+  if (!text || text === "[]" || text === "{}") return [];
+  return text
+    .replace(/^\[|\]$/g, "")
+    .split(",")
+    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+    .map(legacyAttendanceDateOrNull)
+    .filter(Boolean);
+}
+
+function parseLegacyAbsentReasons(value) {
+  const text = normalizeText(value);
+  if (!text || text === "[]" || text === "{}") return {};
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return {};
+    return Object.entries(parsed).reduce((result, [date, reason]) => {
+      const normalizedDate = legacyAttendanceDateOrNull(date);
+      if (normalizedDate) result[normalizedDate] = normalizeText(reason) || "Absent";
+      return result;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+async function importCourses(ctx, masterCourses, locationLookup = new Map()) {
   const rows = await ctx.selectLegacy("course");
   for (const row of rows) {
     const id = legacyUuid(ENTITY.course, row.id);
@@ -787,9 +1079,10 @@ async function importCourses(ctx, masterCourses) {
         topic: master?.topic || row.topic || "UNKNOWN",
         course_name: courseDisplayName(row),
         description: row.description1 || null,
-        start_date: dateTimeOrNull(row.start_date),
-        end_date: dateTimeOrNull(row.end_date),
+        start_date: courseDateTimeOrNull(row.start_date),
+        end_date: courseDateTimeOrNull(row.end_date),
         type_of_location: typeOfLocation,
+        location_id: resolveCourseLocationId(row, locationLookup),
         other_location: row.other_location || null,
         course_type: row.type_of_course || null,
         remarks: row.remarks || null,
@@ -812,6 +1105,156 @@ async function importCourses(ctx, masterCourses) {
     );
     ctx.increment("course");
   }
+}
+
+async function repairLocations(ctx) {
+  const locationLookup = await importLocations(ctx);
+  const courseRows = await ctx.selectLegacy("course");
+  const [mappedRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, lim.new_id, c.location_id
+     FROM legacy_id_map lim
+     LEFT JOIN courses c ON c.id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [ENTITY.course],
+  );
+  const mappedByLegacyId = new Map(
+    mappedRows.map((row) => [String(row.legacy_id), row]),
+  );
+  const repairSummary = {
+    checked: 0,
+    changed: 0,
+    unchanged: 0,
+    missing_map: 0,
+    missing_course: 0,
+    unmapped_location_values: {},
+    samples: [],
+  };
+
+  for (const legacyRow of courseRows) {
+    repairSummary.checked += 1;
+    const mapped = mappedByLegacyId.get(String(legacyRow.id));
+    if (!mapped) {
+      repairSummary.missing_map += 1;
+      continue;
+    }
+    if (!mapped.new_id) {
+      repairSummary.missing_course += 1;
+      continue;
+    }
+
+    const desiredLocationId = resolveCourseLocationId(legacyRow, locationLookup);
+    const locationValue = normalizeNamePart(legacyRow.type_of_location);
+    if (locationValue && !desiredLocationId) {
+      repairSummary.unmapped_location_values[locationValue] =
+        (repairSummary.unmapped_location_values[locationValue] || 0) + 1;
+    }
+
+    if ((mapped.location_id || null) === (desiredLocationId || null)) {
+      repairSummary.unchanged += 1;
+      continue;
+    }
+
+    repairSummary.changed += 1;
+    if (repairSummary.samples.length < 50) {
+      repairSummary.samples.push({
+        legacy_course_id: String(legacyRow.id),
+        course_id: legacyRow.course_id,
+        type_of_location: locationValue,
+        before_location_id: mapped.location_id,
+        after_location_id: desiredLocationId,
+      });
+    }
+
+    if (ctx.dryRun) continue;
+    await ctx.target.execute("UPDATE courses SET location_id = ? WHERE id = ?", [
+      desiredLocationId,
+      mapped.new_id,
+    ]);
+  }
+
+  ctx.summary.location_repair = repairSummary;
+  ctx.increment("location_repair_checked", repairSummary.checked);
+  ctx.increment("location_repair_changed", repairSummary.changed);
+  ctx.increment("location_repair_missing_map", repairSummary.missing_map);
+  ctx.increment("location_repair_missing_course", repairSummary.missing_course);
+}
+
+function sameDateTimeValue(current, desired) {
+  return (normalizeText(current) || null) === (normalizeText(desired) || null);
+}
+
+async function repairCourseDates(ctx) {
+  const courseRows = await ctx.selectLegacy("course");
+  const [mappedRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, lim.new_id, c.start_date, c.end_date
+     FROM legacy_id_map lim
+     LEFT JOIN courses c ON c.id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [ENTITY.course],
+  );
+  const mappedByLegacyId = new Map(
+    mappedRows.map((row) => [String(row.legacy_id), row]),
+  );
+  const repairSummary = {
+    checked: 0,
+    changed: 0,
+    unchanged: 0,
+    missing_map: 0,
+    missing_course: 0,
+    samples: [],
+  };
+
+  for (const legacyRow of courseRows) {
+    repairSummary.checked += 1;
+    const mapped = mappedByLegacyId.get(String(legacyRow.id));
+    if (!mapped) {
+      repairSummary.missing_map += 1;
+      continue;
+    }
+    if (!mapped.new_id) {
+      repairSummary.missing_course += 1;
+      continue;
+    }
+
+    const desiredStartDate = courseDateTimeOrNull(legacyRow.start_date);
+    const desiredEndDate = courseDateTimeOrNull(legacyRow.end_date);
+    const changed =
+      !sameDateTimeValue(mapped.start_date, desiredStartDate) ||
+      !sameDateTimeValue(mapped.end_date, desiredEndDate);
+
+    if (!changed) {
+      repairSummary.unchanged += 1;
+      continue;
+    }
+
+    repairSummary.changed += 1;
+    if (repairSummary.samples.length < 50) {
+      repairSummary.samples.push({
+        legacy_course_id: String(legacyRow.id),
+        course_id: legacyRow.course_id,
+        before: {
+          start_date: mapped.start_date,
+          end_date: mapped.end_date,
+        },
+        after: {
+          start_date: desiredStartDate,
+          end_date: desiredEndDate,
+        },
+      });
+    }
+
+    if (ctx.dryRun) continue;
+    await ctx.target.execute(
+      "UPDATE courses SET start_date = ?, end_date = ? WHERE id = ?",
+      [desiredStartDate, desiredEndDate, mapped.new_id],
+    );
+  }
+
+  ctx.summary.course_date_repair = repairSummary;
+  ctx.increment("course_date_repair_checked", repairSummary.checked);
+  ctx.increment("course_date_repair_changed", repairSummary.changed);
+  ctx.increment("course_date_repair_missing_map", repairSummary.missing_map);
+  ctx.increment("course_date_repair_missing_course", repairSummary.missing_course);
 }
 
 async function importEnrollments(ctx) {
@@ -844,6 +1287,113 @@ async function importEnrollments(ctx) {
     );
     ctx.increment("courses_enrollment");
   }
+}
+
+async function importCourseAttendance(ctx) {
+  const rows = await ctx.selectLegacy("course_attendance");
+  const summary = {
+    checked: 0,
+    attendance_rows: 0,
+    enrollment_updates: 0,
+    missing_enrollment: 0,
+    samples: [],
+  };
+
+  for (const row of rows) {
+    summary.checked += 1;
+    const courseId = legacyUuid(ENTITY.course, row.course_id);
+    const candidateId = legacyUuid(ENTITY.candidate, row.candidate_id);
+    const presentDates = parseLegacyDateList(row.is_present);
+    const holidayDates = parseLegacyDateList(row.holidays);
+    const absentReasons = parseLegacyAbsentReasons(row.absent_reasons);
+    const generatedDate = legacyAttendanceDateOrNull(row.generated_date);
+    const certificateExpiryDate = legacyAttendanceDateOrNull(row.certificate_expiry_date);
+    const markAsRead = Number(row.mark_as_read || 0) ? 1 : 0;
+    const attendanceByDate = new Map();
+
+    for (const date of presentDates) {
+      attendanceByDate.set(date, { status: "Present", reason: null });
+    }
+    for (const date of holidayDates) {
+      attendanceByDate.set(date, { status: "Holiday", reason: null });
+    }
+    for (const [date, reason] of Object.entries(absentReasons)) {
+      attendanceByDate.set(date, { status: "Absent", reason });
+    }
+
+    if (!ctx.dryRun) {
+      const [result] = await ctx.target.execute(
+        `UPDATE courses_enrollment
+         SET is_present = ?, holidays = ?, absent_reasons = ?,
+             generated_date = COALESCE(generated_date, ?),
+             certificate_issue_date = COALESCE(certificate_issue_date, ?),
+             active = COALESCE(active, ?)
+         WHERE course_id = ? AND candidate_id = ?`,
+        [
+          presentDates.join(","),
+          holidayDates.join(","),
+          JSON.stringify(absentReasons),
+          generatedDate,
+          generatedDate,
+          row.active === null || row.active === undefined ? null : Number(row.active || 0),
+          courseId,
+          candidateId,
+        ],
+      );
+      if (result.affectedRows > 0) {
+        summary.enrollment_updates += 1;
+      } else {
+        summary.missing_enrollment += 1;
+      }
+    } else {
+      summary.enrollment_updates += 1;
+    }
+
+    for (const [date, attendance] of attendanceByDate.entries()) {
+      const attendanceId = legacyUuid(
+        ENTITY.courseAttendance,
+        `${row.id}:${date}`,
+      );
+      await ctx.upsert(
+        "course_attendance",
+        {
+          id: attendanceId,
+          course_id: courseId,
+          candidate_id: candidateId,
+          attendance_date: date,
+          status: attendance.status,
+          absent_reasons: attendance.reason,
+          certificate_issue_date: generatedDate,
+          certificate_expiry_date: certificateExpiryDate,
+          mark_as_read: markAsRead,
+          created_at: dateTimeOrNull(row.created_at),
+          updated_at: dateTimeOrNull(row.updated_at),
+        },
+        {
+          entityType: ENTITY.courseAttendance,
+          legacyId: `${row.id}:${date}`,
+          newId: attendanceId,
+        },
+      );
+      summary.attendance_rows += 1;
+      if (summary.samples.length < 50) {
+        summary.samples.push({
+          legacy_attendance_id: row.id,
+          course_id: row.course_id,
+          candidate_id: row.candidate_id,
+          attendance_date: date,
+          status: attendance.status,
+          absent_reasons: attendance.reason,
+        });
+      }
+    }
+  }
+
+  ctx.summary.course_attendance = summary;
+  ctx.increment("course_attendance_checked", summary.checked);
+  ctx.increment("course_attendance_rows", summary.attendance_rows);
+  ctx.increment("course_attendance_enrollment_updates", summary.enrollment_updates);
+  ctx.increment("course_attendance_missing_enrollment", summary.missing_enrollment);
 }
 
 async function importHotelFiles(ctx) {
@@ -1406,8 +1956,10 @@ async function runMigration(ctx) {
       const masterCourses = await importMasterCourses(ctx);
       await importCandidates(ctx);
       await importTrainers(ctx);
-      await importCourses(ctx, masterCourses);
+      const locationLookup = await importLocations(ctx);
+      await importCourses(ctx, masterCourses, locationLookup);
       await importEnrollments(ctx);
+      await importCourseAttendance(ctx);
       await importHotelDetails(ctx);
       await importHotelFiles(ctx);
       await importCertificates(ctx);
@@ -1476,6 +2028,18 @@ async function main() {
       await resetImported(ctx);
     } else if (args.mode === "copy-files-only") {
       await copyLegacyUploadedFiles(ctx);
+    } else if (args.mode === "repair-candidate-names") {
+      await ensureSupportTables(ctx);
+      await repairCandidateNames(ctx);
+    } else if (args.mode === "repair-locations") {
+      await ensureSupportTables(ctx);
+      await repairLocations(ctx);
+    } else if (args.mode === "repair-course-dates") {
+      await ensureSupportTables(ctx);
+      await repairCourseDates(ctx);
+    } else if (args.mode === "repair-attendance") {
+      await ensureSupportTables(ctx);
+      await importCourseAttendance(ctx);
     } else {
       await runMigration(ctx);
     }

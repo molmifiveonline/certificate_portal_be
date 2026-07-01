@@ -18,6 +18,7 @@ class UserDao {
     const {
       role_id,
       first_name,
+      middle_name = null,
       last_name,
       email,
       password,
@@ -26,8 +27,8 @@ class UserDao {
     } = userData;
     const userId = uuidv4();
     const [result] = await db.query(
-      "INSERT INTO users (id, role_id, first_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [userId, role_id, first_name, last_name, email, password, mobile, status],
+      "INSERT INTO users (id, role_id, first_name, middle_name, last_name, email, password, mobile, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [userId, role_id, first_name, middle_name ?? null, last_name, email, password, mobile, status],
     );
     return userId;
   }

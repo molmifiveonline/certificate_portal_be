@@ -130,7 +130,7 @@ class ReportDao {
 
     const query = `
             SELECT 
-                u.id, u.first_name, u.last_name, u.email, 
+                u.id, u.first_name, u.middle_name, u.last_name, u.email, 
                 cp.passport_no, cp.employee_id, cp.manager, cp.rank
             FROM users u
             JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -222,6 +222,7 @@ class ReportDao {
                 c.remarks,
                 
                 u_cand.first_name as cand_first_name,
+                u_cand.middle_name as cand_middle_name,
                 u_cand.last_name as cand_last_name,
                 curr_cp.passport_no,
                 curr_cp.employee_id as empId,
@@ -344,6 +345,7 @@ class ReportDao {
         c.course_type,
         u.id as candidate_id,
         u.first_name,
+        u.middle_name,
         u.last_name,
         cp.employee_id
       FROM courses_enrollment ce
@@ -361,8 +363,9 @@ class ReportDao {
     }
 
     if (filters.employee) {
-      query += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
+      query += ` AND (u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
       params.push(
+        `%${filters.employee}%`,
         `%${filters.employee}%`,
         `%${filters.employee}%`,
         `%${filters.employee}%`,

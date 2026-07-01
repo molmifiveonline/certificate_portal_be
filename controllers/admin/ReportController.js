@@ -48,27 +48,7 @@ const TRG219_SECTION_DEFINITIONS = [
       "NCIC",
     ],
   },
-  {
-    key: "VESSEL_SPECIFIC_COURSES",
-    title: "VESSEL SPECIFIC COURSES",
-    codes: [
-      "CNTRFAM",
-      "CCHA",
-      "PCCFAM",
-      "PCCADVVER2014",
-      "PCCADV",
-      "PCCR",
-      "PCCA",
-      "PCCAFAM",
-      "BULKA",
-      "BULKADV",
-    ],
-  },
-  {
-    key: "LEADERSHIP_AND_MANAGEMENT",
-    title: "LEADERSHIP AND MANAGEMENT",
-    codes: ["LMC", "RMII", "SSOC", "SIRE", "MOLSEC"],
-  },
+
   {
     key: "MOLMI_OUTHOUSE_COURSES",
     title: "MOLMI OUTHOUSE COURSES",
