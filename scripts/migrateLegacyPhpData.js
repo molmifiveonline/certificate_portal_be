@@ -4,6 +4,10 @@ const bcrypt = require("bcryptjs");
 const mysql = require("mysql2/promise");
 const { v4: uuidv4, v5: uuidv5 } = require("uuid");
 require("dotenv").config();
+const {
+  TRAINER_ROLE_PERMISSIONS,
+  ensureTrainerRolePermissions,
+} = require("./trainerRolePermissions");
 
 const UUID_NAMESPACE =
   process.env.LEGACY_UUID_NAMESPACE || "7dd9fb68-23dc-55d9-8b8a-9ae4a47d5551";
@@ -38,8 +42,16 @@ function parseArgs() {
   const resumeFromArg = args.find((arg) => arg.startsWith("--resume-from="));
   const mode = args.includes("--reset-imported")
       ? "reset-imported"
+      : args.includes("--audit")
+        ? "audit"
       : args.includes("--copy-files-only")
         ? "copy-files-only"
+      : args.includes("--repair-all")
+        ? "repair-all"
+        : args.includes("--repair-passwords")
+          ? "repair-passwords"
+        : args.includes("--repair-trainer-permissions")
+          ? "repair-trainer-permissions"
         : args.includes("--repair-attendance")
           ? "repair-attendance"
         : args.includes("--repair-course-dates")
@@ -55,11 +67,16 @@ function parseArgs() {
   return {
     mode,
     dryRun:
+      mode === "audit" ||
       args.includes("--dry-run") ||
       (mode === "repair-candidate-names" ||
       mode === "repair-locations" ||
       mode === "repair-course-dates" ||
-      mode === "repair-attendance"
+      mode === "repair-attendance" ||
+      mode === "repair-passwords" ||
+      mode === "repair-trainer-permissions" ||
+      mode === "repair-all" ||
+      mode === "audit"
         ? !args.includes("--apply")
         : mode !== "apply" && mode !== "reset-imported" && mode !== "copy-files-only"),
     reset: mode === "reset-imported",
@@ -105,6 +122,20 @@ function normalizeText(value) {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();
   return text === "" ? null : text;
+}
+
+function looksLikeBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ""));
+}
+
+async function legacyPasswordHash(value, cache, fallback = null) {
+  const password = normalizeText(value) || normalizeText(fallback);
+  if (!password) return null;
+  if (looksLikeBcryptHash(password)) return password;
+  if (cache.has(password)) return cache.get(password);
+  const hash = await bcrypt.hash(password, DEFAULT_PASSWORD_HASH_ROUNDS);
+  cache.set(password, hash);
+  return hash;
 }
 
 function normalizeNamePart(value) {
@@ -354,6 +385,11 @@ class MigrationContext {
     const exists = rows.length > 0;
     this.legacyTableCache.set(tableName, exists);
     return exists;
+  }
+
+  async targetHasTable(tableName) {
+    const [rows] = await this.target.query("SHOW TABLES LIKE ?", [tableName]);
+    return rows.length > 0;
   }
 
   async countLegacy(tableName) {
@@ -716,6 +752,21 @@ async function seedRoles(ctx) {
   }
 }
 
+async function seedTrainerPermissions(ctx) {
+  const result = await ensureTrainerRolePermissions(ctx.target, {
+    dryRun: ctx.dryRun,
+  });
+
+  if (result.missingRole) {
+    ctx.summary.warnings.push(
+      "Trainer role was not found; trainer permissions were not assigned.",
+    );
+    return;
+  }
+
+  ctx.increment("trainer_role_permissions", result.assignedPermissions.length);
+}
+
 async function roleId(ctx, roleName) {
   const [rows] = await ctx.target.query("SELECT id FROM roles WHERE name = ? LIMIT 1", [
     roleName,
@@ -752,10 +803,8 @@ async function importMasterCourses(ctx) {
 async function importCandidates(ctx) {
   const candidateRoleId = await roleId(ctx, "candidate");
   const rows = await ctx.selectLegacy("candidate");
-  const passwordHash = await bcrypt.hash(
-    process.env.LEGACY_TEMP_PASSWORD || uuidv4(),
-    DEFAULT_PASSWORD_HASH_ROUNDS,
-  );
+  const passwordCache = new Map();
+  const fallbackPassword = process.env.LEGACY_TEMP_PASSWORD || uuidv4();
 
   for (const row of rows) {
     const userId = legacyUuid(ENTITY.candidate, row.id);
@@ -782,7 +831,11 @@ async function importCandidates(ctx) {
         last_name: lastName,
         gender: row.gender || null,
         email,
-        password: passwordHash,
+        password: await legacyPasswordHash(
+          row.password,
+          passwordCache,
+          fallbackPassword,
+        ),
         mobile: row.mobile || null,
         alternate_mobile: row.mobile_1 || null,
         status: normalizeStatus(row.is_active),
@@ -933,10 +986,8 @@ async function importTrainers(ctx) {
     if (email) counts.set(email, (counts.get(email) || 0) + 1);
     return counts;
   }, new Map());
-  const passwordHash = await bcrypt.hash(
-    process.env.LEGACY_TEMP_PASSWORD || uuidv4(),
-    DEFAULT_PASSWORD_HASH_ROUNDS,
-  );
+  const passwordCache = new Map();
+  const fallbackPassword = process.env.LEGACY_TEMP_PASSWORD || uuidv4();
 
   for (const row of rows) {
     const userId = legacyUuid(ENTITY.trainer, row.id);
@@ -970,7 +1021,11 @@ async function importTrainers(ctx) {
         first_name: firstName,
         last_name: lastName,
         email: safeTrainerEmail,
-        password: passwordHash,
+        password: await legacyPasswordHash(
+          row.password,
+          passwordCache,
+          fallbackPassword,
+        ),
         status: normalizeStatus(row.status),
       },
       { entityType: ENTITY.trainer, legacyId: row.id, newId: userId },
@@ -991,6 +1046,121 @@ async function importTrainers(ctx) {
     });
     ctx.increment("trainer");
   }
+}
+
+async function repairLegacyPasswordsForEntity(ctx, entityType, tableName, options = {}) {
+  const allRows = await ctx.selectLegacy(tableName);
+  const quickDryRun = Boolean(options.quickDryRun && ctx.dryRun);
+  const rows = quickDryRun ? allRows.slice(0, options.sampleSize || 50) : allRows;
+  const [mappedRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, lim.new_id, u.id AS user_id, u.email, u.password
+     FROM legacy_id_map lim
+     LEFT JOIN users u ON u.id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [entityType],
+  );
+  const mappedByLegacyId = new Map(
+    mappedRows.map((row) => [String(row.legacy_id), row]),
+  );
+  const passwordCache = new Map();
+  const summary = {
+    checked: quickDryRun ? allRows.length : 0,
+    sampled: quickDryRun ? rows.length : undefined,
+    quick_dry_run: quickDryRun || undefined,
+    changed: 0,
+    unchanged: 0,
+    blank_legacy_password: 0,
+    missing_map: 0,
+    missing_user: 0,
+    samples: [],
+  };
+
+  for (const row of rows) {
+    if (!quickDryRun) summary.checked += 1;
+    const legacyPassword = normalizeText(row.password);
+    if (!legacyPassword) {
+      summary.blank_legacy_password += 1;
+      continue;
+    }
+
+    const mapped = mappedByLegacyId.get(String(row.id));
+    if (!mapped) {
+      summary.missing_map += 1;
+      continue;
+    }
+    if (!mapped.user_id) {
+      summary.missing_user += 1;
+      continue;
+    }
+
+    const alreadyMatches = ctx.dryRun
+      ? looksLikeBcryptHash(legacyPassword)
+        ? mapped.password === legacyPassword
+        : await bcrypt.compare(legacyPassword, mapped.password || "")
+      : false;
+
+    if (alreadyMatches) {
+      summary.unchanged += 1;
+      continue;
+    }
+
+    summary.changed += 1;
+    if (summary.samples.length < 50) {
+      summary.samples.push({
+        entity_type: entityType,
+        legacy_id: String(row.id),
+        email: mapped.email,
+      });
+    }
+
+    if (ctx.dryRun) continue;
+    const desiredHash = await legacyPasswordHash(legacyPassword, passwordCache);
+    await ctx.target.execute("UPDATE users SET password = ? WHERE id = ?", [
+      desiredHash,
+      mapped.new_id,
+    ]);
+  }
+
+  return summary;
+}
+
+async function repairLegacyPasswords(ctx) {
+  const quickDryRun = ctx.mode === "repair-all";
+  const candidateSummary = await repairLegacyPasswordsForEntity(
+    ctx,
+    ENTITY.candidate,
+    "candidate",
+    { quickDryRun, sampleSize: 50 },
+  );
+  const trainerSummary = await repairLegacyPasswordsForEntity(
+    ctx,
+    ENTITY.trainer,
+    "trainer",
+    { quickDryRun, sampleSize: 50 },
+  );
+  const totals = {
+    checked: candidateSummary.checked + trainerSummary.checked,
+    changed: candidateSummary.changed + trainerSummary.changed,
+    unchanged: candidateSummary.unchanged + trainerSummary.unchanged,
+    blank_legacy_password:
+      candidateSummary.blank_legacy_password + trainerSummary.blank_legacy_password,
+    missing_map: candidateSummary.missing_map + trainerSummary.missing_map,
+    missing_user: candidateSummary.missing_user + trainerSummary.missing_user,
+  };
+
+  ctx.summary.legacy_password_repair = {
+    totals,
+    candidate: candidateSummary,
+    trainer: trainerSummary,
+  };
+  ctx.increment("legacy_password_repair_checked", totals.checked);
+  ctx.increment("legacy_password_repair_changed", totals.changed);
+  ctx.increment(
+    "legacy_password_repair_blank_legacy_password",
+    totals.blank_legacy_password,
+  );
+  ctx.increment("legacy_password_repair_missing_map", totals.missing_map);
+  ctx.increment("legacy_password_repair_missing_user", totals.missing_user);
 }
 
 async function importLocations(ctx) {
@@ -1937,6 +2107,598 @@ async function validate(ctx) {
   }
 }
 
+function addAuditCheck(audit, name, status, severity, details = {}) {
+  const check = { name, status, severity, ...details };
+  audit.checks.push(check);
+  audit.summary[status] = (audit.summary[status] || 0) + 1;
+  if (status === "fail" && severity === "critical") {
+    audit.critical_blockers.push(check);
+  }
+  return check;
+}
+
+async function scalar(connection, sql, params = [], fallback = 0) {
+  const [rows] = await connection.query(sql, params);
+  const first = rows[0] || {};
+  const key = Object.keys(first)[0];
+  return key ? first[key] : fallback;
+}
+
+async function legacyCountIfPresent(ctx, tableName) {
+  if (!(await ctx.legacyHasTable(tableName))) return 0;
+  return scalar(ctx.legacy, `SELECT COUNT(*) AS total FROM \`${tableName}\``);
+}
+
+async function targetCountIfPresent(ctx, tableName) {
+  if (!(await ctx.targetHasTable(tableName))) return 0;
+  return scalar(ctx.target, `SELECT COUNT(*) AS total FROM \`${tableName}\``);
+}
+
+async function mappedCount(ctx, entityType) {
+  return scalar(
+    ctx.target,
+    "SELECT COUNT(*) AS total FROM legacy_id_map WHERE entity_type = ?",
+    [entityType],
+  );
+}
+
+async function auditRowCounts(ctx, audit) {
+  const modules = [
+    ["candidate", ENTITY.candidate, "users", true],
+    ["trainer", ENTITY.trainer, "users", true],
+    ["master_course", ENTITY.masterCourse, "master_course", true],
+    ["course", ENTITY.course, "courses", true],
+    ["courses_enrollment", ENTITY.enrollment, "courses_enrollment", true],
+    ["course_attendance", ENTITY.courseAttendance, "course_attendance", true],
+    ["hotel_details", ENTITY.hotelDetail, "hotel_details", true],
+    ["hotel_files", ENTITY.hotelFile, "hotel_files", false],
+    ["certificate", ENTITY.certificate, "certificates", true],
+    ["question_bank", ENTITY.question, "question_bank", true],
+    ["assessment", ENTITY.assessment, "assessment", true],
+    ["assessment_score", ENTITY.assessmentResult, "assessment_results", true],
+    ["assessment_question_answer", ENTITY.assessmentAnswer, "assessment_answers", true],
+    ["feedback_category", ENTITY.feedbackCategory, "feedback_categories", true],
+    ["feedback", ENTITY.feedbackForm, "feedback_forms", true],
+    ["feedback_question", ENTITY.feedbackQuestion, "feedback_questions", true],
+    ["feedback_question_option", ENTITY.feedbackOption, "feedback_question_options", true],
+    ["feedback_question_answer", ENTITY.feedbackAnswer, "feedback_question_answer", true],
+  ];
+
+  const rows = [];
+  for (const [legacyTable, entityType, targetTable, requiresMap] of modules) {
+    const legacyTotal = await legacyCountIfPresent(ctx, legacyTable);
+    const targetTotal = await targetCountIfPresent(ctx, targetTable);
+    const mappedTotal = await mappedCount(ctx, entityType);
+    rows.push({
+      legacyTable,
+      targetTable,
+      legacyTotal,
+      targetTotal,
+      mappedTotal,
+      requiresMap,
+    });
+  }
+
+  const mismatches = rows.filter(
+    (row) =>
+      row.legacyTotal > 0 &&
+      (row.requiresMap
+        ? row.mappedTotal < row.legacyTotal
+        : row.targetTotal < row.legacyTotal),
+  );
+  addAuditCheck(
+    audit,
+    "legacy row counts mapped into target",
+    mismatches.length ? "warn" : "pass",
+    "warning",
+    { rows, mismatches: mismatches.slice(0, 25) },
+  );
+}
+
+async function auditMappedUsers(ctx, audit) {
+  const [rows] = await ctx.target.query(
+    `SELECT lim.entity_type, COUNT(*) AS mapped_total, SUM(u.id IS NULL) AS missing_user
+     FROM legacy_id_map lim
+     LEFT JOIN users u ON u.id = lim.new_id
+     WHERE lim.entity_type IN (?, ?)
+     GROUP BY lim.entity_type`,
+    [ENTITY.candidate, ENTITY.trainer],
+  );
+  const missing = rows.reduce((sum, row) => sum + Number(row.missing_user || 0), 0);
+  addAuditCheck(
+    audit,
+    "candidate/trainer legacy maps have users",
+    missing ? "fail" : "pass",
+    "critical",
+    { rows },
+  );
+}
+
+async function auditCandidateRegistrationTypes(ctx, audit) {
+  const legacyRows = await ctx.selectLegacy("candidate");
+  const [targetRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, cp.registration_type
+     FROM legacy_id_map lim
+     LEFT JOIN candidate_profiles cp ON cp.user_id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [ENTITY.candidate],
+  );
+  const targetByLegacyId = new Map(
+    targetRows.map((row) => [String(row.legacy_id), row.registration_type]),
+  );
+  const desiredCounts = {};
+  const actualCounts = {};
+  const samples = [];
+  let mismatches = 0;
+
+  for (const row of legacyRows) {
+    const desired = registrationType(row.registration_type);
+    const actual = targetByLegacyId.get(String(row.id));
+    desiredCounts[desired] = (desiredCounts[desired] || 0) + 1;
+    actualCounts[actual || "missing"] = (actualCounts[actual || "missing"] || 0) + 1;
+    if (actual !== desired) {
+      mismatches += 1;
+      if (samples.length < 25) {
+        samples.push({
+          legacy_id: row.id,
+          email: row.email,
+          legacy_registration_type: row.registration_type,
+          expected: desired,
+          actual,
+        });
+      }
+    }
+  }
+
+  addAuditCheck(
+    audit,
+    "candidate registration type labels",
+    mismatches ? "fail" : "pass",
+    "critical",
+    { mismatches, desiredCounts, actualCounts, samples },
+  );
+}
+
+async function auditCandidateNames(ctx, audit) {
+  const legacyRows = await ctx.selectLegacy("candidate");
+  const [targetRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, u.first_name, u.middle_name, u.last_name, cp.middle_name AS profile_middle_name
+     FROM legacy_id_map lim
+     LEFT JOIN users u ON u.id = lim.new_id
+     LEFT JOIN candidate_profiles cp ON cp.user_id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [ENTITY.candidate],
+  );
+  const targetByLegacyId = new Map(
+    targetRows.map((row) => [String(row.legacy_id), row]),
+  );
+  const samples = [];
+  let mismatches = 0;
+
+  for (const row of legacyRows) {
+    const target = targetByLegacyId.get(String(row.id));
+    if (!target) continue;
+    const expected = parseCandidateName(row);
+    const changed =
+      !sameNameValue(target.first_name, expected.firstName) ||
+      !sameNameValue(target.middle_name, expected.middleName) ||
+      !sameNameValue(target.last_name, expected.lastName) ||
+      !sameNameValue(target.profile_middle_name, expected.middleName);
+    if (!changed) continue;
+    mismatches += 1;
+    if (samples.length < 25) {
+      samples.push({
+        legacy_id: row.id,
+        candidate_name: row.candidate_name,
+        expected,
+        actual: {
+          firstName: target.first_name,
+          middleName: target.middle_name,
+          lastName: target.last_name,
+          profileMiddleName: target.profile_middle_name,
+        },
+      });
+    }
+  }
+
+  addAuditCheck(
+    audit,
+    "candidate names split into first/middle/last",
+    mismatches ? "fail" : "pass",
+    "critical",
+    { mismatches, samples },
+  );
+}
+
+async function auditCourseDatesAndLocations(ctx, audit) {
+  const courseRows = await ctx.selectLegacy("course");
+  const locationLookup = buildLocationLookup(await ctx.selectLegacy("location"));
+  const [targetRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, c.id, c.course_id, c.course_name, c.start_date, c.end_date, c.location_id
+     FROM legacy_id_map lim
+     LEFT JOIN courses c ON c.id = lim.new_id
+     WHERE lim.entity_type = ?`,
+    [ENTITY.course],
+  );
+  const targetByLegacyId = new Map(
+    targetRows.map((row) => [String(row.legacy_id), row]),
+  );
+  const dateSamples = [];
+  const locationSamples = [];
+  let dateMismatches = 0;
+  let locationMismatches = 0;
+
+  for (const row of courseRows) {
+    const target = targetByLegacyId.get(String(row.id));
+    if (!target) continue;
+    const expectedStart = courseDateTimeOrNull(row.start_date);
+    const expectedEnd = courseDateTimeOrNull(row.end_date);
+    if (
+      !sameDateTimeValue(target.start_date, expectedStart) ||
+      !sameDateTimeValue(target.end_date, expectedEnd)
+    ) {
+      dateMismatches += 1;
+      if (dateSamples.length < 25) {
+        dateSamples.push({
+          legacy_id: row.id,
+          course_id: row.course_id,
+          expected: { start_date: expectedStart, end_date: expectedEnd },
+          actual: { start_date: target.start_date, end_date: target.end_date },
+        });
+      }
+    }
+
+    const expectedLocationId = resolveCourseLocationId(row, locationLookup);
+    if ((target.location_id || null) !== (expectedLocationId || null)) {
+      locationMismatches += 1;
+      if (locationSamples.length < 25) {
+        locationSamples.push({
+          legacy_id: row.id,
+          course_id: row.course_id,
+          type_of_location: row.type_of_location,
+          expected_location_id: expectedLocationId,
+          actual_location_id: target.location_id,
+        });
+      }
+    }
+  }
+
+  addAuditCheck(
+    audit,
+    "course start/end dates match legacy",
+    dateMismatches ? "fail" : "pass",
+    "critical",
+    { mismatches: dateMismatches, samples: dateSamples },
+  );
+  addAuditCheck(
+    audit,
+    "course locations mapped from legacy",
+    locationMismatches ? "warn" : "pass",
+    "warning",
+    { mismatches: locationMismatches, samples: locationSamples },
+  );
+}
+
+async function auditKnownCourses(ctx, audit) {
+  const knownCourses = ["BBS-2026-036", "HAZM-2026-11", "LNGRS-2026-005"];
+  const rows = [];
+  for (const code of knownCourses) {
+    const [legacyRows] = await ctx.legacy.query(
+      "SELECT id, course_id, course_name, start_date, end_date FROM course WHERE course_id = ? OR course_name = ? LIMIT 5",
+      [code, code],
+    );
+    const [targetRows] = await ctx.target.query(
+      "SELECT id, course_id, course_name, start_date, end_date FROM courses WHERE course_id = ? OR course_name = ? LIMIT 5",
+      [code, code],
+    );
+    rows.push({ code, legacyRows, targetRows });
+  }
+  const missing = rows.filter(
+    (row) => row.legacyRows.length > 0 && row.targetRows.length === 0,
+  );
+  addAuditCheck(
+    audit,
+    "known active courses searchable in target",
+    missing.length ? "fail" : "pass",
+    "critical",
+    { rows },
+  );
+}
+
+async function auditAttendance(ctx, audit) {
+  const legacyRows = await ctx.selectLegacy("course_attendance");
+  const expected = new Map();
+  for (const row of legacyRows) {
+    const dates = Object.keys(parseLegacyAbsentReasons(row.absent_reasons));
+    if (!dates.length) continue;
+    const key = `${legacyUuid(ENTITY.course, row.course_id)}:${legacyUuid(
+      ENTITY.candidate,
+      row.candidate_id,
+    )}`;
+    expected.set(key, (expected.get(key) || 0) + dates.length);
+  }
+
+  const [targetRows] = await ctx.target.query(
+    `SELECT course_id, candidate_id, COUNT(*) AS absent_total
+     FROM course_attendance
+     WHERE LOWER(status) = 'absent'
+     GROUP BY course_id, candidate_id`,
+  );
+  const actual = new Map(
+    targetRows.map((row) => [`${row.course_id}:${row.candidate_id}`, Number(row.absent_total)]),
+  );
+  const samples = [];
+  let mismatches = 0;
+  for (const [key, expectedCount] of expected.entries()) {
+    const actualCount = actual.get(key) || 0;
+    if (actualCount === expectedCount) continue;
+    mismatches += 1;
+    if (samples.length < 25) samples.push({ key, expectedCount, actualCount });
+  }
+
+  addAuditCheck(
+    audit,
+    "attendance absent counts match legacy",
+    mismatches ? "fail" : "pass",
+    "critical",
+    {
+      legacy_absent_pairs: expected.size,
+      mismatches,
+      samples,
+    },
+  );
+}
+
+async function auditPasswords(ctx, audit) {
+  const [nonHashRows] = await ctx.target.query(
+    `SELECT u.email, r.name AS role_name
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     JOIN legacy_id_map lim ON lim.new_id = u.id AND lim.entity_type IN (?, ?)
+     WHERE r.name IN ('candidate', 'trainer') AND u.password NOT REGEXP '^\\\\$2[aby]\\\\$'
+     LIMIT 25`,
+    [ENTITY.candidate, ENTITY.trainer],
+  );
+
+  const samples = [];
+  for (const [entityType, tableName] of [
+    [ENTITY.candidate, "candidate"],
+    [ENTITY.trainer, "trainer"],
+  ]) {
+    const [rows] = await ctx.target.query(
+      `SELECT lim.legacy_id, u.email, u.password
+       FROM legacy_id_map lim
+       JOIN users u ON u.id = lim.new_id
+       WHERE lim.entity_type = ?
+       LIMIT 20`,
+      [entityType],
+    );
+    for (const row of rows) {
+      const [legacyRows] = await ctx.legacy.query(
+        `SELECT password FROM \`${tableName}\` WHERE id = ? LIMIT 1`,
+        [row.legacy_id],
+      );
+      const legacyPassword = normalizeText(legacyRows[0]?.password);
+      if (!legacyPassword) continue;
+      const matches = looksLikeBcryptHash(legacyPassword)
+        ? row.password === legacyPassword
+        : await bcrypt.compare(legacyPassword, row.password || "");
+      samples.push({ entityType, email: row.email, matches });
+    }
+  }
+
+  const failedSamples = samples.filter((sample) => !sample.matches);
+  addAuditCheck(
+    audit,
+    "legacy passwords hashed and sample-match",
+    nonHashRows.length || failedSamples.length ? "fail" : "pass",
+    "critical",
+    { nonHashSamples: nonHashRows, comparedSamples: samples, failedSamples },
+  );
+}
+
+async function auditTrainerPermissions(ctx, audit) {
+  const expectedSlugs = TRAINER_ROLE_PERMISSIONS.map((permission) => permission.slug);
+  const [rows] = await ctx.target.query(
+    `SELECT p.slug
+     FROM roles r
+     JOIN role_permissions rp ON rp.role_id = r.id
+     JOIN permissions p ON p.id = rp.permission_id
+     WHERE LOWER(r.name) = 'trainer'`,
+  );
+  const actual = new Set(rows.map((row) => row.slug));
+  const missing = expectedSlugs.filter((slug) => !actual.has(slug));
+  addAuditCheck(
+    audit,
+    "trainer role has portal menu permissions",
+    missing.length ? "fail" : "pass",
+    "critical",
+    { expectedSlugs, actualSlugs: [...actual].sort(), missing },
+  );
+}
+
+async function auditUploads(ctx, audit) {
+  if (!ctx.oldUploadRoot) {
+    addAuditCheck(audit, "legacy upload folder configured", "warn", "warning", {
+      message: "OLD_UPLOAD_ROOT is not set; file existence audit skipped.",
+    });
+    return;
+  }
+
+  const sources = [
+    ["candidate", "candidate", ["profile_image"]],
+    ["trainer", "trainer", ["digital_signature", "profile_photo"]],
+    ["question_bank", "question_bank", ["image", "opt_img_a", "opt_img_b", "opt_img_c", "opt_img_d"]],
+    ["hotel_files", "hotel_files", ["file_name"]],
+  ];
+  const samples = [];
+  let checked = 0;
+  let missing = 0;
+  for (const [label, tableName, columns] of sources) {
+    if (!(await ctx.legacyHasTable(tableName))) continue;
+    const [rows] = await ctx.legacy.query(`SELECT * FROM \`${tableName}\``);
+    for (const row of rows) {
+      for (const column of columns) {
+        const value = normalizeText(row[column]);
+        if (!value) continue;
+        checked += 1;
+        if (ctx.findLegacyFile(value)) continue;
+        missing += 1;
+        if (samples.length < 50) {
+          samples.push({ label, legacy_id: row.id, column, value });
+        }
+      }
+    }
+  }
+  addAuditCheck(
+    audit,
+    "legacy upload files are available",
+    missing ? "warn" : "pass",
+    "warning",
+    { checked, missing, samples },
+  );
+}
+
+async function auditFeedbackStatus(ctx, audit) {
+  const [rows] = await ctx.target.query(
+    `SELECT COUNT(*) AS mismatches
+     FROM legacy_id_map lim
+     JOIN feedback_questions fq ON fq.id = lim.new_id
+     JOIN ${ctx.legacy.config?.database ? `\`${ctx.legacy.config.database}\`.` : ""}feedback_question legacy_fq
+       ON legacy_fq.id = lim.legacy_id
+     WHERE lim.entity_type = ? AND COALESCE(fq.status, 1) <> COALESCE(legacy_fq.status, 1)`,
+    [ENTITY.feedbackQuestion],
+  ).catch(async () => {
+    const legacyRows = await ctx.selectLegacy("feedback_question");
+    const [targetRows] = await ctx.target.query(
+      `SELECT lim.legacy_id, fq.status
+       FROM legacy_id_map lim
+       JOIN feedback_questions fq ON fq.id = lim.new_id
+       WHERE lim.entity_type = ?`,
+      [ENTITY.feedbackQuestion],
+    );
+    const targetByLegacyId = new Map(
+      targetRows.map((row) => [String(row.legacy_id), row.status]),
+    );
+    let mismatches = 0;
+    for (const row of legacyRows) {
+      if (Number(targetByLegacyId.get(String(row.id)) ?? 1) !== Number(row.status ?? 1)) {
+        mismatches += 1;
+      }
+    }
+    return [[{ mismatches }]];
+  });
+  const mismatches = Number(rows[0]?.mismatches || 0);
+  addAuditCheck(
+    audit,
+    "feedback question active/inactive status preserved",
+    mismatches ? "warn" : "pass",
+    "warning",
+    { mismatches },
+  );
+}
+
+async function auditCertificates(ctx, audit) {
+  const legacyCertificates = await legacyCountIfPresent(ctx, "certificate");
+  const mappedCertificates = await mappedCount(ctx, ENTITY.certificate);
+  const [duplicateRows] = await ctx.target.query(
+    `SELECT certificate_no, COUNT(*) AS total
+     FROM certificates
+     WHERE certificate_no IS NOT NULL AND certificate_no <> ''
+     GROUP BY certificate_no
+     HAVING COUNT(*) > 1
+     LIMIT 25`,
+  );
+  addAuditCheck(
+    audit,
+    "certificate rows and numbers migrated",
+    mappedCertificates < legacyCertificates || duplicateRows.length ? "fail" : "pass",
+    "critical",
+    { legacyCertificates, mappedCertificates, duplicateRows },
+  );
+
+  const [sequenceMismatches] = await ctx.target.query(
+    `SELECT expected.scope_type, expected.scope_key, expected.sequence_year,
+            expected.expected_next_subid, cs.next_subid
+     FROM (
+       SELECT 'topic_year' AS scope_type, topic AS scope_key, YEAR(issue_date) AS sequence_year,
+              COALESCE(MAX(subid), 0) + 1 AS expected_next_subid
+       FROM certificates
+       WHERE type IN ('Others', 'DNV-ST0029', 'DNV-ST008')
+         AND topic IS NOT NULL AND issue_date IS NOT NULL
+       GROUP BY topic, YEAR(issue_date)
+       UNION ALL
+       SELECT 'type' AS scope_type, type AS scope_key, 0 AS sequence_year,
+              COALESCE(MAX(subid), 0) + 1 AS expected_next_subid
+       FROM certificates
+       WHERE type NOT IN ('Others', 'DNV-ST0029', 'DNV-ST008')
+         AND type IS NOT NULL
+       GROUP BY type
+     ) expected
+     LEFT JOIN certificate_sequences cs
+       ON cs.scope_type = expected.scope_type
+      AND cs.scope_key = expected.scope_key
+      AND cs.sequence_year = expected.sequence_year
+     WHERE cs.next_subid IS NULL OR cs.next_subid <> expected.expected_next_subid
+     LIMIT 25`,
+  );
+  addAuditCheck(
+    audit,
+    "certificate sequence table matches imported certificates",
+    sequenceMismatches.length ? "fail" : "pass",
+    "critical",
+    { sequenceMismatches },
+  );
+}
+
+async function runLegacyAudit(ctx) {
+  const audit = {
+    started_at: new Date().toISOString(),
+    summary: { pass: 0, warn: 0, fail: 0 },
+    checks: [],
+    critical_blockers: [],
+  };
+
+  await auditRowCounts(ctx, audit);
+  await auditMappedUsers(ctx, audit);
+  await auditCandidateRegistrationTypes(ctx, audit);
+  await auditCandidateNames(ctx, audit);
+  await auditCourseDatesAndLocations(ctx, audit);
+  await auditKnownCourses(ctx, audit);
+  await auditAttendance(ctx, audit);
+  await auditPasswords(ctx, audit);
+  await auditTrainerPermissions(ctx, audit);
+  await auditUploads(ctx, audit);
+  await auditFeedbackStatus(ctx, audit);
+  await auditCertificates(ctx, audit);
+
+  audit.finished_at = new Date().toISOString();
+  audit.has_critical_blockers = audit.critical_blockers.length > 0;
+  ctx.summary.audit = audit;
+  ctx.auditHasCriticalBlockers = audit.has_critical_blockers;
+  ctx.increment("audit_checks", audit.checks.length);
+  ctx.increment("audit_critical_blockers", audit.critical_blockers.length);
+}
+
+async function repairAll(ctx) {
+  await ensureSupportTables(ctx);
+  await repairCandidateNames(ctx);
+  await repairLocations(ctx);
+  await repairCourseDates(ctx);
+  await importCourseAttendance(ctx);
+  await repairLegacyPasswords(ctx);
+  await seedTrainerPermissions(ctx);
+
+  ctx.summary.certificate_sequence_repair = {
+    would_reinitialize: ctx.dryRun,
+    reinitialized: !ctx.dryRun,
+  };
+  if (!ctx.dryRun) {
+    await initializeCertificateSequences(ctx);
+    ctx.increment("certificate_sequences_reinitialized");
+  }
+}
+
 async function runMigration(ctx) {
   await validate(ctx);
   await ensureSupportTables(ctx);
@@ -1953,6 +2715,7 @@ async function runMigration(ctx) {
       assessmentCourseMap = await importAssessments(ctx);
     } else {
       await seedRoles(ctx);
+      await seedTrainerPermissions(ctx);
       const masterCourses = await importMasterCourses(ctx);
       await importCandidates(ctx);
       await importTrainers(ctx);
@@ -1980,7 +2743,11 @@ async function writeReport(ctx, status, runId) {
   ctx.summary.finished_at = new Date().toISOString();
   ctx.summary.status = status;
   fs.mkdirSync(REPORT_DIR, { recursive: true });
-  const reportPath = path.join(REPORT_DIR, `legacy-migration-${runId}.json`);
+  const reportName =
+    ctx.mode === "audit"
+      ? `legacy-migration-audit-${ctx.summary.started_at.replace(/[:.]/g, "-")}.json`
+      : `legacy-migration-${runId}.json`;
+  const reportPath = path.join(REPORT_DIR, reportName);
   fs.writeFileSync(reportPath, JSON.stringify(ctx.summary, null, 2));
 
   if (!ctx.dryRun) {
@@ -2026,8 +2793,12 @@ async function main() {
   try {
     if (args.reset) {
       await resetImported(ctx);
+    } else if (args.mode === "audit") {
+      await runLegacyAudit(ctx);
     } else if (args.mode === "copy-files-only") {
       await copyLegacyUploadedFiles(ctx);
+    } else if (args.mode === "repair-all") {
+      await repairAll(ctx);
     } else if (args.mode === "repair-candidate-names") {
       await ensureSupportTables(ctx);
       await repairCandidateNames(ctx);
@@ -2040,10 +2811,18 @@ async function main() {
     } else if (args.mode === "repair-attendance") {
       await ensureSupportTables(ctx);
       await importCourseAttendance(ctx);
+    } else if (args.mode === "repair-passwords") {
+      await ensureSupportTables(ctx);
+      await repairLegacyPasswords(ctx);
+    } else if (args.mode === "repair-trainer-permissions") {
+      await seedTrainerPermissions(ctx);
     } else {
       await runMigration(ctx);
     }
     await writeReport(ctx, "success", runId);
+    if (args.mode === "audit" && ctx.auditHasCriticalBlockers) {
+      process.exitCode = 1;
+    }
   } catch (error) {
     ctx.summary.error = error.stack || error.message;
     await writeReport(ctx, "failed", runId).catch(() => {});
