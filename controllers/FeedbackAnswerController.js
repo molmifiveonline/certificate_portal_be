@@ -413,6 +413,7 @@ class FeedbackAnswerController {
       res.json({
         hasSubmitted,
         submittedDate: hasSubmitted ? existingAnswers[0].created_at : null,
+        answers: hasSubmitted ? existingAnswers : null,
         form,
         feedbackCourseType,
         message: form

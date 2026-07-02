@@ -13,7 +13,7 @@ class NotificationDao {
         r.claim_date,
         r.amount,
         c.course_name AS active_course_name,
-        CONCAT_WS(' ', u.first_name, u.last_name) AS candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name,
         u.email AS candidate_email
       FROM reimbursements r
       LEFT JOIN users u ON u.id = r.candidate_id
@@ -49,7 +49,7 @@ class NotificationDao {
         ce.candidate_remark,
         ce.admin_approval_status,
         c.course_name,
-        CONCAT_WS(' ', u.first_name, u.last_name) AS candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name,
         u.email AS candidate_email,
         COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email) AS nominator_name
       FROM courses_enrollment ce

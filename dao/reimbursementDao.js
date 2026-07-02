@@ -50,7 +50,7 @@ class ReimbursementDao {
 
     if (filters.search) {
       where.push(
-        `(r.claim_number LIKE ? OR CONCAT(u.first_name, ' ', u.last_name) LIKE ? OR c.course_name LIKE ?)`,
+        `(r.claim_number LIKE ? OR CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) LIKE ? OR c.course_name LIKE ?)`,
       );
       const search = `%${filters.search}%`;
       params.push(search, search, search);
@@ -74,7 +74,7 @@ class ReimbursementDao {
         r.status,
         r.created_at,
         r.updated_at,
-        CONCAT(u.first_name, ' ', u.last_name) AS candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name,
         u.email AS candidate_email
       FROM reimbursements r
       LEFT JOIN users u ON u.id = r.candidate_id
@@ -111,7 +111,7 @@ class ReimbursementDao {
       `
       SELECT
         r.*,
-        CONCAT(u.first_name, ' ', u.last_name) AS candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name,
         u.email AS candidate_email,
         c.course_name AS active_course_name
       FROM reimbursements r

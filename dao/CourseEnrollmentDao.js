@@ -96,8 +96,8 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.*, ce.is_observer,
-        u.first_name, u.last_name, u.email, u.mobile, 
-        CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+        u.first_name, u.middle_name, u.last_name, u.email, u.mobile, 
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
         cp.dob, cp.nationality, cp.designation, ce.trainer_comment,
         (
@@ -148,7 +148,7 @@ class CourseEnrollmentDao {
 
   static async getAvailableCandidates(courseId) {
     const query = `
-        SELECT u.id, u.first_name, u.last_name, cp.rank, cp.employee_id as empId
+        SELECT u.id, u.first_name, u.middle_name, u.last_name, cp.rank, cp.employee_id as empId
         FROM users u
         JOIN candidate_profiles cp ON u.id = cp.user_id
         JOIN roles r ON u.role_id = r.id
@@ -159,7 +159,7 @@ class CourseEnrollmentDao {
     // Note: The previous query used role name which is safer if IDs change, but standardizing.
     // Reverting to role name join for safety as per previous snippet.
     const safeQuery = `
-        SELECT u.id, u.first_name, u.last_name, cp.rank, cp.employee_id as empId, cp.passport_no as cdc_passport, cp.seaman_book_no, cp.manning_company as manager,
+        SELECT u.id, u.first_name, u.middle_name, u.last_name, cp.rank, cp.employee_id as empId, cp.passport_no as cdc_passport, cp.seaman_book_no, cp.manning_company as manager,
         (
           SELECT MAX(cert.issue_date)
           FROM certificates cert
@@ -257,9 +257,9 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.candidate_id, ce.is_present, ce.holidays, ce.absent_reasons,
-        u.first_name, u.last_name,
+        u.first_name, u.middle_name, u.last_name,
         cp.employee_id as empId,
-        CONCAT(u.first_name, ' ', u.last_name) as candidate_name
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -385,9 +385,9 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.candidate_id,
-        u.first_name, u.last_name,
+        u.first_name, u.middle_name, u.last_name,
         cp.employee_id as empId,
-        CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         ce.trainer_comment,
         ce.is_observer,
         pre_res.assessment_id as pre_assessment_id,
@@ -432,9 +432,9 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.candidate_id,
-        u.first_name, u.last_name,
+        u.first_name, u.middle_name, u.last_name,
         cp.employee_id as empId,
-        CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         CASE WHEN fqa.candidate_id IS NOT NULL THEN 1 ELSE 0 END as feedback_completed
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
@@ -469,9 +469,9 @@ class CourseEnrollmentDao {
         ce.candidate_id, ce.is_present, ce.holidays, 
         ce.certficate_generated, ce.generated_date, ce.active,
         cert.id as certificate_id, cert.is_hidden,
-        u.first_name, u.last_name,
+        u.first_name, u.middle_name, u.last_name,
         cp.employee_id as empId,
-        CONCAT(u.first_name, ' ', u.last_name) as candidate_name,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         post_res.score as post_score,
         CASE WHEN fqa.candidate_id IS NOT NULL THEN 1 ELSE 0 END as feedback_completed
       FROM courses_enrollment ce
@@ -549,7 +549,7 @@ class CourseEnrollmentDao {
 
   static async getEnrollmentById(id) {
     const [rows] = await pool.execute(
-      `SELECT ce.*, u.first_name, u.last_name, u.email
+      `SELECT ce.*, u.first_name, u.middle_name, u.last_name, u.email
        FROM courses_enrollment ce
        JOIN users u ON u.id = ce.candidate_id
        WHERE ce.id = ?`,

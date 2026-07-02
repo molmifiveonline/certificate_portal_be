@@ -79,9 +79,9 @@ class AssessmentResultDao {
     const params = [courseId];
 
     if (search) {
-      baseWhere += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`;
+      baseWhere += ` AND (u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`;
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     const countQuery = `
@@ -105,6 +105,7 @@ class AssessmentResultDao {
         ar.attempt_number,
         ar.created_at,
         u.first_name,
+        u.middle_name,
         u.last_name,
         u.email,
         a.title as assessment_title,
@@ -140,6 +141,7 @@ class AssessmentResultDao {
       SELECT 
         ar.*,
         u.first_name,
+        u.middle_name,
         u.last_name,
         u.email,
         cp.employee_id,
@@ -209,9 +211,9 @@ class AssessmentResultDao {
     }
 
     if (search) {
-      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
+      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     const dataQuery = `
@@ -226,6 +228,7 @@ class AssessmentResultDao {
         ar.attempt_number,
         ar.created_at,
         u.first_name,
+        u.middle_name,
         u.last_name,
         u.email,
         cp.employee_id,
@@ -274,9 +277,9 @@ class AssessmentResultDao {
     }
 
     if (search) {
-      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
+      baseWhere += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR cp.employee_id LIKE ?)`;
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     const countQuery = `
@@ -303,6 +306,7 @@ class AssessmentResultDao {
         ar.attempt_number,
         ar.created_at,
         u.first_name,
+        u.middle_name,
         u.last_name,
         u.email,
         cp.employee_id,
@@ -347,9 +351,9 @@ class AssessmentResultDao {
     const params = [assessmentId];
 
     if (search) {
-      baseWhere += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`;
+      baseWhere += ` AND (u.first_name LIKE ? OR u.middle_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`;
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     const countQuery = `
@@ -373,6 +377,7 @@ class AssessmentResultDao {
         ar.attempt_number,
         ar.created_at,
         u.first_name,
+        u.middle_name,
         u.last_name,
         u.email,
         a.title as assessment_title,
