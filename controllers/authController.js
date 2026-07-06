@@ -78,9 +78,7 @@ const registerCandidate = async (req, res) => {
     let isSelfRegistration = false;
 
     if (!finalPassword) {
-      // Generate random password
-      const { randomBytes } = require("crypto");
-      finalPassword = randomBytes(16).toString("hex");
+      finalPassword = "12345";
       isSelfRegistration = true;
     }
 
@@ -151,7 +149,8 @@ const registerCandidate = async (req, res) => {
           accountInfoHtml = `
              <div class='info'>
                 <p><strong>Email Address:</strong> ${email}</p>
-                <p><strong>Action Required:</strong> Please set your password to access your account.</p>
+                <p><strong>Default Password:</strong> 12345</p>
+                <p><strong>Action Required:</strong> Please set your password to access your account, or log in with your default password.</p>
                 <p><a href='${resetLink}' style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Set Your Password</a></p>
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">Link expires in 24 hours.</p>
              </div>
