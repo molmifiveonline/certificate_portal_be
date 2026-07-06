@@ -3,6 +3,7 @@ const CandidateDao = require("../dao/candidateDao");
 const ActiveCourseDao = require("../dao/ActiveCourseDao");
 const MasterCourseDao = require("../dao/MasterCourseDao");
 const TrainerDao = require("../dao/trainerDao");
+const FeedbackQuestionDao = require("../dao/feedbackQuestionDao");
 
 const getFeedbackCourseTypeForCourse = (course) => {
   const locationType = (course?.type_of_location || "").toLowerCase().trim();
@@ -36,6 +37,17 @@ class FeedbackAnswerController {
         } = ans;
 
         if (question_id) {
+          const question = await FeedbackQuestionDao.getById(question_id);
+          if (question) {
+            const questionType = String(question.type || "").toLowerCase();
+            if (questionType === "rating" || questionType === "ratings") {
+              const ratingVal = Number(answer);
+              if (isNaN(ratingVal) || ratingVal < 1 || ratingVal > 10) {
+                return res.status(400).json({ message: "Invalid rating value. Must be between 1 and 10." });
+              }
+            }
+          }
+
           const id = await FeedbackAnswerDao.create({
             candidate_id,
             active_course_id,
@@ -450,6 +462,17 @@ class FeedbackAnswerController {
         } = ans;
 
         if (question_id) {
+          const question = await FeedbackQuestionDao.getById(question_id);
+          if (question) {
+            const questionType = String(question.type || "").toLowerCase();
+            if (questionType === "rating" || questionType === "ratings") {
+              const ratingVal = Number(answer);
+              if (isNaN(ratingVal) || ratingVal < 1 || ratingVal > 10) {
+                return res.status(400).json({ message: "Invalid rating value. Must be between 1 and 10." });
+              }
+            }
+          }
+
           const id = await FeedbackAnswerDao.create({
             candidate_id,
             active_course_id,

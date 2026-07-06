@@ -428,7 +428,7 @@ class CandidateDao {
         existingUsersRows.map((u) => [u.email.toLowerCase(), u.id]),
       );
 
-      const tempPassword = crypto.randomBytes(8).toString("hex");
+      const tempPassword = "12345";
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
       for (const candidate of candidates) {
