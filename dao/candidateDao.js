@@ -4,72 +4,12 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { hasColumn, hasTable } = require("../utils/schemaUtils");
 
-const USER_MERGE_FIELDS = [
-  "first_name",
-  "last_name",
-  "email",
-  "mobile",
-  "status",
-];
-
-const PROFILE_MERGE_FIELDS = [
-  "middle_name",
-  "prefix",
-  "gender",
-  "dob",
-  "nationality",
-  "passport_no",
-  "employee_id",
-  "manager",
-  "rank",
-  "whatsapp_number",
-  "alternate_mobile",
-  "indos_number",
-  "registration_type",
-  "designation",
-  "vessel_type",
-  "last_vessel_name",
-  "next_vessel_name",
-  "manning_company",
-  "sign_on_date",
-  "sign_off_date",
-  "officer",
-  "seaman_book_no",
-  "profile_image",
-];
-
-const MERGEABLE_FIELDS = [...USER_MERGE_FIELDS, ...PROFILE_MERGE_FIELDS];
-
-const RELATED_COUNT_QUERIES = {
-  courses_enrollment: {
-    table: "courses_enrollment",
-    column: "candidate_id",
-  },
-  assessment_results: {
-    table: "assessment_results",
-    column: "candidate_id",
-  },
-  feedback_question_answer: {
-    table: "feedback_question_answer",
-    column: "candidate_id",
-  },
-  certificates: {
-    table: "certificates",
-    column: "candidate_id",
-  },
-  hotel_files: {
-    table: "hotel_files",
-    column: "candidate_id",
-  },
-  reimbursements: {
-    table: "reimbursements",
-    column: "candidate_id",
-  },
-  candidate_sync_logs: {
-    table: "candidate_sync_logs",
-    column: "candidate_user_id",
-  },
-};
+const {
+  USER_MERGE_FIELDS,
+  PROFILE_MERGE_FIELDS,
+  MERGEABLE_FIELDS,
+  RELATED_COUNT_QUERIES,
+} = require("../utils/constants");
 
 function normalizeIdList(ids = []) {
   return [...new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))];

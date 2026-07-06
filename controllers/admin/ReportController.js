@@ -8,61 +8,15 @@ const ActiveCourseDao = require("../../dao/ActiveCourseDao");
 const MasterCourseDao = require("../../dao/MasterCourseDao");
 const TrainerDao = require("../../dao/trainerDao");
 
-const TRAINING_RECORD_MONTH_HEADERS = [
-  "Jan.",
-  "Feb.",
-  "Mar.",
-  "Apr.",
-  "May",
-  "June",
-  "July",
-  "Aug.",
-  "Sep.",
-  "Oct.",
-  "Nov.",
-  "Dec.",
-];
-
-const TRAINING_RECORD_SECTION_ORDER = ["Online", "Offline", "Outhouse"];
-const TRG219_DOCUMENT_CODE = "TRG/219";
-const TRG219_DOCUMENT_REVISION = "Rev. 6.1";
-const TRG219_DOCUMENT_DATE = "18 Jun 2024";
-const TRG219_SECTION_DEFINITIONS = [
-  {
-    key: "SIMULATOR_BASED_COURSE",
-    title: "SIMULATOR BASED COURSE",
-    codes: [
-      "LNGSTDMNG",
-      "LNGSTDOPR",
-      "CCRRM",
-      "SHS",
-      "BRM",
-      "ERM",
-      "LICOS",
-      "ECDIS",
-      "NWS",
-      "PEK",
-      "ESDC",
-      "MOLSEC",
-      "MEC",
-      "NCIC",
-    ],
-  },
-
-  {
-    key: "MOLMI_OUTHOUSE_COURSES",
-    title: "MOLMI OUTHOUSE COURSES",
-    codes: [],
-  },
-  {
-    key: "OTHER_COURSES",
-    title: "OTHER COURSES",
-    codes: [],
-  },
-];
-const TRG219_SECTION_ORDER = TRG219_SECTION_DEFINITIONS.map(
-  (section) => section.key,
-);
+const {
+  TRAINING_RECORD_MONTH_HEADERS,
+  TRAINING_RECORD_SECTION_ORDER,
+  TRG219_DOCUMENT_CODE,
+  TRG219_DOCUMENT_REVISION,
+  TRG219_DOCUMENT_DATE,
+  TRG219_SECTION_DEFINITIONS,
+  TRG219_SECTION_ORDER,
+} = require("../../utils/constants");
 
 exports.getFilterOptions = async (req, res) => {
   try {

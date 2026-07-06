@@ -5,27 +5,18 @@ const CandidateDao = require("../dao/candidateDao");
 const CandidateSyncLogDao = require("../dao/CandidateSyncLogDao");
 const LogDao = require("../dao/LogDao");
 
-const SYNC_CONFIG = {
-  tokenUrl: "https://apim-mts-prod.azure-api.net/MOLMI-Training/api/Token",
-  apiUrl:
-    "https://apim-mts-prod.azure-api.net/MOLMI-Training/api/ShipmateWebService",
-  username: "apiuser@sbntech.com",
-  password: "u$eR@apI123",
-  subscriptionKey: "d292c094732f423c8f5f7547aa98453a",
-  authKey: "MOLMI_SBNT",
-  serviceName: "PersonnelDetails_MOLMI",
-};
+const { CANDIDATE_SYNC_CONFIG } = require("../utils/constants");
 
 const getAccessToken = async () => {
   const params = new URLSearchParams();
   params.append("grant_type", "password");
-  params.append("username", SYNC_CONFIG.username);
-  params.append("Password", SYNC_CONFIG.password);
+  params.append("username", CANDIDATE_SYNC_CONFIG.username);
+  params.append("Password", CANDIDATE_SYNC_CONFIG.password);
 
-  const response = await axios.post(SYNC_CONFIG.tokenUrl, params, {
+  const response = await axios.post(CANDIDATE_SYNC_CONFIG.tokenUrl, params, {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+      "Ocp-Apim-Subscription-Key": CANDIDATE_SYNC_CONFIG.subscriptionKey,
     },
     httpsAgent: new https.Agent({
       rejectUnauthorized: false,
@@ -110,17 +101,17 @@ const fetchExternalPreview = async (req, res) => {
     const refreshToken = tokenData.refresh_token || "";
 
     const response = await axios.post(
-      `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
+      `${CANDIDATE_SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
       JSON.stringify({
-        ServiceName: SYNC_CONFIG.serviceName,
-        AuthorizationKey: SYNC_CONFIG.authKey,
+        ServiceName: CANDIDATE_SYNC_CONFIG.serviceName,
+        AuthorizationKey: CANDIDATE_SYNC_CONFIG.authKey,
         FromUTCDateTime: normalizedSyncDate || "1970-01-01",
       }),
       {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+          "Ocp-Apim-Subscription-Key": CANDIDATE_SYNC_CONFIG.subscriptionKey,
         },
         httpsAgent: new https.Agent({
           rejectUnauthorized: false,
@@ -215,17 +206,17 @@ const importFromApi = async (req, res) => {
     const refreshToken = tokenData.refresh_token || "";
 
     const response = await axios.post(
-      `${SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
+      `${CANDIDATE_SYNC_CONFIG.apiUrl}?grant_type=refresh_token&refresh_token=${refreshToken}`,
       JSON.stringify({
-        ServiceName: SYNC_CONFIG.serviceName,
-        AuthorizationKey: SYNC_CONFIG.authKey,
+        ServiceName: CANDIDATE_SYNC_CONFIG.serviceName,
+        AuthorizationKey: CANDIDATE_SYNC_CONFIG.authKey,
         FromUTCDateTime: normalizedSyncDate || "1970-01-01",
       }),
       {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          "Ocp-Apim-Subscription-Key": SYNC_CONFIG.subscriptionKey,
+          "Ocp-Apim-Subscription-Key": CANDIDATE_SYNC_CONFIG.subscriptionKey,
         },
         httpsAgent: new https.Agent({
           rejectUnauthorized: false,

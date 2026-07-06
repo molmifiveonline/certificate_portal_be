@@ -3,19 +3,11 @@ const MasterCourseDao = require("../dao/MasterCourseDao");
 const XLSX = require("xlsx");
 const ExcelJS = require("exceljs");
 const fs = require("fs");
-
-const QUESTION_TEMPLATE_HEADERS = [
-  "Question",
-  "Master Course ID",
-  "Type of Test",
-  "Option A",
-  "Option B",
-  "Option C",
-  "Option D",
-  "Correct Option",
-];
-const MASTER_COURSE_DROPDOWN_START_ROW = 2;
-const MASTER_COURSE_DROPDOWN_END_ROW = 1001;
+const {
+  QUESTION_TEMPLATE_HEADERS,
+  MASTER_COURSE_DROPDOWN_START_ROW,
+  MASTER_COURSE_DROPDOWN_END_ROW,
+} = require("../utils/constants");
 const UUID_PATTERN =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
