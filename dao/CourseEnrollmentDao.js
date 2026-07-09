@@ -1,13 +1,7 @@
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 const { hasColumn } = require("../utils/schemaUtils");
-
-const ACKNOWLEDGMENT_COLUMNS = [
-  "ack_token",
-  "ack_status",
-  "ack_date",
-  "ack_remark",
-];
+const { ACKNOWLEDGMENT_COLUMNS } = require("../utils/constants");
 
 async function assertAcknowledgmentColumns() {
   const checks = await Promise.all(

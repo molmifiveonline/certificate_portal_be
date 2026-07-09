@@ -7,7 +7,7 @@ const db = require("../config/db");
 
 // Nominators can ONLY see pre-active courses that the admin has notified them about.
 // Master, Active, and Outhouse courses are NOT accessible to nominators.
-const NOMINATOR_ADMIN_PERMISSIONS = ["view_pre_active_courses"];
+const { NOMINATOR_ADMIN_PERMISSIONS } = require("../utils/constants");
 
 const signAuthToken = (payload) =>
   jwt.sign(payload, process.env.JWT_SECRET || "fallback_secret", {

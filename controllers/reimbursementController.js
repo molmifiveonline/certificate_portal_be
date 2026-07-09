@@ -9,17 +9,10 @@ const {
   getReimbursementResubmissionTemplate,
 } = require("../utils/emailTemplates");
 
-const STATUS = {
-  DRAFT: "draft",
-  SUBMITTED: "submitted",
-  RESUBMISSION_REQUESTED: "resubmission_requested",
-  RESUBMITTED: "resubmitted",
-  APPROVED: "approved",
-  DISAPPROVED: "disapproved",
-};
+const { REIMBURSEMENT_STATUS } = require("../utils/constants");
 
-const editableStatuses = [STATUS.DRAFT, STATUS.RESUBMISSION_REQUESTED];
-const decisionStatuses = [STATUS.SUBMITTED, STATUS.RESUBMITTED];
+const editableStatuses = [REIMBURSEMENT_STATUS.DRAFT, REIMBURSEMENT_STATUS.RESUBMISSION_REQUESTED];
+const decisionStatuses = [REIMBURSEMENT_STATUS.SUBMITTED, REIMBURSEMENT_STATUS.RESUBMITTED];
 
 const ensureRequiredFields = (body) => {
   const requiredFields = [
@@ -163,7 +156,7 @@ exports.createReimbursement = async (req, res) => {
       {
         ...req.body,
         candidate_id: req.user.id,
-        status: STATUS.DRAFT,
+        status: REIMBURSEMENT_STATUS.DRAFT,
       },
       req.files || [],
     );
@@ -239,9 +232,9 @@ exports.submitReimbursement = async (req, res) => {
     }
 
     const nextStatus =
-      reimbursement.status === STATUS.RESUBMISSION_REQUESTED
-        ? STATUS.RESUBMITTED
-        : STATUS.SUBMITTED;
+      reimbursement.status === REIMBURSEMENT_STATUS.RESUBMISSION_REQUESTED
+        ? REIMBURSEMENT_STATUS.RESUBMITTED
+        : REIMBURSEMENT_STATUS.SUBMITTED;
 
     await ReimbursementDao.updateStatus(reimbursement.id, nextStatus);
     await ReimbursementDao.createActivityLog(
@@ -423,7 +416,7 @@ exports.resendApprovedEmail = async (req, res) => {
       return res.status(404).json({ message: "Reimbursement not found" });
     }
 
-    if (reimbursement.status !== STATUS.APPROVED || !reimbursement.approved_pdf_url) {
+    if (reimbursement.status !== REIMBURSEMENT_STATUS.APPROVED || !reimbursement.approved_pdf_url) {
       return res.status(409).json({ message: "Only approved reimbursements can be resent" });
     }
 

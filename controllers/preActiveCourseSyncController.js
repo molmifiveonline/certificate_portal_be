@@ -2,20 +2,14 @@ const axios = require("axios");
 const https = require("https");
 const PreActiveCourseDao = require("../dao/PreActiveCourseDao");
 const LogDao = require("../dao/LogDao");
-
-const SYNC_CONFIG = {
-  tokenUrl: "https://courseplanner.molmi.info/api/auth/token",
-  apiUrl: "https://courseplanner.molmi.info/api/get-scheduled-course",
-  clientId: "916cdf5c-30db-4e48-b070-88d2309a813d",
-  clientSecret: "h7a7RqA7muDZvoyePLe1TWtvpuj1HBVOfOO50DmM",
-};
+const { PRE_ACTIVE_COURSE_SYNC_CONFIG } = require("../utils/constants");
 
 const getAccessToken = async () => {
   const response = await axios.post(
-    SYNC_CONFIG.tokenUrl,
+    PRE_ACTIVE_COURSE_SYNC_CONFIG.tokenUrl,
     {
-      client_id: SYNC_CONFIG.clientId,
-      client_secret: SYNC_CONFIG.clientSecret,
+      client_id: PRE_ACTIVE_COURSE_SYNC_CONFIG.clientId,
+      client_secret: PRE_ACTIVE_COURSE_SYNC_CONFIG.clientSecret,
     },
     {
       headers: {
@@ -41,7 +35,7 @@ const fetchExternalPreview = async (req, res) => {
     const token = await getAccessToken();
 
     const response = await axios.post(
-      SYNC_CONFIG.apiUrl,
+      PRE_ACTIVE_COURSE_SYNC_CONFIG.apiUrl,
       {},
       {
         headers: {

@@ -8,61 +8,100 @@ const ActiveCourseDao = require("../../dao/ActiveCourseDao");
 const MasterCourseDao = require("../../dao/MasterCourseDao");
 const TrainerDao = require("../../dao/trainerDao");
 
-const TRAINING_RECORD_MONTH_HEADERS = [
-  "Jan.",
-  "Feb.",
-  "Mar.",
-  "Apr.",
-  "May",
-  "June",
-  "July",
-  "Aug.",
-  "Sep.",
-  "Oct.",
-  "Nov.",
-  "Dec.",
+const {
+  TRAINING_RECORD_MONTH_HEADERS,
+  TRAINING_RECORD_SECTION_ORDER,
+  TRG219_DOCUMENT_CODE,
+  TRG219_DOCUMENT_REVISION,
+  TRG219_DOCUMENT_DATE,
+  TRG219_SECTION_DEFINITIONS,
+  TRG219_SECTION_ORDER,
+} = require("../../utils/constants");
+
+const LEGACY_FEEDBACK_META_HEADERS = [
+  "Sr. No.",
+  "Date and time of Feedback submission",
+  "Name of the participant : Use capital letters (First Name- Middle name- Surname)",
+  "Employee Number - (Non MOLMI/ New Candidate enter your passport number)",
+  "Start date of course",
+  "End date of course",
+  "Rank Last served on vessel before this course",
+  "Name of the manager (last served)",
+  "Course Name",
+  "No. of Participants",
+  "Course No. (This information will be provided in your welcome letter)",
+  "Location of course conducted",
+  "Instructors Name(s)",
 ];
 
-const TRAINING_RECORD_SECTION_ORDER = ["Online", "Offline", "Outhouse"];
-const TRG219_DOCUMENT_CODE = "TRG/219";
-const TRG219_DOCUMENT_REVISION = "Rev. 6.1";
-const TRG219_DOCUMENT_DATE = "18 Jun 2024";
-const TRG219_SECTION_DEFINITIONS = [
+const LEGACY_FEEDBACK_RATING_COLUMNS = [
+  { question: "Clarity of objectives.", category: "TRAINING COURSE OBJECTIVE" },
+  { question: "Need of participants based on objective", category: "TRAINING COURSE OBJECTIVE" },
+  { question: "Relevance to job at hand", category: "TRAINING COURSE OBJECTIVE" },
+  { question: "Training objectives were clearly communicated and met", category: "TRAINING COURSE OBJECTIVE" },
+  { question: "Value / importance of content", category: "TRAINING COURSE DESIGN" },
+  { question: "Depth and detail of coverage", category: "TRAINING COURSE DESIGN" },
+  { question: "Time allocation", category: "TRAINING COURSE DESIGN" },
+  { question: "Determine the level of engagement and interaction during the training", category: "TRAINING COURSE DESIGN" },
+  { question: "Evaluate the effectiveness of activities, exercises, and discussions", category: "TRAINING COURSE DESIGN" },
+  { question: "Training provide a good balance between theory and practical application", category: "TRAINING COURSE DESIGN" },
+  { question: "Clarity / relevance of illustration or examples", category: "TRAINING COURSE DELIVERY" },
   {
-    key: "SIMULATOR_BASED_COURSE",
-    title: "SIMULATOR BASED COURSE",
-    codes: [
-      "LNGSTDMNG",
-      "LNGSTDOPR",
-      "CCRRM",
-      "SHS",
-      "BRM",
-      "ERM",
-      "LICOS",
-      "ECDIS",
-      "NWS",
-      "PEK",
-      "ESDC",
-      "MOLSEC",
-      "MEC",
-      "NCIC",
-    ],
+    question: "Effectiveness of presentation techniques",
+    category: "TRAINING COURSE DELIVERY",
+    header: "Effectiveness of presentation techniques  ( TRAINING COURSE DELIVERY )",
   },
+  { question: "Adherence to time schedule", category: "TRAINING COURSE DELIVERY" },
+  { question: "Measure the extent to which participants feel they have learned new skills", category: "TRAINING COURSE DELIVERY" },
+  { question: "Assess confidence levels in applying the learned skills", category: "TRAINING COURSE DELIVERY" },
+  { question: "Training equipment exposure", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  { question: "Course materials easy to understand and follow", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  { question: "Ease to reference", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  { question: "Clarity of linkages between topics", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  { question: "Usefulness of the content for practical application", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  { question: "Online learning", category: "TRAINING COURSE VENUE" },
+  { question: "Conductive to learning (ventilation/illumination/space)", category: "TRAINING COURSE VENUE" },
+  { question: "Comfort and convenience", category: "TRAINING COURSE VENUE" },
+  { question: "Transport/Accommodation/Meals (as applicable)", category: "TRAINING COURSE VENUE" },
+  { question: "Did you fully understand the content of this training and is the course adequate.", category: "TRAINING COURSE MODULE EVALUATION" },
+  { question: "Assess confidence levels in applying the learned skills", category: "TRAINING COURSE MODULE EVALUATION" },
+  { question: "level of engagement and interaction during the training", category: "TRAINING PARTICIPANT ENGAGEMENT" },
+  { question: "effectiveness of activities, exercises, and discussions.", category: "TRAINING PARTICIPANT ENGAGEMENT" },
+  { question: "confident in your ability to apply these skills", category: "TRAINING PARTICIPANT ENGAGEMENT" },
+  { question: "trainer's knowledge, engagement, and ability to facilitate learning.", category: "TRAINING FACULTY EVALUATION" },
+  { question: "Does the instructor regularly check all trainees understanding", category: "TRAINING FACULTY EVALUATION" },
+  { question: "Focus on highlights / key elements", category: "TRAINING FACULTY EVALUATION" },
+  { question: "Clarity of speech", category: "TRAINING FACULTY EVALUATION" },
+  { question: "trainer's presentation style and communication skills.", category: "TRAINING FACULTY EVALUATION" },
+  { question: "overall satisfaction with the training experience.", category: "OVERALL TRAINING SATISFACTION" },
+  { question: "whether participants would recommend the training to others.", category: "OVERALL TRAINING SATISFACTION" },
+];
 
+const LEGACY_FEEDBACK_COMMENT_COLUMNS = [
   {
-    key: "MOLMI_OUTHOUSE_COURSES",
-    title: "MOLMI OUTHOUSE COURSES",
-    codes: [],
+    question: "TRAINING ASPECTS THAT NEEDS IMPROVEMENT & SUGGESTIONS .(BE HONEST ).",
+    category: "RECOMMENDATIONS / COMMENTS ON HOW TO IMPROVE.",
   },
   {
-    key: "OTHER_COURSES",
-    title: "OTHER COURSES",
-    codes: [],
+    question: "BENEFITS EARNED FROM THIS TRAINING WHICH WILL CONTRIBUTE TO YOUR WORK/COMPANY.",
+    category: "RECOMMENDATIONS / COMMENTS ON HOW TO IMPROVE.",
   },
 ];
-const TRG219_SECTION_ORDER = TRG219_SECTION_DEFINITIONS.map(
-  (section) => section.key,
-);
+
+const normalizeFeedbackText = (value = "") =>
+  String(value).trim().replace(/\s+/g, " ").toLowerCase();
+
+const getFeedbackColumnHeader = ({ question, category, header }) =>
+  header || `${question} ( ${category} )`;
+
+const getFeedbackColumnKey = ({ question, category }) =>
+  `${normalizeFeedbackText(question)}|${normalizeFeedbackText(category)}`;
+
+const getFeedbackAnswerValue = (answerRow) => {
+  if (!answerRow) return "--";
+  const value = answerRow.answer ?? answerRow.feedback_question_option_text;
+  return value === undefined || value === null || value === "" ? "--" : value;
+};
 
 exports.getFilterOptions = async (req, res) => {
   try {
@@ -107,50 +146,32 @@ exports.exportFeedbackReport = async (req, res) => {
 
     const questionsData =
       await ReportDao.getQuestionsWithCategories(feedbackQuestionIds);
-    const questionsMap = {};
-    questionsData.forEach((q) => (questionsMap[q.id] = q));
 
-    const allQuestions = await ReportDao.getAllFeedbackQuestionsCombined(1);
-    const feedbackQuestionsWithOutRatings = allQuestions.nonRatings;
+    const legacyQuestionKeys = new Set(
+      [
+        ...LEGACY_FEEDBACK_RATING_COLUMNS,
+        ...LEGACY_FEEDBACK_COMMENT_COLUMNS,
+      ].map(getFeedbackColumnKey),
+    );
+    const questionIdsByLegacyKey = {};
+    questionsData.forEach((q) => {
+      const key = getFeedbackColumnKey({
+        question: q.question,
+        category: q.category_name,
+      });
+      if (!legacyQuestionKeys.has(key)) return;
+      if (!questionIdsByLegacyKey[key]) questionIdsByLegacyKey[key] = [];
+      questionIdsByLegacyKey[key].push(q.id);
+    });
 
     // 2. Prepare Excel Header
     const headers = [
-      "Sr. No.",
-      "Date and time of Feedback submission",
-      "Name of the participant : Use capital letters (First Name- Middle name- Surname)",
-      "Employee Number - (Non MOLMI/ New Candidate enter your passport number)",
-      "Start date of course",
-      "End date of course",
-      "Rank Last served on vessel before this course",
-      "Name of the manager (last served)",
-      "Course Name",
-      "No. of Participants",
-      "Course No. (This information will be provided in your welcome letter)",
-      "Location of course conducted",
-      "Instructors Name(s)",
+      ...LEGACY_FEEDBACK_META_HEADERS,
+      ...LEGACY_FEEDBACK_RATING_COLUMNS.map(getFeedbackColumnHeader),
+      "Average",
+      "Overall Course evaluation average",
+      ...LEGACY_FEEDBACK_COMMENT_COLUMNS.map(getFeedbackColumnHeader),
     ];
-
-    const ratingQuestions = [];
-    questionsData.forEach((q) => {
-      const format = (q.question_format || "").toLowerCase();
-      if (format === "ratings" || format === "rating") {
-        headers.push(`${q.question} ( ${q.category_name} )`);
-        ratingQuestions.push(q.id);
-      }
-    });
-
-    headers.push("Average");
-    headers.push("Overall Course evaluation average");
-
-    const nonRatingQuestionsMap = [];
-    feedbackQuestionsWithOutRatings.forEach((q) => {
-      // In new project, we include all non-rating questions (comments/suggestions)
-      // fetch category name from questionsData if available or default
-      const cat = questionsData.find((qd) => qd.category_id === q.category_id);
-      const catName = cat ? cat.category_name : "Other Comments";
-      headers.push(`${q.question} ( ${catName} )`);
-      nonRatingQuestionsMap.push(q.id);
-    });
 
     // 3. Fetch Data
     const allPairs = await ReportDao.getCandidateCoursePairs(
@@ -230,6 +251,16 @@ exports.exportFeedbackReport = async (req, res) => {
       ] = ans;
     });
 
+    const getAnswerForLegacyColumn = (candidateId, courseId, column) => {
+      const questionIds = questionIdsByLegacyKey[getFeedbackColumnKey(column)] || [];
+      const answerRows = answersMap[candidateId]?.[courseId] || {};
+      for (const questionId of questionIds) {
+        const value = getFeedbackAnswerValue(answerRows[questionId]);
+        if (value !== "--") return value;
+      }
+      return "--";
+    };
+
     // 5. Build Rows
     const dataRows = [];
     const courseAverages = {};
@@ -294,12 +325,12 @@ exports.exportFeedbackReport = async (req, res) => {
       let ratingSum = 0;
       let ratingCount = 0;
 
-      ratingQuestions.forEach((qId) => {
-        const ans =
-          answersMap[pair.candidate_id]?.[pair.active_course_id]?.[qId];
-        const val = ans
-          ? ans.answer || ans.feedback_question_option_text || "--"
-          : "--";
+      LEGACY_FEEDBACK_RATING_COLUMNS.forEach((column) => {
+        const val = getAnswerForLegacyColumn(
+          pair.candidate_id,
+          pair.active_course_id,
+          column,
+        );
         row.push(val);
         if (!isNaN(parseFloat(val))) {
           ratingSum += parseFloat(val);
@@ -322,14 +353,14 @@ exports.exportFeedbackReport = async (req, res) => {
 
       row.push(""); // Placeholder for Overall Avg
 
-      // Non Ratings
-      nonRatingQuestionsMap.forEach((qId) => {
-        const ans =
-          answersMap[pair.candidate_id]?.[pair.active_course_id]?.[qId];
-        const val = ans
-          ? ans.answer || ans.feedback_question_option_text || "--"
-          : "--";
-        row.push(val);
+      LEGACY_FEEDBACK_COMMENT_COLUMNS.forEach((column) => {
+        row.push(
+          getAnswerForLegacyColumn(
+            pair.candidate_id,
+            pair.active_course_id,
+            column,
+          ),
+        );
       });
 
       dataRows.push(row);
