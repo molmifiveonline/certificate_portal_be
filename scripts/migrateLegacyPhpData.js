@@ -40,33 +40,25 @@ const ENTITY = {
 function parseArgs() {
   const args = process.argv.slice(2);
   const resumeFromArg = args.find((arg) => arg.startsWith("--resume-from="));
-  const mode = args.includes("--reset-imported")
-      ? "reset-imported"
-      : args.includes("--audit")
-        ? "audit"
-      : args.includes("--copy-files-only")
-        ? "copy-files-only"
-      : args.includes("--repair-all")
-        ? "repair-all"
-        : args.includes("--repair-passwords")
-          ? "repair-passwords"
-        : args.includes("--repair-trainer-permissions")
-          ? "repair-trainer-permissions"
-        : args.includes("--repair-attendance")
-          ? "repair-attendance"
-        : args.includes("--repair-course-dates")
-          ? "repair-course-dates"
-        : args.includes("--repair-locations")
-          ? "repair-locations"
-        : args.includes("--repair-candidate-names")
-          ? "repair-candidate-names"
-          : args.includes("--apply")
-            ? "apply"
-            : "dry-run";
+  let mode = "dry-run";
+  if (args.includes("--reset-imported")) mode = "reset-imported";
+  else if (args.includes("--source-counts")) mode = "source-counts";
+  else if (args.includes("--incremental")) mode = "incremental";
+  else if (args.includes("--audit")) mode = "audit";
+  else if (args.includes("--copy-files-only")) mode = "copy-files-only";
+  else if (args.includes("--repair-all")) mode = "repair-all";
+  else if (args.includes("--repair-passwords")) mode = "repair-passwords";
+  else if (args.includes("--repair-trainer-permissions")) mode = "repair-trainer-permissions";
+  else if (args.includes("--repair-attendance")) mode = "repair-attendance";
+  else if (args.includes("--repair-course-dates")) mode = "repair-course-dates";
+  else if (args.includes("--repair-locations")) mode = "repair-locations";
+  else if (args.includes("--repair-candidate-names")) mode = "repair-candidate-names";
+  else if (args.includes("--apply")) mode = "apply";
 
   return {
     mode,
     dryRun:
+      mode === "source-counts" ||
       mode === "audit" ||
       args.includes("--dry-run") ||
       (mode === "repair-candidate-names" ||
@@ -76,10 +68,12 @@ function parseArgs() {
       mode === "repair-passwords" ||
       mode === "repair-trainer-permissions" ||
       mode === "repair-all" ||
+      mode === "incremental" ||
       mode === "audit"
         ? !args.includes("--apply")
         : mode !== "apply" && mode !== "reset-imported" && mode !== "copy-files-only"),
     reset: mode === "reset-imported",
+    incremental: mode === "incremental",
     resumeFrom: resumeFromArg ? resumeFromArg.split("=")[1] : null,
   };
 }
@@ -122,6 +116,45 @@ function normalizeText(value) {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();
   return text === "" ? null : text;
+}
+
+function placeholderEmail(entityLabel, legacyId) {
+  return `legacy-${entityLabel}-${legacyId}@migration.local`;
+}
+
+async function resolveLegacyUserEmail(ctx, entityLabel, legacyId, rawEmail, expectedUserId) {
+  const normalizedEmail = normalizeText(rawEmail);
+  const fallbackEmail = placeholderEmail(entityLabel, legacyId);
+  const candidateEmail = normalizedEmail || fallbackEmail;
+
+  const ownerId = async (email) => {
+    const [rows] = await ctx.target.query("SELECT id FROM users WHERE email = ? LIMIT 1", [
+      email,
+    ]);
+    return rows[0]?.id || null;
+  };
+
+  const candidateOwnerId = await ownerId(candidateEmail);
+  if (!candidateOwnerId || candidateOwnerId === expectedUserId) return candidateEmail;
+
+  ctx.skip(`${entityLabel}_duplicate_email_placeholder`);
+  const fallbackOwnerId = await ownerId(fallbackEmail);
+  if (!fallbackOwnerId || fallbackOwnerId === expectedUserId) {
+    if (ctx.summary.warnings.length < 200) {
+      ctx.summary.warnings.push(
+        `Using placeholder email ${fallbackEmail} for legacy ${entityLabel} ${legacyId}; ${candidateEmail} already belongs to another user.`,
+      );
+    }
+    return fallbackEmail;
+  }
+
+  const uniqueFallbackEmail = `legacy-${entityLabel}-${legacyId}-${String(expectedUserId).slice(0, 8)}@migration.local`;
+  if (ctx.summary.warnings.length < 200) {
+    ctx.summary.warnings.push(
+      `Using placeholder email ${uniqueFallbackEmail} for legacy ${entityLabel} ${legacyId}; ${candidateEmail} and ${fallbackEmail} already belong to other users.`,
+    );
+  }
+  return uniqueFallbackEmail;
 }
 
 function looksLikeBcryptHash(value) {
@@ -229,6 +262,10 @@ function registrationType(value) {
   return "Others";
 }
 
+function candidateUserType(value) {
+  return registrationType(value) === "MOLMI Employee" ? "" : "others";
+}
+
 function normalizeLocationKey(value) {
   const text = normalizeNamePart(value);
   return text ? text.toUpperCase() : null;
@@ -291,22 +328,9 @@ function resolveCourseLocationId(row, locationLookup) {
 function courseDisplayName(row) {
   const courseId = normalizeText(row.course_id);
   const courseName = normalizeText(row.course_name);
-  if (!courseId) return courseName || `Legacy Course ${row.id}`;
-  if (!courseName) return courseId;
-
-  const idMatch = courseId.match(/^([A-Z]+)-(\d{4})-(\d+)$/i);
-  const nameMatch = courseName.match(/^([A-Z]+)-(\d{4})-(\d+)$/i);
-  if (idMatch && nameMatch) {
-    const sameFamily =
-      idMatch[1].toUpperCase() === nameMatch[1].toUpperCase() ||
-      (idMatch[1].toUpperCase() === "HAZM" &&
-        nameMatch[1].toUpperCase() === "HAZMAT");
-    const sameYear = idMatch[2] === nameMatch[2];
-    const sameNumber = Number(idMatch[3]) === Number(nameMatch[3]);
-    if (sameFamily && sameYear && !sameNumber) return courseId;
-  }
-
-  return courseName;
+  if (courseName) return courseName;
+  if (courseId) return courseId;
+  return `Legacy Course ${row.id}`;
 }
 
 function sanitizeFileName(name) {
@@ -335,11 +359,12 @@ function noteFile(stats, status, detail) {
 }
 
 class MigrationContext {
-  constructor({ legacy, target, dryRun, mode, resumeFrom }) {
+  constructor({ legacy, target, dryRun, mode, resumeFrom, incremental = false }) {
     this.legacy = legacy;
     this.target = target;
     this.dryRun = dryRun;
     this.mode = mode;
+    this.incremental = incremental;
     this.resumeFrom = resumeFrom;
     this.columnCache = new Map();
     this.legacyTableCache = new Map();
@@ -349,6 +374,7 @@ class MigrationContext {
     this.fileMode = process.env.MIGRATION_FILE_MODE || "copy";
     this.summary = {
       mode,
+      incremental,
       resume_from: resumeFrom,
       started_at: new Date().toISOString(),
       counts: {},
@@ -417,7 +443,27 @@ class MigrationContext {
     this.summary.skipped[key] = (this.summary.skipped[key] || 0) + amount;
   }
 
+  async hasLegacyMap(entityType, legacyId) {
+    if (!entityType || legacyId === undefined || legacyId === null) return false;
+    const ids = await this.mappedLegacyIds(entityType);
+    return ids.has(String(legacyId));
+  }
+
+  async skipExistingLegacyMap(map) {
+    if (!this.incremental || !map) return false;
+    if (!(await this.hasLegacyMap(map.entityType, map.legacyId))) return false;
+    this.skip(`${map.entityType}_incremental_existing`);
+    return true;
+  }
+
+  noteIncrementalNew(map) {
+    if (!this.incremental || !map) return;
+    this.increment(`${map.entityType}_incremental_new`);
+  }
+
   async upsert(tableName, row, map = null) {
+    if (await this.skipExistingLegacyMap(map)) return false;
+
     const columns = await this.targetColumns(tableName);
     const filtered = Object.entries(row).filter(([key, value]) => {
       if (value === undefined || !columns.has(key)) return false;
@@ -428,8 +474,9 @@ class MigrationContext {
       return true;
     });
 
-    if (filtered.length === 0) return;
-    if (this.dryRun) return;
+    if (filtered.length === 0) return false;
+    this.noteIncrementalNew(map);
+    if (this.dryRun) return true;
 
     const names = filtered.map(([key]) => key);
     const values = filtered.map(([, value]) => value);
@@ -446,6 +493,7 @@ class MigrationContext {
     );
 
     if (map) await this.mapLegacyId(map.entityType, map.legacyId, map.newId);
+    return true;
   }
 
   async mapLegacyId(entityType, legacyId, newId) {
@@ -456,11 +504,22 @@ class MigrationContext {
        ON DUPLICATE KEY UPDATE new_id = VALUES(new_id)`,
       [entityType, String(legacyId), String(newId)],
     );
+    this.mappedIdCache.delete(entityType);
   }
 
   async mappedLegacyIds(entityType) {
     if (this.mappedIdCache.has(entityType)) return this.mappedIdCache.get(entityType);
-    if (this.dryRun) {
+    if (
+      this.dryRun &&
+      !this.incremental &&
+      this.mode !== "audit" &&
+      this.mode !== "source-counts"
+    ) {
+      this.mappedIdCache.set(entityType, new Set());
+      return this.mappedIdCache.get(entityType);
+    }
+
+    if (!(await this.targetHasTable("legacy_id_map"))) {
       this.mappedIdCache.set(entityType, new Set());
       return this.mappedIdCache.get(entityType);
     }
@@ -476,6 +535,23 @@ class MigrationContext {
 
   async upsertMany(tableName, rows, maps = [], batchSize = 500) {
     if (rows.length === 0) return;
+
+    if (this.incremental && maps.length) {
+      const filteredRows = [];
+      const filteredMaps = [];
+      for (let index = 0; index < rows.length; index += 1) {
+        const map = maps[index] || null;
+        if (await this.skipExistingLegacyMap(map)) continue;
+        filteredRows.push(rows[index]);
+        filteredMaps.push(map);
+        this.noteIncrementalNew(map);
+      }
+      rows = filteredRows;
+      maps = filteredMaps;
+      if (rows.length === 0) return;
+    } else if (this.incremental && !maps.length) {
+      this.increment(`${tableName}_incremental_unmapped_rows`, rows.length);
+    }
 
     const columns = await this.targetColumns(tableName);
     const names = Object.keys(rows[0]).filter((key) => {
@@ -524,6 +600,7 @@ class MigrationContext {
            ON DUPLICATE KEY UPDATE new_id = VALUES(new_id)`,
           mapValues,
         );
+        for (const map of mapBatch) this.mappedIdCache.delete(map.entityType);
       }
     }
   }
@@ -622,6 +699,15 @@ class MigrationContext {
     fs.copyFileSync(sourcePath, targetPath);
     noteFile(this.summary.files, "copied", { source: sourcePath, target: storedValue });
     return storedValue;
+  }
+
+  legacyFileStoredValue(value, storedPrefix, filePrefix) {
+    const text = normalizeText(value);
+    if (!text) return null;
+    const sourceName = sanitizeFileName(text);
+    if (!sourceName) return null;
+    const targetName = `${filePrefix}-${sourceName}`;
+    return storedPrefix ? `${storedPrefix}/${targetName}` : targetName;
   }
 }
 
@@ -807,11 +893,22 @@ async function importCandidates(ctx) {
   const fallbackPassword = process.env.LEGACY_TEMP_PASSWORD || uuidv4();
 
   for (const row of rows) {
+    if (ctx.incremental && (await ctx.hasLegacyMap(ENTITY.candidate, row.id))) {
+      ctx.skip(`${ENTITY.candidate}_incremental_existing`);
+      ctx.skip("candidate_profile_incremental_existing");
+      continue;
+    }
+
     const userId = legacyUuid(ENTITY.candidate, row.id);
     const profileId = legacyUuid("candidate_profile", row.id);
     const { firstName, middleName, lastName } = parseCandidateName(row);
-    const email =
-      normalizeText(row.email) || `legacy-candidate-${row.id}@migration.local`;
+    const email = await resolveLegacyUserEmail(
+      ctx,
+      "candidate",
+      row.id,
+      row.email,
+      userId,
+    );
     const profileImage = ctx.copyLegacyFile(
       row.profile_image,
       "uploads/candidate-profiles",
@@ -819,13 +916,13 @@ async function importCandidates(ctx) {
       `candidate-${row.id}`,
     );
 
-    await ctx.upsert(
+    const userImported = await ctx.upsert(
       "users",
       {
         id: userId,
         prefix: row.prefix || null,
         role_id: candidateRoleId,
-        user_type: registrationType(row.registration_type),
+        user_type: candidateUserType(row.registration_type),
         first_name: firstName,
         middle_name: middleName,
         last_name: lastName,
@@ -844,6 +941,10 @@ async function importCandidates(ctx) {
       },
       { entityType: ENTITY.candidate, legacyId: row.id, newId: userId },
     );
+    if (!userImported) {
+      ctx.skip("candidate_profile_incremental_existing");
+      continue;
+    }
 
     await ctx.upsert("candidate_profiles", {
       id: profileId,
@@ -881,18 +982,26 @@ function sameNameValue(current, desired) {
 
 async function repairCandidateNames(ctx) {
   const legacyRows = await ctx.selectLegacy("candidate");
+  const candidateRoleId = await roleId(ctx, "candidate");
+  const passwordCache = new Map();
+  const fallbackPassword = process.env.LEGACY_TEMP_PASSWORD || uuidv4();
   const [mappedRows] = await ctx.target.query(
     `SELECT
        lim.legacy_id,
        lim.new_id,
        u.id AS user_id,
+       r.name AS role_name,
+       u.email,
+       u.status,
        u.first_name,
        u.middle_name,
        u.last_name,
-       cp.id AS profile_id,
-       cp.middle_name AS profile_middle_name
+        cp.id AS profile_id,
+        cp.middle_name AS profile_middle_name,
+        cp.registration_type AS profile_registration_type
      FROM legacy_id_map lim
      LEFT JOIN users u ON u.id = lim.new_id
+     LEFT JOIN roles r ON r.id = u.role_id
      LEFT JOIN candidate_profiles cp ON cp.user_id = lim.new_id
      WHERE lim.entity_type = ?`,
     [ENTITY.candidate],
@@ -906,6 +1015,9 @@ async function repairCandidateNames(ctx) {
     unchanged: 0,
     missing_map: 0,
     missing_user: 0,
+    recreated_users: 0,
+    created_profiles: 0,
+    registration_type_updates: 0,
     samples: [],
   };
 
@@ -916,19 +1028,35 @@ async function repairCandidateNames(ctx) {
       repairSummary.missing_map += 1;
       continue;
     }
-    if (!mapped.user_id) {
-      repairSummary.missing_user += 1;
-      continue;
-    }
 
     const desired = parseCandidateName(legacyRow);
+    const desiredRegistrationType = registrationType(legacyRow.registration_type);
+    const desiredStatus = normalizeStatus(legacyRow.is_active);
+    const userId = mapped.new_id;
+    const desiredEmail = await resolveLegacyUserEmail(
+      ctx,
+      "candidate",
+      legacyRow.id,
+      legacyRow.email,
+      userId,
+    );
+    const userMissing = !mapped.user_id;
+    const profileMissing = !mapped.profile_id;
+    if (userMissing) {
+      repairSummary.missing_user += 1;
+    }
+    const roleMismatch = normalizeText(mapped.role_name) !== "candidate";
     const userChanged =
+      userMissing ||
+      roleMismatch ||
+      Number(mapped.status ?? 1) !== desiredStatus ||
       !sameNameValue(mapped.first_name, desired.firstName) ||
       !sameNameValue(mapped.middle_name, desired.middleName) ||
       !sameNameValue(mapped.last_name, desired.lastName);
     const profileChanged =
-      mapped.profile_id &&
-      !sameNameValue(mapped.profile_middle_name, desired.middleName);
+      profileMissing ||
+      !sameNameValue(mapped.profile_middle_name, desired.middleName) ||
+      normalizeText(mapped.profile_registration_type) !== desiredRegistrationType;
 
     if (!userChanged && !profileChanged) {
       repairSummary.unchanged += 1;
@@ -941,33 +1069,122 @@ async function repairCandidateNames(ctx) {
         legacy_id: String(legacyRow.id),
         candidate_name: normalizeNamePart(legacyRow.candidate_name),
         before: {
+          role_name: mapped.role_name,
+          status: mapped.status,
+          email: mapped.email,
           first_name: mapped.first_name,
           middle_name: mapped.middle_name,
           last_name: mapped.last_name,
           profile_middle_name: mapped.profile_middle_name,
+          profile_registration_type: mapped.profile_registration_type,
         },
         after: {
+          role_name: "candidate",
+          status: desiredStatus,
+          email: desiredEmail,
           first_name: desired.firstName,
           middle_name: desired.middleName,
           last_name: desired.lastName,
           profile_middle_name: desired.middleName,
+          profile_registration_type: desiredRegistrationType,
         },
       });
     }
 
     if (ctx.dryRun) continue;
 
-    await ctx.target.execute(
-      `UPDATE users
-       SET first_name = ?, middle_name = ?, last_name = ?
-       WHERE id = ?`,
-      [desired.firstName, desired.middleName, desired.lastName, mapped.user_id],
-    );
-    if (mapped.profile_id) {
-      await ctx.target.execute(
-        "UPDATE candidate_profiles SET middle_name = ? WHERE id = ?",
-        [desired.middleName, mapped.profile_id],
+    if (userMissing) {
+      repairSummary.recreated_users += 1;
+      await ctx.upsert(
+        "users",
+        {
+          id: userId,
+          prefix: legacyRow.prefix || null,
+          role_id: candidateRoleId,
+          user_type: candidateUserType(legacyRow.registration_type),
+          first_name: desired.firstName,
+          middle_name: desired.middleName,
+          last_name: desired.lastName,
+          gender: legacyRow.gender || null,
+          email: desiredEmail,
+          password: await legacyPasswordHash(
+            legacyRow.password,
+            passwordCache,
+            fallbackPassword,
+          ),
+          mobile: legacyRow.mobile || null,
+          alternate_mobile: legacyRow.mobile_1 || null,
+          status: desiredStatus,
+          created_at: dateTimeOrNull(legacyRow.created_at),
+          updated_at: dateTimeOrNull(legacyRow.updated_at),
+        },
+        { entityType: ENTITY.candidate, legacyId: legacyRow.id, newId: userId },
       );
+    } else {
+      await ctx.target.execute(
+        `UPDATE users
+         SET role_id = ?, first_name = ?, middle_name = ?, last_name = ?,
+             gender = ?, email = ?, password = ?, mobile = ?, alternate_mobile = ?, status = ?
+         WHERE id = ?`,
+        [
+          candidateRoleId,
+          desired.firstName,
+          desired.middleName,
+          desired.lastName,
+          legacyRow.gender || null,
+          desiredEmail,
+          await legacyPasswordHash(legacyRow.password, passwordCache, fallbackPassword),
+          legacyRow.mobile || null,
+          legacyRow.mobile_1 || null,
+          desiredStatus,
+          mapped.user_id,
+        ],
+      );
+    }
+
+    if (profileMissing) {
+      repairSummary.created_profiles += 1;
+      await ctx.upsert("candidate_profiles", {
+        id: legacyUuid("candidate_profile", legacyRow.id),
+        user_id: userId,
+        prefix: legacyRow.prefix || null,
+        middle_name: desired.middleName,
+        dob: dateOrNull(legacyRow.dob),
+        gender: legacyRow.gender || null,
+        nationality: legacyRow.nationality || null,
+        passport_no: legacyRow.cdc_passport || null,
+        designation: legacyRow.designation || legacyRow.position || null,
+        profile_image: ctx.copyLegacyFile(
+          legacyRow.profile_image,
+          "uploads/candidate-profiles",
+          "/uploads/candidate-profiles",
+          `candidate-${legacyRow.id}`,
+        ),
+        indos_number: legacyRow.indos_no || null,
+        employee_id: legacyRow.empId || legacyRow.employee_id_api || null,
+        manager: legacyRow.manager || null,
+        rank: legacyRow.rank || legacyRow.position || null,
+        whatsapp_number: legacyRow.whatsapp || null,
+        alternate_mobile: legacyRow.alternate_mobile || legacyRow.mobile_1 || null,
+        registration_type: desiredRegistrationType,
+        vessel_type: legacyRow.vessel_type || null,
+        last_vessel_name: legacyRow.vessel_name || null,
+        manning_company: legacyRow.manning_company || null,
+        sign_on_date: dateOrNull(legacyRow.sign_on),
+        sign_off_date: dateOrNull(legacyRow.sign_off),
+        officer: legacyRow.officer || null,
+        seaman_book_no: legacyRow.seaman_book_no || null,
+      });
+    } else {
+      await ctx.target.execute(
+        `UPDATE candidate_profiles
+         SET middle_name = ?, registration_type = ?
+         WHERE id = ?`,
+        [desired.middleName, desiredRegistrationType, mapped.profile_id],
+      );
+      if (normalizeText(mapped.profile_registration_type) !== desiredRegistrationType) {
+        repairSummary.registration_type_updates += 1;
+      }
     }
   }
 
@@ -990,6 +1207,12 @@ async function importTrainers(ctx) {
   const fallbackPassword = process.env.LEGACY_TEMP_PASSWORD || uuidv4();
 
   for (const row of rows) {
+    if (ctx.incremental && (await ctx.hasLegacyMap(ENTITY.trainer, row.id))) {
+      ctx.skip(`${ENTITY.trainer}_incremental_existing`);
+      ctx.skip("trainer_profile_incremental_existing");
+      continue;
+    }
+
     const userId = legacyUuid(ENTITY.trainer, row.id);
     const profileId = legacyUuid("trainer_profile", row.id);
     const { firstName, lastName } = splitName(row.trainer_name);
@@ -1007,12 +1230,19 @@ async function importTrainers(ctx) {
     );
 
     const trainerEmail = normalizeText(row.email);
-    const safeTrainerEmail =
+    const legacySafeTrainerEmail =
       trainerEmail && emailCounts.get(trainerEmail.toLowerCase()) === 1
         ? trainerEmail
-        : `legacy-trainer-${row.id}@migration.local`;
+        : placeholderEmail("trainer", row.id);
+    const safeTrainerEmail = await resolveLegacyUserEmail(
+      ctx,
+      "trainer",
+      row.id,
+      legacySafeTrainerEmail,
+      userId,
+    );
 
-    await ctx.upsert(
+    const userImported = await ctx.upsert(
       "users",
       {
         id: userId,
@@ -1030,6 +1260,10 @@ async function importTrainers(ctx) {
       },
       { entityType: ENTITY.trainer, legacyId: row.id, newId: userId },
     );
+    if (!userImported) {
+      ctx.skip("trainer_profile_incremental_existing");
+      continue;
+    }
 
     await ctx.upsert("trainer_profiles", {
       id: profileId,
@@ -1356,7 +1590,7 @@ function sameDateTimeValue(current, desired) {
 async function repairCourseDates(ctx) {
   const courseRows = await ctx.selectLegacy("course");
   const [mappedRows] = await ctx.target.query(
-    `SELECT lim.legacy_id, lim.new_id, c.start_date, c.end_date
+    `SELECT lim.legacy_id, lim.new_id, c.start_date, c.end_date, c.course_name
      FROM legacy_id_map lim
      LEFT JOIN courses c ON c.id = lim.new_id
      WHERE lim.entity_type = ?`,
@@ -1388,9 +1622,11 @@ async function repairCourseDates(ctx) {
 
     const desiredStartDate = courseDateTimeOrNull(legacyRow.start_date);
     const desiredEndDate = courseDateTimeOrNull(legacyRow.end_date);
+    const desiredCourseName = courseDisplayName(legacyRow);
     const changed =
       !sameDateTimeValue(mapped.start_date, desiredStartDate) ||
-      !sameDateTimeValue(mapped.end_date, desiredEndDate);
+      !sameDateTimeValue(mapped.end_date, desiredEndDate) ||
+      !sameNameValue(mapped.course_name, desiredCourseName);
 
     if (!changed) {
       repairSummary.unchanged += 1;
@@ -1405,18 +1641,20 @@ async function repairCourseDates(ctx) {
         before: {
           start_date: mapped.start_date,
           end_date: mapped.end_date,
+          course_name: mapped.course_name,
         },
         after: {
           start_date: desiredStartDate,
           end_date: desiredEndDate,
+          course_name: desiredCourseName,
         },
       });
     }
 
     if (ctx.dryRun) continue;
     await ctx.target.execute(
-      "UPDATE courses SET start_date = ?, end_date = ? WHERE id = ?",
-      [desiredStartDate, desiredEndDate, mapped.new_id],
+      "UPDATE courses SET start_date = ?, end_date = ?, course_name = ? WHERE id = ?",
+      [desiredStartDate, desiredEndDate, desiredCourseName, mapped.new_id],
     );
   }
 
@@ -1575,28 +1813,85 @@ async function importHotelFiles(ctx) {
   const candidateIsText = await ctx.isTextColumn("hotel_files", "candidate_id");
 
   for (const row of rows) {
-    const copiedName = ctx.copyLegacyFile(
+    if (ctx.incremental && (await ctx.hasLegacyMap(ENTITY.hotelFile, row.id))) {
+      ctx.skip(`${ENTITY.hotelFile}_incremental_existing`);
+      continue;
+    }
+
+    const plannedName = ctx.legacyFileStoredValue(
       row.file_name,
-      "uploads/venues",
       "",
       `hotel-file-${row.id}`,
     );
     const newId = legacyUuid(ENTITY.hotelFile, row.id);
-    await ctx.upsert(
-      "hotel_files",
-      {
-        id: idIsText ? newId : undefined,
-        ce_id: ceIsText ? legacyUuid(ENTITY.enrollment, row.ce_id) : row.ce_id,
-        candidate_id: candidateIsText
-          ? legacyUuid(ENTITY.candidate, row.candidate_id)
-          : row.candidate_id,
-        file_name: copiedName,
-        file_type: row.file_type || null,
-        uploaded_at: dateTimeOrNull(row.uploaded_at),
-        status: row.status === undefined ? 1 : row.status,
-      },
-      idIsText ? { entityType: ENTITY.hotelFile, legacyId: row.id, newId } : null,
-    );
+    const hotelFileRow = {
+      id: idIsText ? newId : undefined,
+      ce_id: ceIsText ? legacyUuid(ENTITY.enrollment, row.ce_id) : row.ce_id,
+      candidate_id: candidateIsText
+        ? legacyUuid(ENTITY.candidate, row.candidate_id)
+        : row.candidate_id,
+      file_name: plannedName,
+      file_type: row.file_type || null,
+      uploaded_at: dateTimeOrNull(row.uploaded_at),
+      status: row.status === undefined ? 1 : row.status,
+    };
+
+    if (idIsText) {
+      hotelFileRow.file_name = ctx.copyLegacyFile(
+        row.file_name,
+        "uploads/venues",
+        "",
+        `hotel-file-${row.id}`,
+      );
+      await ctx.upsert(
+        "hotel_files",
+        hotelFileRow,
+        { entityType: ENTITY.hotelFile, legacyId: row.id, newId },
+      );
+    } else {
+      const [existingRows] = await ctx.target.query(
+        `SELECT id
+         FROM hotel_files
+         WHERE ce_id <=> ?
+           AND candidate_id <=> ?
+           AND file_name <=> ?
+         LIMIT 1`,
+        [hotelFileRow.ce_id, hotelFileRow.candidate_id, hotelFileRow.file_name],
+      );
+      if (existingRows[0]?.id) {
+        ctx.skip(`${ENTITY.hotelFile}_incremental_existing`);
+        if (!ctx.dryRun) {
+          await ctx.mapLegacyId(ENTITY.hotelFile, row.id, existingRows[0].id);
+        }
+      } else {
+        hotelFileRow.file_name = ctx.copyLegacyFile(
+          row.file_name,
+          "uploads/venues",
+          "",
+          `hotel-file-${row.id}`,
+        );
+        ctx.noteIncrementalNew({
+          entityType: ENTITY.hotelFile,
+          legacyId: row.id,
+          newId,
+        });
+        if (!ctx.dryRun) {
+          const columns = await ctx.targetColumns("hotel_files");
+          const filtered = Object.entries(hotelFileRow).filter(
+            ([key, value]) => value !== undefined && columns.has(key),
+          );
+          const names = filtered.map(([key]) => key);
+          const values = filtered.map(([, value]) => value);
+          const placeholders = names.map(() => "?").join(", ");
+          const [result] = await ctx.target.execute(
+            `INSERT INTO hotel_files (${names.map((name) => `\`${name}\``).join(", ")})
+             VALUES (${placeholders})`,
+            values,
+          );
+          await ctx.mapLegacyId(ENTITY.hotelFile, row.id, result.insertId);
+        }
+      }
+    }
     ctx.increment("hotel_files");
   }
 }
@@ -1861,6 +2156,7 @@ async function importAssessmentAnswers(ctx, answerResultMap) {
   const alreadyMapped = await ctx.mappedLegacyIds(ENTITY.assessmentAnswer);
   const batchRows = [];
   const batchMaps = [];
+  const fallbackResultMap = new Map();
 
   for (const row of rows) {
     if (alreadyMapped.has(String(row.id))) {
@@ -1868,7 +2164,27 @@ async function importAssessmentAnswers(ctx, answerResultMap) {
       continue;
     }
 
-    const assessmentResultId = answerResultMap.get(String(row.id));
+    let assessmentResultId = answerResultMap.get(String(row.id));
+    if (!assessmentResultId) {
+      const fallbackKey = `${row.candidate_id}:${row.assessment_id}`;
+      if (!fallbackResultMap.has(fallbackKey)) {
+        const [resultRows] = await ctx.target.query(
+          `SELECT id
+           FROM assessment_results
+           WHERE candidate_id = ? AND assessment_id = ?
+           ORDER BY created_at, id`,
+          [
+            legacyUuid(ENTITY.candidate, row.candidate_id),
+            legacyUuid(ENTITY.assessment, row.assessment_id),
+          ],
+        );
+        fallbackResultMap.set(
+          fallbackKey,
+          resultRows.length === 1 ? resultRows[0].id : null,
+        );
+      }
+      assessmentResultId = fallbackResultMap.get(fallbackKey) || null;
+    }
     if (!assessmentResultId) {
       ctx.skip("assessment_answers_without_result");
       continue;
@@ -2135,6 +2451,7 @@ async function targetCountIfPresent(ctx, tableName) {
 }
 
 async function mappedCount(ctx, entityType) {
+  if (!(await ctx.targetHasTable("legacy_id_map"))) return 0;
   return scalar(
     ctx.target,
     "SELECT COUNT(*) AS total FROM legacy_id_map WHERE entity_type = ?",
@@ -2680,6 +2997,162 @@ async function runLegacyAudit(ctx) {
   ctx.increment("audit_critical_blockers", audit.critical_blockers.length);
 }
 
+async function groupedCounts(connection, tableName, columnName, tableExists) {
+  if (!(await tableExists(tableName))) return [];
+  const [rows] = await connection
+    .query(
+      `SELECT COALESCE(NULLIF(TRIM(CAST(\`${columnName}\` AS CHAR)), ''), 'missing') AS value,
+              COUNT(*) AS total
+       FROM \`${tableName}\`
+       GROUP BY COALESCE(NULLIF(TRIM(CAST(\`${columnName}\` AS CHAR)), ''), 'missing')
+       ORDER BY total DESC, value ASC`,
+    )
+    .catch(() => [[]]);
+  return rows;
+}
+
+async function runSourceCounts(ctx) {
+  const modules = [
+    ["candidate", ENTITY.candidate, "candidate_profiles"],
+    ["trainer", ENTITY.trainer, "trainer_profiles"],
+    ["master_course", ENTITY.masterCourse, "master_course"],
+    ["location", ENTITY.location, "locations"],
+    ["course", ENTITY.course, "courses"],
+    ["courses_enrollment", ENTITY.enrollment, "courses_enrollment"],
+    ["course_attendance", ENTITY.courseAttendance, "course_attendance"],
+    ["hotel_details", ENTITY.hotelDetail, "hotel_details"],
+    ["hotel_files", ENTITY.hotelFile, "hotel_files"],
+    ["certificate", ENTITY.certificate, "certificates"],
+    ["question_bank", ENTITY.question, "question_bank"],
+    ["assessment", ENTITY.assessment, "assessment"],
+    ["assessment_score", ENTITY.assessmentResult, "assessment_results"],
+    ["assessment_question_answer", ENTITY.assessmentAnswer, "assessment_answers"],
+    ["feedback_category", ENTITY.feedbackCategory, "feedback_categories"],
+    ["feedback", ENTITY.feedbackForm, "feedback_forms"],
+    ["feedback_question", ENTITY.feedbackQuestion, "feedback_questions"],
+    ["feedback_question_option", ENTITY.feedbackOption, "feedback_question_options"],
+    ["feedback_question_answer", ENTITY.feedbackAnswer, "feedback_question_answer"],
+  ];
+
+  const byModule = [];
+  for (const [legacyTable, entityType, targetTable] of modules) {
+    const legacyTotal = await legacyCountIfPresent(ctx, legacyTable);
+    const targetTotal = await targetCountIfPresent(ctx, targetTable);
+    const mappedTotal = await mappedCount(ctx, entityType);
+    byModule.push({
+      legacyTable,
+      entityType,
+      targetTable,
+      legacyTotal,
+      targetTotal,
+      mappedTotal,
+      unmappedLegacyRows: Math.max(legacyTotal - mappedTotal, 0),
+    });
+  }
+
+  const usersHasMergedInto = await ctx.targetHasColumn("users", "merged_into_user_id");
+  const mergedCondition = usersHasMergedInto ? "AND u.merged_into_user_id IS NULL" : "";
+  const visibleCandidateTotal = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     JOIN candidate_profiles cp ON cp.user_id = u.id
+     WHERE LOWER(r.name) = 'candidate'
+       AND COALESCE(u.status, 1) = 1
+       ${mergedCondition}`,
+  );
+  const visibleTrainerTotal = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     JOIN trainer_profiles tp ON tp.user_id = u.id
+     WHERE LOWER(r.name) = 'trainer'
+       AND COALESCE(u.status, 1) = 1
+       AND COALESCE(tp.status, 1) = 1`,
+  );
+  const activeCourseTotal = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM courses
+     WHERE COALESCE(status, '') <> 'Deleted'`,
+  );
+
+  const [mapRows] = (await ctx.targetHasTable("legacy_id_map"))
+    ? await ctx.target.query(
+        `SELECT entity_type, COUNT(*) AS total
+         FROM legacy_id_map
+         GROUP BY entity_type
+         ORDER BY entity_type`,
+      )
+    : [[]];
+
+  ctx.summary.source_counts = {
+    generated_at: new Date().toISOString(),
+    note:
+      "Read-only report. Restore the latest PHP legacy dump before trusting these counts for incremental migration.",
+    byModule,
+    legacyBreakdowns: {
+      candidateIsActive: await groupedCounts(
+        ctx.legacy,
+        "candidate",
+        "is_active",
+        (table) => ctx.legacyHasTable(table),
+      ),
+      candidateRegistrationType: await groupedCounts(
+        ctx.legacy,
+        "candidate",
+        "registration_type",
+        (table) => ctx.legacyHasTable(table),
+      ),
+      trainerStatus: await groupedCounts(
+        ctx.legacy,
+        "trainer",
+        "status",
+        (table) => ctx.legacyHasTable(table),
+      ),
+      courseStatus: await groupedCounts(
+        ctx.legacy,
+        "course",
+        "status",
+        (table) => ctx.legacyHasTable(table),
+      ),
+      courseTypeOfStatus: await groupedCounts(
+        ctx.legacy,
+        "course",
+        "type_of_status",
+        (table) => ctx.legacyHasTable(table),
+      ),
+      certificateStatus: await groupedCounts(
+        ctx.legacy,
+        "certificate",
+        "status",
+        (table) => ctx.legacyHasTable(table),
+      ),
+    },
+    targetVisibleCounts: {
+      candidates: visibleCandidateTotal,
+      trainers: visibleTrainerTotal,
+      activeCourses: activeCourseTotal,
+      certificates: await targetCountIfPresent(ctx, "certificates"),
+    },
+    targetMappedCounts: mapRows,
+    incrementalPreview: byModule
+      .filter((row) => row.unmappedLegacyRows > 0)
+      .map((row) => ({
+        entityType: row.entityType,
+        legacyTable: row.legacyTable,
+        unmappedLegacyRows: row.unmappedLegacyRows,
+      })),
+  };
+
+  for (const row of byModule) {
+    ctx.increment(`source_${row.legacyTable}`, row.legacyTotal);
+    ctx.increment(`mapped_${row.entityType}`, row.mappedTotal);
+  }
+}
+
 async function repairAll(ctx) {
   await ensureSupportTables(ctx);
   await repairCandidateNames(ctx);
@@ -2746,6 +3219,10 @@ async function writeReport(ctx, status, runId) {
   const reportName =
     ctx.mode === "audit"
       ? `legacy-migration-audit-${ctx.summary.started_at.replace(/[:.]/g, "-")}.json`
+      : ctx.mode === "source-counts"
+        ? `legacy-migration-source-counts-${ctx.summary.started_at.replace(/[:.]/g, "-")}.json`
+      : ctx.mode === "incremental"
+        ? `legacy-migration-incremental-${runId}.json`
       : `legacy-migration-${runId}.json`;
   const reportPath = path.join(REPORT_DIR, reportName);
   fs.writeFileSync(reportPath, JSON.stringify(ctx.summary, null, 2));
@@ -2787,12 +3264,15 @@ async function main() {
     target,
     dryRun: args.dryRun,
     mode: args.mode,
+    incremental: args.incremental,
     resumeFrom: args.resumeFrom,
   });
 
   try {
     if (args.reset) {
       await resetImported(ctx);
+    } else if (args.mode === "source-counts") {
+      await runSourceCounts(ctx);
     } else if (args.mode === "audit") {
       await runLegacyAudit(ctx);
     } else if (args.mode === "copy-files-only") {

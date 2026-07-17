@@ -30,7 +30,12 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
   const ackToken = crypto.randomBytes(32).toString("hex");
   await CourseEnrollmentDao.saveAcknowledgmentToken(course.id, candidate.candidate_id, ackToken);
 
-  const portalUrl = process.env.PORTAL_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+  const portalUrl =
+    process.env.PORTAL_URL ||
+    (process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(",")[0].trim()
+      : null) ||
+    "http://localhost:3000";
   const approveLink = `${portalUrl}/acknowledge?token=${ackToken}&action=approve`;
 
   let html = `

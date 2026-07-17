@@ -67,7 +67,7 @@ class TrainerDao {
     let baseQuery = `
       FROM users u
       JOIN trainer_profiles tp ON u.id = tp.user_id
-      WHERE tp.status = 1
+      WHERE 1=1
     `;
 
     const params = [];
@@ -218,12 +218,24 @@ class TrainerDao {
   }
 
   static async deleteTrainer(id) {
-    // Soft delete by setting status = 0 in trainer_profiles
-    const [result] = await db.query(
-      "UPDATE trainer_profiles SET status = 0 WHERE user_id = ?",
-      [id],
-    );
-    return result.affectedRows > 0;
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Delete from trainer_profiles
+      await connection.query("DELETE FROM trainer_profiles WHERE user_id = ?", [id]);
+
+      // Delete from users
+      const [result] = await connection.query("DELETE FROM users WHERE id = ?", [id]);
+
+      await connection.commit();
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   static async getDashboardStats(trainerId) {
