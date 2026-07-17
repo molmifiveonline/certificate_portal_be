@@ -30,6 +30,9 @@ If `TARGET_DB_*` is omitted, the migration falls back to `DB_*`. If `OLD_UPLOAD_
 ```bash
 npm run migrate:legacy:dry-run
 npm run migrate:legacy:apply
+npm run migrate:legacy:source-counts
+npm run migrate:legacy:incremental:dry-run
+npm run migrate:legacy:incremental:apply
 npm run migrate:legacy:audit
 npm run migrate:legacy:repair-all:dry-run
 npm run migrate:legacy:repair-all:apply
@@ -61,15 +64,19 @@ npm run migrate:legacy:repair-trainer-permissions:apply
 1. Back up `molmi_certificate_new_portal`.
 2. Freeze writes on the old PHP app.
 3. Restore the latest PHP SQL dump into the legacy staging DB.
-4. Run `npm run migrate:legacy:dry-run`.
-5. Review the generated dry-run report and fix any source-data blockers.
-6. Run `npm run migrate:legacy:apply`.
-7. Run `npm run migrate:legacy:audit`.
-8. If the audit reports critical blockers, run `npm run migrate:legacy:repair-all:dry-run`, review the report, then run `npm run migrate:legacy:repair-all:apply`.
-9. Run `npm run migrate:legacy:audit` again and continue only when there are zero critical blockers.
-10. If `OLD_UPLOAD_ROOT` is available, run `npm run migrate:legacy:copy-files`.
-11. Verify sample users, courses, feedback, attendance, certificates, trainer signatures, candidate photos, question images, and hotel/venue documents.
-12. Generate a test ESDC June 2026 certificate; after `ESDC/2606/0020`, the next number must be `ESDC/2606/0021`.
+4. Run `npm run migrate:legacy:source-counts`.
+5. Confirm the legacy counts match the expected latest dump totals.
+6. Run `npm run migrate:legacy:incremental:dry-run`.
+7. Review the new-row counts, skipped counts, duplicate-email placeholders, and blockers.
+8. Run `npm run migrate:legacy:incremental:apply`.
+9. Run `npm run migrate:legacy:repair-all:dry-run`.
+10. If repairs are needed, run `npm run migrate:legacy:repair-all:apply`.
+11. Run `npm run migrate:legacy:audit` and continue only when there are zero critical blockers.
+12. If `OLD_UPLOAD_ROOT` is available, run `npm run migrate:legacy:copy-files`.
+13. Verify sample users, courses, feedback, attendance, certificates, trainer signatures, candidate photos, question images, and hotel/venue documents.
+14. Generate a test ESDC June 2026 certificate; after `ESDC/2606/0020`, the next number must be `ESDC/2606/0021`.
+
+Use the full `migrate:legacy:dry-run` / `migrate:legacy:apply` flow only for a blank target or an intentional full reset. For the next phase with existing portal data, use the incremental commands above so mapped rows and manual edits are preserved.
 
 ## Required Spot Checks
 

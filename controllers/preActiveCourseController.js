@@ -187,7 +187,9 @@ const sendCourseNotificationsToNominators = async (courseId) => {
         "Nominator",
       );
 
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const frontendUrl = process.env.FRONTEND_URL
+        ? process.env.FRONTEND_URL.split(",")[0].trim()
+        : "http://localhost:3000";
       const portalLink = `${frontendUrl}/nominate/${token}`;
 
       const subject = `Nomination Request for Course: ${course.course_name}`;
@@ -291,7 +293,9 @@ exports.nominatorAddCandidate = async (req, res) => {
     const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(",")[0].trim()
+      : "http://localhost:3000";
     const enrollmentIds = [];
 
     for (const candidateData of candidates) {
@@ -369,7 +373,9 @@ exports.notifyCandidates = async (req, res) => {
       await CourseEnrollmentDao.getEnrolledCandidates(courseId);
     let sentCount = 0;
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(",")[0].trim()
+      : "http://localhost:3000";
 
     for (const candidate of enrollments) {
       // Only send to pending candidates
