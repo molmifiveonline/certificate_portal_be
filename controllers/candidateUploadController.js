@@ -38,7 +38,7 @@ const uploadCandidates = async (req, res) => {
             alternate_mobile: row.alternate_mobile || row["Mobile 1"] || "",
             indos_number: row.indos_no || row["INDOS Number"] || "",
             registration_type:
-              row.registration_type || row.registrationType || "Other",
+              row.registration_type || row.registrationType || "Others",
           };
         });
 
