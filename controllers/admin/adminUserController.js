@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const AdminUserDao = require("../../dao/adminUserDao");
 const LogDao = require("../../dao/LogDao");
 const db = require("../../config/db");
+const { getFrontendUrl } = require("../../utils/urlUtils");
 
 const getAdmins = async (req, res) => {
   try {
@@ -79,9 +80,7 @@ const createAdmin = async (req, res) => {
       try {
         const { sendEmail } = require("../../utils/emailService");
         const subject = "Welcome - Admin Account Created";
-        const frontendUrl = process.env.FRONTEND_URL
-          ? process.env.FRONTEND_URL.split(",")[0].trim()
-          : "http://localhost:3000";
+        const frontendUrl = getFrontendUrl();
 
         const html = `
           <html>

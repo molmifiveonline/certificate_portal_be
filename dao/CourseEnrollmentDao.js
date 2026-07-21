@@ -467,17 +467,26 @@ class CourseEnrollmentDao {
         cp.employee_id as empId,
         CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         post_res.score as post_score,
+        post_res.attempt_number as post_score_attempt,
         CASE WHEN fqa.candidate_id IS NOT NULL THEN 1 ELSE 0 END as feedback_completed
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
       LEFT JOIN certificates cert ON ce.candidate_id = cert.candidate_id AND ce.course_id = cert.active_course_id
       LEFT JOIN (
-        SELECT ar.candidate_id, ar.score, ar.attempt_number
-        FROM assessment_results ar
-        JOIN assessment a ON ar.assessment_id = a.id
-        WHERE ar.course_id = ? AND a.type_of_test IN ('Post', '2') AND ar.status = 'Completed'
-        ORDER BY ar.attempt_number DESC LIMIT 1
+        SELECT ar1.candidate_id, ar1.score, ar1.attempt_number
+        FROM assessment_results ar1
+        JOIN assessment a1 ON ar1.assessment_id = a1.id
+        WHERE ar1.course_id = ? AND a1.type_of_test IN ('Post', '2') AND ar1.status = 'Completed'
+          AND ar1.attempt_number = (
+            SELECT MAX(ar2.attempt_number)
+            FROM assessment_results ar2
+            JOIN assessment a2 ON ar2.assessment_id = a2.id
+            WHERE ar2.candidate_id = ar1.candidate_id 
+              AND ar2.course_id = ar1.course_id 
+              AND a2.type_of_test IN ('Post', '2') 
+              AND ar2.status = 'Completed'
+          )
       ) post_res ON ce.candidate_id = post_res.candidate_id
       LEFT JOIN (
         SELECT DISTINCT candidate_id FROM feedback_question_answer WHERE active_course_id = ?
