@@ -147,15 +147,21 @@ exports.createAssessment = async (req, res) => {
 
       const emailService = require("../utils/emailService");
       const { getAssessmentCreationTemplate } = require("../utils/emailTemplates");
+      const { isCandidateAbsent } = require("../utils/attendanceUtils");
 
       if (finalCandidateIds) {
         const ids = finalCandidateIds.split(",");
         const [candidateRows] = await pool.execute(
-          `SELECT id, first_name, last_name, email FROM users WHERE id IN (${ids.map(() => "?").join(",")})`,
-          ids,
+          `SELECT u.id, u.first_name, u.last_name, u.email, ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool
+           FROM users u
+           JOIN courses_enrollment ce ON u.id = ce.candidate_id AND ce.course_id = ?
+           WHERE u.id IN (${ids.map(() => "?").join(",")})`,
+          [course_id, ...ids],
         );
 
         for (const candidate of candidateRows) {
+          if (isCandidateAbsent(candidate)) continue;
+
           if (candidate.email) {
             const html = getAssessmentCreationTemplate(
               `${candidate.first_name} ${candidate.last_name}`,
@@ -240,6 +246,13 @@ exports.updateAssessment = async (req, res) => {
     const user = req.user;
     const trainerId =
       user.role.toLowerCase() === "trainer" ? user.id : null;
+
+    if (!title || !course_id || !type_of_test) {
+      return res.status(400).json({
+        success: false,
+        message: "Title, Course, and Type of Test are required",
+      });
+    }
 
     if (questions_choice === "auto") {
       const validation = await validateAutoQuestionAvailability(

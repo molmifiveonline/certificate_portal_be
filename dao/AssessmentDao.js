@@ -132,16 +132,18 @@ class AssessmentDao {
     return result.affectedRows > 0;
   }
 
-  // Get candidates enrolled in a course
+  // Get candidates enrolled in a course (excluding absent candidates and observers)
   static async getCandidatesByCourse(courseId) {
     const query = `
-      SELECT u.id, CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name, u.email
+      SELECT u.id, CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name, u.email,
+             ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool
       FROM users u
       INNER JOIN courses_enrollment ce ON u.id = ce.candidate_id
       WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
     `;
     const [rows] = await pool.execute(query, [courseId]);
-    return rows;
+    const { isCandidateAbsent } = require("../utils/attendanceUtils");
+    return rows.filter((candidate) => !isCandidateAbsent(candidate));
   }
 
   // Get questions for a master course
