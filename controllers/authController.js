@@ -4,6 +4,7 @@ const UserDao = require("../dao/userDao");
 const NominatorDao = require("../dao/nominatorDao");
 const LogDao = require("../dao/LogDao");
 const db = require("../config/db");
+const { getFrontendUrl } = require("../utils/urlUtils");
 
 // Nominators can ONLY see pre-active courses that the admin has notified them about.
 // Master, Active, and Outhouse courses are NOT accessible to nominators.
@@ -137,9 +138,7 @@ const registerCandidate = async (req, res) => {
         const formattedDob = new Date(dob).toLocaleDateString("en-GB"); // dd-mm-yyyy
 
         // Generate Reset Link
-        const frontendUrl = process.env.FRONTEND_URL
-          ? process.env.FRONTEND_URL.split(",")[0].trim()
-          : "http://localhost:3000";
+        const frontendUrl = getFrontendUrl();
         const resetLink = `${frontendUrl}/reset-password?id=${userId}`;
 
         // Account Info Section based on registration type
@@ -406,9 +405,7 @@ const forgotPassword = async (req, res) => {
         .json({ message: "This email address does not exist." });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(",")[0].trim()
-      : "http://localhost:3000";
+    const frontendUrl = getFrontendUrl();
     const resetLink = `${frontendUrl}/reset-password?id=${user.id}`;
     const subject = "Reset Password Link";
     const html = `

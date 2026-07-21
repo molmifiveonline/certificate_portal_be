@@ -17,6 +17,7 @@ const {
   normalizeTopic,
 } = require("../utils/certificateNumber");
 const { generateTrainingReportPdf } = require("../utils/trainingReportPdf");
+const { getFrontendUrl } = require("../utils/urlUtils");
 
 exports.createCourse = async (req, res) => {
   try {
@@ -358,7 +359,7 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
   const ackToken = crypto.randomBytes(32).toString("hex");
   await CourseEnrollmentDao.saveAcknowledgmentToken(course.id, candidateEnrollment.candidate_id, ackToken);
 
-  const portalUrl = process.env.PORTAL_URL || "http://localhost:3000";
+  const portalUrl = getFrontendUrl();
   const approveLink = `${portalUrl}/acknowledge?token=${ackToken}&action=approve`;
   const rejectLink = `${portalUrl}/acknowledge?token=${ackToken}&action=reject`;
 

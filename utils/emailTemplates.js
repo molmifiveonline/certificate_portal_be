@@ -1,8 +1,5 @@
-const portalUrl =
-  process.env.PORTAL_URL ||
-  (process.env.FRONTEND_URL
-    ? process.env.FRONTEND_URL.split(",")[0].trim()
-    : "https://certificate.molmi.info/index.php/");
+const { getFrontendUrl } = require("./urlUtils");
+const portalUrl = getFrontendUrl("https://certificate.molmi.info/index.php/");
 
 const getAssessmentResultTemplate = (
   candidateName,
