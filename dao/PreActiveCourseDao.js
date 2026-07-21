@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
+const { hasColumn } = require("../utils/schemaUtils");
 
 // ==========================================
 // Pre-Active Course Operations
@@ -597,6 +598,7 @@ const getAdminRemarksReport = async (filters = {}) => {
  * Returns non-MOLMI candidates that are not already nominated for the course.
  */
 const getAvailableOthersCandidates = async (courseId) => {
+  const hasMergedIntoColumn = await hasColumn("users", "merged_into_user_id");
   const query = `
     SELECT 
       u.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile,
@@ -606,8 +608,8 @@ const getAvailableOthersCandidates = async (courseId) => {
     JOIN candidate_profiles cp ON u.id = cp.user_id
     JOIN roles r ON u.role_id = r.id
     WHERE r.name = 'candidate' 
-      AND LOWER(TRIM(cp.registration_type)) IN ('others', 'other')
       AND u.status = 1
+      ${hasMergedIntoColumn ? "AND u.merged_into_user_id IS NULL" : ""}
       AND u.id NOT IN (
         SELECT candidate_id FROM courses_enrollment WHERE course_id = ?
       )

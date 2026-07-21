@@ -240,6 +240,7 @@ class OuthouseCourseDao {
   }
 
   static async getCandidateOptions(courseId, search = "") {
+    const hasMergedIntoColumn = await hasColumn("users", "merged_into_user_id");
     let query = `
       SELECT u.id, u.first_name, u.last_name, cp.employee_id, cp.passport_no, cp.seaman_book_no, cp.rank, cp.manning_company as manager
       FROM users u
@@ -247,6 +248,7 @@ class OuthouseCourseDao {
       JOIN roles r ON r.id = u.role_id
       WHERE r.name = 'candidate'
       AND u.status = 1
+      ${hasMergedIntoColumn ? "AND u.merged_into_user_id IS NULL" : ""}
       AND u.id NOT IN (
         SELECT ce.candidate_id FROM courses_enrollment ce
         WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
