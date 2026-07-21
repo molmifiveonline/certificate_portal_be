@@ -294,11 +294,7 @@ class CourseEnrollmentDao {
     } else if (status === "absent") {
       presentDates = presentDates.filter((d) => d !== date);
       holidayDates = holidayDates.filter((d) => d !== date);
-      if (reason) {
-        absentReasons[date] = reason;
-      } else {
-        delete absentReasons[date];
-      }
+      absentReasons[date] = reason || "Absent";
     } else if (status === "holiday") {
       if (!holidayDates.includes(date)) holidayDates.push(date);
       presentDates = presentDates.filter((d) => d !== date);
@@ -384,6 +380,8 @@ class CourseEnrollmentDao {
         CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         ce.trainer_comment,
         ce.is_observer,
+        ce.is_present,
+        ce.absent_reasons,
         pre_res.assessment_id as pre_assessment_id,
         pre_res.score as pre_score,
         pre_res.total_questions as pre_total,
@@ -461,7 +459,9 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.candidate_id, ce.is_present, ce.holidays, 
-        ce.certficate_generated, ce.generated_date, ce.active,
+        COALESCE(ce.certficate_generated, cert.id) AS certficate_generated, 
+        COALESCE(ce.generated_date, cert.issue_date) AS generated_date, 
+        ce.active,
         cert.id as certificate_id, cert.is_hidden,
         u.first_name, u.middle_name, u.last_name,
         cp.employee_id as empId,

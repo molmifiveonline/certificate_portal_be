@@ -698,15 +698,30 @@ exports.sendAssessmentEmail = async (req, res) => {
     const { id } = req.params;
     const { candidateId, assessmentId } = req.body;
     const pool = require("../config/db");
-    const [candidateRows] = await pool.execute("SELECT first_name, last_name, email FROM users WHERE id = ?", [candidateId]);
+    const [candidateRows] = await pool.execute(
+      `SELECT u.first_name, u.last_name, u.email, ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool
+       FROM users u
+       JOIN courses_enrollment ce ON u.id = ce.candidate_id AND ce.course_id = ?
+       WHERE u.id = ?`,
+      [id, candidateId]
+    );
     if (!candidateRows.length) return res.status(404).json({ message: "Candidate not found" });
     const candidate = candidateRows[0];
+
+    const { isCandidateAbsent } = require("../utils/attendanceUtils");
+    if (isCandidateAbsent(candidate)) {
+      return res.status(400).json({
+        message: candidate.is_observer
+          ? "Cannot send assessment email to an observer candidate"
+          : "Cannot send assessment email to a candidate who was absent in the course"
+      });
+    }
 
     const course = await ActiveCourseDao.getById(id);
     const [assessmentRows] = await pool.execute("SELECT type_of_test FROM assessment WHERE id = ?", [assessmentId]);
     const score = await pool.execute("SELECT score FROM assessment_results WHERE assessment_id = ? AND candidate_id = ? AND course_id = ? AND status = 'Completed' ORDER BY attempt_number DESC LIMIT 1", [assessmentId, candidateId, id]);
 
-    const html = getAssessmentResultTemplate(`${candidate.first_name} ${candidate.last_name}`, course.course_name, assessmentRows[0].type_of_test, score[0][0]?.score || 0);
+    const html = getAssessmentResultTemplate(`${candidate.first_name} ${candidate.last_name}`, course.course_name, assessmentRows[0]?.type_of_test, score[0][0]?.score || 0);
     await emailService.sendEmail(candidate.email, `Assessment Results - ${course.course_name}`, html);
     res.status(200).json({ message: "Email sent" });
   } catch (error) {
@@ -769,8 +784,10 @@ exports.generateCertificate = async (req, res) => {
     const { id: activeCourseId } = req.params;
     const { candidateId, issueDate } = req.body;
     const existing = await CertificateDao.getByCandidateAndCourse(candidateId, activeCourseId);
-    if (existing) return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
-
+    if (existing) {
+      await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, existing.id);
+      return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
+    }
     // Check if candidate is an observer — observers cannot generate certificates
     const [observerCheck] = await pool.execute(
       "SELECT is_observer FROM courses_enrollment WHERE course_id = ? AND candidate_id = ?",
