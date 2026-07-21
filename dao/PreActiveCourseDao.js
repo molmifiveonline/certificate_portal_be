@@ -594,18 +594,19 @@ const getAdminRemarksReport = async (filters = {}) => {
 };
 
 /**
- * Returns candidates of type 'Others' that are not already nominated for the course.
+ * Returns non-MOLMI candidates that are not already nominated for the course.
  */
 const getAvailableOthersCandidates = async (courseId) => {
   const query = `
     SELECT 
       u.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile,
-      cp.middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type
+      CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
+      cp.middle_name as profile_middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type
     FROM users u
     JOIN candidate_profiles cp ON u.id = cp.user_id
     JOIN roles r ON u.role_id = r.id
     WHERE r.name = 'candidate' 
-      AND cp.registration_type = 'Others'
+      AND LOWER(TRIM(cp.registration_type)) IN ('others', 'other')
       AND u.status = 1
       AND u.id NOT IN (
         SELECT candidate_id FROM courses_enrollment WHERE course_id = ?
@@ -639,6 +640,7 @@ const getNominatorNotifiedCourses = async (nominatorId) => {
 const getNominatorEnrollments = async (courseId, nominatorId) => {
   const [rows] = await pool.execute(
     `SELECT ce.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile as mobile_no, 
+            CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
             cp.dob as date_of_birth, cp.indos_number, ce.candidate_id, ce.candidate_approval_status as status
      FROM courses_enrollment ce
      JOIN users u ON ce.candidate_id = u.id
