@@ -461,7 +461,9 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.candidate_id, ce.is_present, ce.holidays, 
-        ce.certficate_generated, ce.generated_date, ce.active,
+        COALESCE(ce.certficate_generated, cert.id) AS certficate_generated, 
+        COALESCE(ce.generated_date, cert.issue_date) AS generated_date, 
+        ce.active,
         cert.id as certificate_id, cert.is_hidden,
         u.first_name, u.middle_name, u.last_name,
         cp.employee_id as empId,

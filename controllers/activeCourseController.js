@@ -769,8 +769,10 @@ exports.generateCertificate = async (req, res) => {
     const { id: activeCourseId } = req.params;
     const { candidateId, issueDate } = req.body;
     const existing = await CertificateDao.getByCandidateAndCourse(candidateId, activeCourseId);
-    if (existing) return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
-
+    if (existing) {
+      await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, existing.id);
+      return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
+    }
     // Check if candidate is an observer — observers cannot generate certificates
     const [observerCheck] = await pool.execute(
       "SELECT is_observer FROM courses_enrollment WHERE course_id = ? AND candidate_id = ?",
