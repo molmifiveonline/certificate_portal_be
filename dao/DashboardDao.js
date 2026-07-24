@@ -5,14 +5,14 @@ class DashboardDao {
   static async getStats() {
     const stats = {};
 
-    // 1. Total Candidates (status = 1)
-    // Based on CandidateDao, candidates are users with role 'candidate' and status 1
+    // 1. Total Candidates
+    // Count every candidate profile so the dashboard total includes active and inactive records.
     const [candidateResult] = await pool.query(`
       SELECT COUNT(*) as count 
       FROM users u
       JOIN candidate_profiles cp ON u.id = cp.user_id
       JOIN roles r ON u.role_id = r.id
-      WHERE r.name = 'candidate' AND u.status = 1
+      WHERE r.name = 'candidate'
     `);
     stats.totalCandidates = candidateResult[0].count;
 

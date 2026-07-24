@@ -207,19 +207,19 @@ router.get(
 router.post(
   "/:id/certificates/generate",
   protect,
-  checkPermission("manage_active_course_certificates"),
+  checkPermission("manage_active_course_certificates", ["Trainer"]),
   activeCourseController.generateCertificate,
 );
 router.put(
   "/:id/certificates/active",
   protect,
-  checkPermission("manage_active_course_certificates"),
+  checkPermission("manage_active_course_certificates", ["Trainer"]),
   activeCourseController.updateCertificateActive,
 );
 router.put(
   "/:id/certificates/:certificateId/hide",
   protect,
-  checkPermission("manage_active_course_certificates"),
+  checkPermission("manage_active_course_certificates", ["Trainer"]),
   activeCourseController.updateCertificateHide,
 );
 
