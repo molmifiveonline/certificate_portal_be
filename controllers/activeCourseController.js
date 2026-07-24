@@ -381,7 +381,19 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
   } else {
     const venue = await CourseEnrollmentDao.getCandidateVenueDetails(course.id, candidateEnrollment.candidate_id);
     if (venue && venue.venue_name) {
-      html += `<p>This is an Offline course at <strong>${venue.venue_name}</strong>.</p>`;
+      html += `
+        <div style="margin: 16px 0; padding: 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h4 style="margin-top: 0; margin-bottom: 12px; color: #1e293b;">Hotel & Venue Details:</h4>
+          <p style="margin: 6px 0;"><strong>Hotel Name:</strong> ${venue.venue_name}</p>
+          ${venue.venue_address ? `<p style="margin: 6px 0;"><strong>Venue Address:</strong> ${venue.venue_address}</p>` : ""}
+          ${venue.venue_contact ? `<p style="margin: 6px 0;"><strong>Contact:</strong> ${venue.venue_contact}</p>` : ""}
+          ${venue.venue_email ? `<p style="margin: 6px 0;"><strong>Email:</strong> ${venue.venue_email}</p>` : ""}
+          ${venue.venue_map_link ? `<p style="margin: 6px 0;"><strong>Map Link:</strong> <a href="${venue.venue_map_link}" target="_blank">${venue.venue_map_link}</a></p>` : ""}
+          ${venue.from_date ? `<p style="margin: 6px 0;"><strong>From Date:</strong> ${String(venue.from_date).slice(0, 10)}</p>` : ""}
+          ${venue.to_date ? `<p style="margin: 6px 0;"><strong>To Date:</strong> ${String(venue.to_date).slice(0, 10)}</p>` : ""}
+          ${venue.remarks ? `<p style="margin: 6px 0;"><strong>Remarks:</strong> ${venue.remarks}</p>` : ""}
+        </div>
+      `;
     }
   }
 
