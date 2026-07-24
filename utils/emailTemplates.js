@@ -274,6 +274,38 @@ const getReimbursementResubmissionTemplate = (
 </html>`;
 };
 
+const getOtpEmailTemplate = (userName, otpCode) => {
+  return `
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; }
+    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
+    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
+    .otp-container { text-align: center; margin: 30px 0; }
+    .otp-code { font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0060AA; background: #e6f0fa; padding: 15px 25px; border-radius: 8px; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <div class="header">
+      <h2>Two-Step Verification</h2>
+    </div>
+    <p>Dear \${userName},</p>
+    <p>We received a request to log in to your account. Use the following verification code to complete your sign-in:</p>
+    <div class="otp-container">
+      <span class="otp-code">\${otpCode}</span>
+    </div>
+    <p>This code will expire in 5 minutes. If you did not make this request, please ignore this email or contact support if you suspect unauthorized access.</p>
+    <div class="footer">
+      <p>&copy; \${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
 module.exports = {
   getAssessmentResultTemplate,
   getAssessmentCreationTemplate,
@@ -282,4 +314,6 @@ module.exports = {
   getReimbursementApprovedTemplate,
   getReimbursementDisapprovedTemplate,
   getReimbursementResubmissionTemplate,
+  getOtpEmailTemplate,
 };
+
