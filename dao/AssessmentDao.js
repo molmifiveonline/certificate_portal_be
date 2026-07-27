@@ -257,6 +257,7 @@ class AssessmentDao {
         a.title, 
         a.type_of_test,
         a.num_of_questions,
+        ar.id AS latest_result_id,
         ar.score AS latest_score,
         ar.total_questions,
         ar.correct_answers,

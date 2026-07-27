@@ -86,12 +86,12 @@ router.get(
 );
 router.get(
   "/submission/:resultId/download",
-  authorize("Admin", "SuperAdmin"),
+  authorize("Admin", "SuperAdmin", "Candidate"),
   downloadSubmissionById,
 );
 router.get(
   "/submission/:resultId",
-  authorize("Admin", "SuperAdmin"),
+  authorize("Admin", "SuperAdmin", "Candidate"),
   getSubmissionDetail,
 );
 

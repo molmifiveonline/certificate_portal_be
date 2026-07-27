@@ -304,6 +304,7 @@ exports.emailPrimaryTrainer = async (req, res) => {
 
     const subject = `Course Assignment Notification - ${course.course_name}`;
 
+    const portalUrl = getFrontendUrl();
     let successfullySent = 0;
     for (const trainerId of trainerIds) {
       const trainer = await trainerDao.getTrainerById(trainerId);
@@ -313,12 +314,20 @@ exports.emailPrimaryTrainer = async (req, res) => {
             <p>Dear ${trainer.first_name || ''} ${trainer.last_name || ''},</p>
             <p>You have been assigned as a Trainer for the course <strong>${course.course_name}</strong>.</p>
             <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+              <p style="margin: 0;"><strong>Your User ID (Email):</strong> ${trainer.email}</p>
               <p style="margin: 0;"><strong>Start Date:</strong> ${course.start_date ? new Date(course.start_date).toLocaleDateString() : '-'}</p>
               <p style="margin: 0;"><strong>End Date:</strong> ${course.end_date ? new Date(course.end_date).toLocaleDateString() : '-'}</p>
             </div>
+            ${course.trainer_material_link ? `
+            <div style="background: #ecfdf5; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #a7f3d0;">
+              <p style="margin: 0; font-weight: bold; color: #065f46;">📚 Trainer Material Link</p>
+              <p style="margin: 8px 0 0;"><a href="${course.trainer_material_link}" target="_blank" style="color: #047857; text-decoration: underline;">${course.trainer_material_link}</a></p>
+            </div>
+            ` : ''}
             <h4 style="color: #1e293b; margin-top: 24px;">Candidates List:</h4>
             ${candidatesHtml}
             <p style="margin-top: 24px;">Please log in to the portal for more details.</p>
+            <p style="margin-top: 12px;"><strong>Portal Link:</strong> <a href="${portalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">${portalUrl}</a></p>
           </div>
         `;
         await emailService.sendEmail(trainer.email, subject, html);
