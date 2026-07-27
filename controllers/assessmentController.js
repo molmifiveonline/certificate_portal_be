@@ -517,6 +517,20 @@ exports.getSubmissionDetail = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Submission not found" });
     }
+
+    // Candidate ownership check
+    if (
+      req.user &&
+      req.user.role &&
+      req.user.role.toLowerCase() === "candidate" &&
+      String(detail.result.candidate_id) !== String(req.user.id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this submission details",
+      });
+    }
+
     res.status(200).json({ success: true, data: detail });
   } catch (error) {
     console.error("Error fetching submission detail:", error);
@@ -646,6 +660,19 @@ exports.downloadSubmissionById = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Submission not found" });
+    }
+
+    // Candidate ownership check
+    if (
+      req.user &&
+      req.user.role &&
+      req.user.role.toLowerCase() === "candidate" &&
+      String(detail.result.candidate_id) !== String(req.user.id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to download this submission details",
+      });
     }
 
     const PDFDocument = require("pdfkit");
