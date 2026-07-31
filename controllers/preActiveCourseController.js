@@ -191,17 +191,18 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const frontendUrl = getFrontendUrl();
       const portalLink = `${frontendUrl}/nominate/${token}`;
 
+      const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
       const subject = `Nomination Request for Course: ${course.course_name}`;
-      const html = `
+      const html = getBaseEmailHtml(`
                   <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
                   <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
                   <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
                   <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                   <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
-                  <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
+                  <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Nominate Candidates</a>
                   <br><br>
                   <p>Link expires in 7 days.</p>
-              `;
+              `);
 
       await emailService.sendEmail(nominator.email, subject, html);
       sentCount++;
@@ -316,17 +317,18 @@ exports.nominatorAddCandidate = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
 
+        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = `
+        const html = getBaseEmailHtml(`
                     <h3>Dear ${enrollment.first_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
                     <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
                     <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
+                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
                     <br><br>
                     <p>Link expires in 7 days.</p>
-                `;
+                `);
 
         await emailService.sendEmail(enrollment.email, subject, html);
       }
@@ -385,17 +387,18 @@ exports.notifyCandidates = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${token}`;
 
+        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = `
+        const html = getBaseEmailHtml(`
                     <h3>Dear ${candidate.candidate_name},</h3>
                     <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
                     <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
                     <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
                     <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
+                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
                     <br><br>
                     <p>Link expires in 7 days.</p>
-                `;
+                `);
 
         await emailService.sendEmail(candidate.email, subject, html);
         sentCount++;

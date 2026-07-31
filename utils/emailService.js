@@ -26,6 +26,18 @@ const injectDisclaimer = (html) => {
 
 const sendEmail = async (to, subject, html) => {
   try {
+    // TEMPORARY TESTING: Intercept emails to trainers
+    if (to) {
+      const [users] = await db.query(
+        "SELECT r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+        [to]
+      );
+      if (users.length > 0 && users[0].role_name === "trainer") {
+        console.log(`[TESTING] Intercepted email to trainer (${to}). Email was not sent.`);
+        return { messageId: "intercepted-trainer-email" };
+      }
+    }
+
     const finalSubject = `[PLEASE IGNORE] ${subject}`;
     const finalHtml = injectDisclaimer(html);
 

@@ -309,27 +309,20 @@ exports.emailPrimaryTrainer = async (req, res) => {
     for (const trainerId of trainerIds) {
       const trainer = await trainerDao.getTrainerById(trainerId);
       if (trainer && trainer.email) {
-        const html = `
-          <div style="font-family: sans-serif; line-height: 1.6; color: #334155;">
-            <p>Dear ${trainer.first_name || ''} ${trainer.last_name || ''},</p>
-            <p>You have been assigned as a Trainer for the course <strong>${course.course_name}</strong>.</p>
-            <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-              <p style="margin: 0;"><strong>Your User ID (Email):</strong> ${trainer.email}</p>
-              <p style="margin: 0;"><strong>Start Date:</strong> ${course.start_date ? new Date(course.start_date).toLocaleDateString() : '-'}</p>
-              <p style="margin: 0;"><strong>End Date:</strong> ${course.end_date ? new Date(course.end_date).toLocaleDateString() : '-'}</p>
-            </div>
-            ${course.trainer_material_link ? `
-            <div style="background: #ecfdf5; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #a7f3d0;">
-              <p style="margin: 0; font-weight: bold; color: #065f46;">📚 Trainer Material Link</p>
-              <p style="margin: 8px 0 0;"><a href="${course.trainer_material_link}" target="_blank" style="color: #047857; text-decoration: underline;">${course.trainer_material_link}</a></p>
-            </div>
-            ` : ''}
-            <h4 style="color: #1e293b; margin-top: 24px;">Candidates List:</h4>
-            ${candidatesHtml}
-            <p style="margin-top: 24px;">Please log in to the portal for more details.</p>
-            <p style="margin-top: 12px;"><strong>Portal Link:</strong> <a href="${portalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">${portalUrl}</a></p>
-          </div>
-        `;
+        const { getCourseTrainerHtml } = require("../utils/emailTemplateRenderer");
+        const startDateFormatted = course.start_date ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '-';
+        const endDateFormatted = course.end_date ? new Date(course.end_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '-';
+        const html = getCourseTrainerHtml({
+          trainer_name: `${trainer.first_name || ''} ${trainer.last_name || ''}`,
+          course_name: course.course_name,
+          course_id: course.course_id || course.id || '',
+          start_date: startDateFormatted,
+          end_date: endDateFormatted,
+          duration: course.duration || course.no_of_days || '',
+          training_location: course.type_of_location === "Online" ? "Online" : (course.other_location || course.type_of_location || ''),
+          whatsapp_group_link: course.whatsapp_link || '',
+          description: course.description || ''
+        });
         await emailService.sendEmail(trainer.email, subject, html);
         successfullySent++;
       }
@@ -380,33 +373,81 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
     </p>
   `;
 
-  let html = `
-    <h3>Dear ${candidateEnrollment.candidate_name},</h3>
-    <p>You have been enrolled in the course <strong>${course.course_name}</strong>.</p>
-  `;
-
-  if (type === "online") {
-    html += `<p>This is an Online course. Zoom Link: <a href="${course.zoom_link}">${course.zoom_link}</a></p>`;
-  } else {
-    const venue = await CourseEnrollmentDao.getCandidateVenueDetails(course.id, candidateEnrollment.candidate_id);
-    if (venue && venue.venue_name) {
-      html += `
-        <div style="margin: 16px 0; padding: 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h4 style="margin-top: 0; margin-bottom: 12px; color: #1e293b;">Hotel & Venue Details:</h4>
-          <p style="margin: 6px 0;"><strong>Hotel Name:</strong> ${venue.venue_name}</p>
-          ${venue.venue_address ? `<p style="margin: 6px 0;"><strong>Venue Address:</strong> ${venue.venue_address}</p>` : ""}
-          ${venue.venue_contact ? `<p style="margin: 6px 0;"><strong>Contact:</strong> ${venue.venue_contact}</p>` : ""}
-          ${venue.venue_email ? `<p style="margin: 6px 0;"><strong>Email:</strong> ${venue.venue_email}</p>` : ""}
-          ${venue.venue_map_link ? `<p style="margin: 6px 0;"><strong>Map Link:</strong> <a href="${venue.venue_map_link}" target="_blank">${venue.venue_map_link}</a></p>` : ""}
-          ${venue.from_date ? `<p style="margin: 6px 0;"><strong>From Date:</strong> ${String(venue.from_date).slice(0, 10)}</p>` : ""}
-          ${venue.to_date ? `<p style="margin: 6px 0;"><strong>To Date:</strong> ${String(venue.to_date).slice(0, 10)}</p>` : ""}
-          ${venue.remarks ? `<p style="margin: 6px 0;"><strong>Remarks:</strong> ${venue.remarks}</p>` : ""}
-        </div>
-      `;
+  let training_location_name = "";
+  let training_address = "";
+  let training_map_link = "";
+  if (course.location_id) {
+    const LocationDao = require("../dao/LocationDao");
+    const location = await LocationDao.getLocationById(course.location_id);
+    if (location) {
+      training_location_name = location.location_name;
+      training_address = location.address;
+      training_map_link = location.google_map_link;
     }
   }
 
-  html += acknowledgmentHtml;
+  let trainer_name = "";
+  if (course.primary_trainer_id) {
+    const trainerDao = require("../dao/trainerDao");
+    const primaryTrainer = await trainerDao.getTrainerById(course.primary_trainer_id);
+    if (primaryTrainer) {
+      trainer_name = `${primaryTrainer.first_name || ''} ${primaryTrainer.last_name || ''}`;
+    }
+  }
+
+  let venue = null;
+  if (type === "offline") {
+    venue = await CourseEnrollmentDao.getCandidateVenueDetails(course.id, candidateEnrollment.candidate_id);
+  }
+
+  const start_date = course.start_date ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '';
+  const end_date = course.end_date ? new Date(course.end_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '';
+
+  const { getWelcomeCandidateOfflineHtml, getWelcomeCandidateOnlineHtml } = require("../utils/emailTemplateRenderer");
+  let html = "";
+  if (type === "online") {
+    html = getWelcomeCandidateOnlineHtml({
+      candidate_name: candidateEnrollment.candidate_name || `${candidateEnrollment.first_name || ''} ${candidateEnrollment.last_name || ''}`,
+      course_name: course.course_name,
+      course_id: course.course_id || course.id || '',
+      duration: course.duration || course.no_of_days || '',
+      start_date,
+      end_date,
+      trainer_name,
+      start_time: course.start_time,
+      end_time: course.end_time,
+      meeting_link: course.zoom_link,
+      whatsapp_link: course.whatsapp_link,
+      email: candidateEnrollment.email,
+      approveLink,
+      rejectLink
+    });
+  } else {
+    html = getWelcomeCandidateOfflineHtml({
+      candidate_name: candidateEnrollment.candidate_name || `${candidateEnrollment.first_name || ''} ${candidateEnrollment.last_name || ''}`,
+      course_name: course.course_name,
+      course_id: course.course_id || course.id || '',
+      duration: course.duration || course.no_of_days || '',
+      start_date,
+      end_date,
+      trainer_name,
+      reporting_time: course.reporting_time,
+      start_time: course.start_time,
+      end_time: course.end_time,
+      training_location_name,
+      training_address,
+      training_map_link,
+      venue_name: venue ? venue.venue_name : '',
+      venue_address: venue ? venue.venue_address : '',
+      venue_contact: venue ? venue.venue_contact : '',
+      venue_map_link: venue ? venue.venue_map_link : '',
+      whatsapp_link: course.whatsapp_link,
+      email: candidateEnrollment.email,
+      approveLink,
+      rejectLink,
+      type
+    });
+  }
 
   await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html);
   await CourseEnrollmentDao.updateEmailStatus(course.id, candidateEnrollment.candidate_id, 1, type === "online" ? "Online" : "Offline");

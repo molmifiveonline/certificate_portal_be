@@ -1,4 +1,5 @@
 const { getFrontendUrl } = require("./urlUtils");
+const { getBaseEmailHtml } = require("./emailTemplateRenderer");
 const portalUrl = getFrontendUrl("https://certificate.molmi.info/index.php/");
 
 const getAssessmentResultTemplate = (
@@ -20,19 +21,7 @@ const getAssessmentResultTemplate = (
       <p><strong>Retest Information:</strong> Unfortunately, you did not achieve a passing score of 60%. However, you can take a retest from your portal.</p>`;
   }
 
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>Assessment Results For Candidate</h2>
     </div>
@@ -50,13 +39,9 @@ const getAssessmentResultTemplate = (
     <div class="info">
       <p>We encourage you to review the assessment material and make the most of this opportunity to enhance your skills. If you have any questions or need assistance, feel free to reach out.</p>
       <p>Congratulations once again to those who passed, and best of luck to everyone on your continued learning journey!</p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getAssessmentCreationTemplate = (
@@ -68,19 +53,7 @@ const getAssessmentCreationTemplate = (
   const typeLabel =
     { 1: "Pre Course", 2: "Post Course", 3: "Daily" }[typeOfTest] || typeOfTest;
 
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>New Assessment Assigned</h2>
     </div>
@@ -92,13 +65,9 @@ const getAssessmentCreationTemplate = (
       <p><strong>Type:</strong> ${typeLabel}</p>
       <p>Please log in to your portal to take the assessment.</p>
       <p><strong>Portal link:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getCertificateGenerationTemplate = (
@@ -106,19 +75,7 @@ const getCertificateGenerationTemplate = (
   courseName,
   certificateNo,
 ) => {
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>Certificate Generated</h2>
     </div>
@@ -129,61 +86,31 @@ const getCertificateGenerationTemplate = (
       <p><strong>Certificate No:</strong> ${certificateNo}</p>
       <p>You can view and download your certificate from your candidate portal.</p>
       <p><strong>Portal link:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getFeedbackRequestTemplate = (candidateName, courseName) => {
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
-      <h2>Course Feedback Request</h2>
+      <h2>Feedback Creation</h2>
     </div>
     <p>Dear ${candidateName},</p>
-    <p>Thank you for participating in the course <strong>${courseName}</strong>.</p>
-    <p>We would value your feedback to help us improve our training programs.</p>
+    <p>Thank you for participating in <strong> ${courseName}</strong>! We hope you found the course valuable and enriching.</p>
+    <p>As part of our commitment to continuous improvement, we kindly ask you to provide feedback on your experience. Your insights are crucial for enhancing our courses and training sessions.</p>
+    <h3>Feedback Instructions</h3>
     <div class="info">
-      <p>Please take a few moments to fill out the feedback form available on your portal.</p>
-      <p><strong>Portal link:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+      <p><strong>Feedback Requirement:</strong> Providing feedback is compulsory to receive your course completion certificate.</p>
+      <p><strong>Where to Provide Feedback:</strong> Please log into your portal to submit your feedback on the course and trainers.</p>
+      <p>Thank you for your cooperation and for helping us improve our training programs. If you have any questions or need assistance, please feel free to reach out.</p>
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getReimbursementApprovedTemplate = (candidateName, claimNumber, amount) => {
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>Reimbursement Approved</h2>
     </div>
@@ -193,13 +120,9 @@ const getReimbursementApprovedTemplate = (candidateName, claimNumber, amount) =>
       <p><strong>Claim No:</strong> ${claimNumber}</p>
       <p><strong>Approved Amount:</strong> ${amount}</p>
       <p>The details have been forwarded to the accounts team for processing.</p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getReimbursementDisapprovedTemplate = (
@@ -207,19 +130,7 @@ const getReimbursementDisapprovedTemplate = (
   claimNumber,
   remarks,
 ) => {
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>Reimbursement Disapproved</h2>
     </div>
@@ -229,13 +140,9 @@ const getReimbursementDisapprovedTemplate = (
       <p><strong>Claim No:</strong> ${claimNumber}</p>
       <p><strong>Reason/Remarks:</strong> ${remarks || "No remarks provided"}</p>
       <p>Please log in to the portal to review and correct if necessary.</p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getReimbursementResubmissionTemplate = (
@@ -243,19 +150,7 @@ const getReimbursementResubmissionTemplate = (
   claimNumber,
   remarks,
 ) => {
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .info { margin-bottom: 15px; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>Reimbursement Resubmission Requested</h2>
     </div>
@@ -265,45 +160,24 @@ const getReimbursementResubmissionTemplate = (
       <p><strong>Claim No:</strong> ${claimNumber}</p>
       <p><strong>Remarks from Admin:</strong> ${remarks || "Please check with Admin"}</p>
       <p>Please log in to the portal to edit and resubmit your claim.</p>
-    </div>
-    <div class="footer">
-      <p>&copy; ${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    </div>`;
+
+  return getBaseEmailHtml(body);
 };
 
 const getOtpEmailTemplate = (userName, otpCode) => {
-  return `
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
-    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-    .otp-container { text-align: center; margin: 30px 0; }
-    .otp-code { font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #0060AA; background: #e6f0fa; padding: 15px 25px; border-radius: 8px; display: inline-block; }
-  </style>
-</head>
-<body>
-  <div class="content">
+  const body = `
     <div class="header">
       <h2>Two-Step Verification</h2>
     </div>
-    <p>Dear \${userName},</p>
+    <p>Dear ${userName},</p>
     <p>We received a request to log in to your account. Use the following verification code to complete your sign-in:</p>
     <div class="otp-container">
-      <span class="otp-code">\${otpCode}</span>
+      <span class="otp-code">${otpCode}</span>
     </div>
-    <p>This code will expire in 5 minutes. If you did not make this request, please ignore this email or contact support if you suspect unauthorized access.</p>
-    <div class="footer">
-      <p>&copy; \${new Date().getFullYear()} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    <p>This code will expire in 5 minutes. If you did not make this request, please ignore this email or contact support if you suspect unauthorized access.</p>`;
+
+  return getBaseEmailHtml(body);
 };
 
 module.exports = {
@@ -316,4 +190,3 @@ module.exports = {
   getReimbursementResubmissionTemplate,
   getOtpEmailTemplate,
 };
-
