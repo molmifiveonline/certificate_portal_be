@@ -149,98 +149,32 @@ const registerCandidate = async (req, res) => {
     if (process.env.SMTP_USER || true) {
       try {
         const { sendEmail } = require("../utils/emailService");
+        const { getCandidateRegistrationHtml } = require("../utils/emailTemplateRenderer");
         const subject = "Welcome Aboard! Your Registration Details";
-        const year = new Date().getFullYear();
         const formattedDob = new Date(dob).toLocaleDateString("en-GB"); // dd-mm-yyyy
 
         // Generate Reset Link
         const frontendUrl = getFrontendUrl();
         const resetLink = `${frontendUrl}/reset-password?id=${userId}`;
 
-        // Account Info Section based on registration type
-        let accountInfoHtml = "";
-        if (isSelfRegistration) {
-          console.log(`[DEV] Generated Reset Link for ${email}: ${resetLink}`);
-          accountInfoHtml = `
-             <div class='info'>
-                <p><strong>Email Address:</strong> ${email}</p>
-                <p><strong>Default Password:</strong> 12345</p>
-                <p><strong>Action Required:</strong> Please set your password to access your account, or log in with your default password.</p>
-                <p><a href='${resetLink}' style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Set Your Password</a></p>
-                <p style="font-size: 12px; color: #666; margin-top: 10px;">Link expires in 24 hours.</p>
-             </div>
-           `;
-        } else {
-          // Admin created (Password provided)
-          accountInfoHtml = `
-             <div class='info'>
-                <p><strong>Email Address:</strong> ${email}</p>
-                <p><strong>Password:</strong> (As set by Administrator)</p>
-                <p>You can login <a href='${frontendUrl}/login'>here</a>.</p>
-             </div>
-           `;
-        }
-
-        const html = `
-          <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; }
-                    .content { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-                    .header { text-align: center; background-color: #f4f4f4; padding: 10px; }
-                    .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }
-                    .info { margin-bottom: 15px; }
-                    .button { display: inline-block; padding: 10px 20px; color: #fff; background-color: #007bff; text-decoration: none; border-radius: 5px; }
-                </style>
-            </head>
-            <body>
-                <div class='content'>
-                    <div class='header'>
-                        <h2>Candidate Registration</h2>
-                    </div>
-                    <p>Dear ${first_name} ${middle_name || ""} ${last_name},</p>
-                    <p>Congratulations on your registration! We are pleased to welcome you. Below are your registration details:</p>
-                    <div class='info'>
-                        <p><strong>Employee ID:</strong> ${employee_id || "-"}</p>
-                        <p><strong>Rank Last Served on Vessel:</strong> ${rank || "-"}</p>
-                        <p><strong>Prefix:</strong> ${prefix || "-"}</p>
-                        <p><strong>Surname:</strong> ${last_name}</p>
-                        <p><strong>First Name:</strong> ${first_name}</p>
-                        <p><strong>Middle Name:</strong> ${middle_name || "-"}</p>
-                        <p><strong>Gender:</strong> ${gender || "-"}</p>
-                        <p><strong>C.D.C / Passport:</strong> ${passport_no || "-"}</p>
-                        <p><strong>Vessel Type:</strong> -</p>
-                        <p><strong>Vessel Name:</strong> -</p>
-                        <p><strong>Birth Date:</strong> ${formattedDob}</p>
-                        <p><strong>Nationality:</strong> ${nationality || "-"}</p>
-                        <p><strong>Seaman Book No.:</strong> -</p>
-                        <p><strong>WhatsApp Number:</strong> ${whatsapp_number || "-"}</p>
-                        <p><strong>Alternate Number:</strong> ${alternate_mobile || "-"}</p>
-                        <p><strong>Designation:</strong> ${designation || "-"}</p>
-                        <p><strong>Vessel Type:</strong> ${vessel_type || "-"}</p>
-                        <p><strong>Last Vessel Name:</strong> ${last_vessel_name || "-"}</p>
-                        <p><strong>Next Vessel Name:</strong> ${next_vessel_name || "-"}</p>
-                        <p><strong>Manning Company:</strong> ${manning_company || "-"}</p>
-                        <p><strong>Sign On Date:</strong> ${sign_on_date || "-"}</p>
-                        <p><strong>Sign Off Date:</strong> ${sign_off_date || "-"}</p>
-                        <p><strong>Officer:</strong> ${officer || "-"}</p>
-                        <p><strong>Seaman Book No:</strong> ${seaman_book_no || "-"}</p>
-                    </div>
-                    
-                    <h3>Account Information</h3>
-                    ${accountInfoHtml}
-
-                    <div class='info'>
-                        <p>Please review your details carefully. If you notice any discrepancies or have any questions, don’t hesitate to reach out.</p>
-                        <p>We look forward to supporting you on your maritime journey!</p>
-                    </div>
-                    <div class='footer'>
-                        <p>&copy; ${year} MOL Maritime (India) Pvt. Ltd. All rights reserved.</p>
-                    </div>
-                </div>
-            </body>
-          </html>
-        `;
+        const html = getCandidateRegistrationHtml({
+          first_name,
+          middle_name,
+          last_name,
+          empId: employee_id,
+          rank,
+          prefix,
+          gender,
+          cdc_passport: passport_no,
+          dob: formattedDob,
+          nationality,
+          whatsapp: whatsapp_number,
+          alternate_mobile,
+          email,
+          isSelfRegistration,
+          resetLink,
+          frontendUrl
+        });
 
         if (process.env.SMTP_USER) {
           await sendEmail(email, subject, html);
@@ -515,22 +449,11 @@ const forgotPassword = async (req, res) => {
     const frontendUrl = getFrontendUrl();
     const resetLink = `${frontendUrl}/reset-password?id=${user.id}`;
     const subject = "Reset Password Link";
-    const html = `
-      <div style="font-family: Arial, sans-serif;">
-        <div style="background-color: #f4f4f4; padding: 20px; text-align: center;">
-            <h2>Reset Password Link</h2>
-        </div>
-        <div style="padding: 20px;">
-            <p>Hi ${user.first_name} ${user.last_name},</p>
-            <p>You requested to reset your password. Click the link below to reset it:</p>
-            <p><a href="${resetLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
-            <p>If you didn't request this, you can ignore this email.</p>
-        </div>
-        <div style="background-color: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666;">
-            &copy; ${new Date().getFullYear()} Molmi. All rights reserved.
-        </div>
-      </div>
-    `;
+    const { getTrainerForgotPasswordHtml } = require("../utils/emailTemplateRenderer");
+    const html = getTrainerForgotPasswordHtml({
+      trainer_name: `${user.first_name} ${user.last_name || ''}`,
+      reset_link: resetLink
+    });
 
     if (process.env.SMTP_USER) {
       const { sendEmail } = require("../utils/emailService");
@@ -575,8 +498,11 @@ const resetPassword = async (req, res) => {
       const user = await UserDao.findUserById(userId);
       if (user && process.env.SMTP_USER) {
         const { sendEmail } = require("../utils/emailService");
+        const { getTrainerResetPasswordHtml } = require("../utils/emailTemplateRenderer");
         const subject = "Password Reset Successful";
-        const html = `<p>Hi ${user.first_name},</p><p>Your password has been successfully updated.</p>`;
+        const html = getTrainerResetPasswordHtml({
+          trainer_name: `${user.first_name} ${user.last_name || ''}`
+        });
         await sendEmail(user.email, subject, html);
       }
 
