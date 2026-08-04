@@ -1,7 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
+const excelUpload = multer({ dest: "uploads/temp/" });
 const controller = require("../controllers/preActiveCourseController");
 const syncController = require("../controllers/preActiveCourseSyncController");
+const excelController = require("../controllers/preActiveCourseExcelController");
 const verifyToken = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/permissionMiddleware");
 
@@ -19,6 +22,23 @@ router.post(
 
 // Admin / protected routes
 router.use(verifyToken);
+
+router.get(
+  "/excel/sample-template",
+  checkPermission("create_pre_active_course"),
+  excelController.downloadSampleTemplate,
+);
+router.post(
+  "/excel/upload-preview",
+  checkPermission("create_pre_active_course"),
+  excelUpload.single("file"),
+  excelController.bulkUploadFromExcel,
+);
+router.post(
+  "/excel/confirm-import",
+  checkPermission("create_pre_active_course"),
+  excelController.confirmExcelImport,
+);
 
 router.post(
   "/",
