@@ -27,6 +27,7 @@ const injectDisclaimer = (html) => {
 const sendEmail = async (to, subject, html) => {
   try {
     // TEMPORARY TESTING: Intercept emails to trainers and candidates
+    let cc = null;
     if (to) {
       const [users] = await db.query(
         "SELECT r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
@@ -37,6 +38,7 @@ const sendEmail = async (to, subject, html) => {
         if (roleName === "trainer" || roleName === "candidate") {
           console.log(`[TESTING] Intercepted email to ${roleName} (${to}). Rerouting to nilesh.shinde@molgroup.com.`);
           to = "nilesh.shinde@molgroup.com";
+          cc = "feedback.report@molgroup.com";
         }
       }
     }
@@ -49,6 +51,7 @@ const sendEmail = async (to, subject, html) => {
       to,
       subject: finalSubject,
       html: finalHtml,
+      ...(cc && { cc }),
     });
     console.log("Message sent: %s", info.messageId);
     return info;
