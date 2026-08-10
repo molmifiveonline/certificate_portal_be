@@ -518,19 +518,18 @@ exports.convertToActiveCourse = async (req, res) => {
     if (!course)
       return res.status(404).json({ message: "Pre-Active course not found." });
 
-    // Barrier: We can close pre-active course 1 day prior and not after that.
-    // E.g. start_date is 2026-03-05. Today is <= 2026-03-04.
+    // Barrier: We can close pre-active course on or before the start date, not after that.
+    // E.g. start_date is 2026-03-05. Today is <= 2026-03-05.
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const startDateLine = new Date(course.start_date);
     startDateLine.setHours(0, 0, 0, 0);
-    startDateLine.setDate(startDateLine.getDate() - 1);
 
     if (today > startDateLine) {
       return res.status(400).json({
         message:
-          "Cannot convert course. The deadline (1 day prior to start date) has passed.",
+          "Cannot convert course. The start date has already passed.",
       });
     }
 
