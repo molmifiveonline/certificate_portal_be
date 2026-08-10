@@ -93,6 +93,18 @@ router.get(
   controller.getNominatorToken,
 );
 
+router.get(
+  "/:id/available-candidates",
+  checkPermission("view_pre_active_courses"),
+  controller.getAvailableOthersCandidatesByAdmin,
+);
+
+router.post(
+  "/:id/add-candidate",
+  checkPermission("edit_pre_active_approval"),
+  controller.adminAddCandidate,
+);
+
 // Actions on a specific pre-active course
 router.post(
   "/:id/notify-nominators",

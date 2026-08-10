@@ -344,6 +344,80 @@ exports.nominatorAddCandidate = async (req, res) => {
   }
 };
 
+exports.getAvailableOthersCandidatesByAdmin = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const candidates = await PreActiveCourseDao.getAvailableOthersCandidates(courseId);
+    res.status(200).json(candidates);
+  } catch (error) {
+    console.error("Error fetching available candidates by admin:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.adminAddCandidate = async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const { candidates } = req.body;
+    const course = await PreActiveCourseDao.getPreActiveCourseById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const frontendUrl = getFrontendUrl();
+    const enrollmentIds = [];
+
+    const adminUserId = req.user?.id;
+    const adminUserName = req.user
+      ? [req.user.first_name, req.user.last_name].filter(Boolean).join(" ") || req.user.email
+      : "Admin";
+
+    for (const candidateData of candidates) {
+      const enrollmentId = await PreActiveCourseDao.enrollCandidateByAdmin(
+        courseId,
+        adminUserId,
+        adminUserName,
+        candidateData,
+      );
+      enrollmentIds.push(enrollmentId);
+
+      // Automatically notify the candidate
+      const enrollment = await CourseEnrollmentDao.getEnrollmentById(enrollmentId);
+      if (enrollment && enrollment.email) {
+        const candidateToken = await PreActiveCourseDao.createToken(
+          courseId,
+          enrollment.candidate_id,
+          "Candidate",
+        );
+        const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
+
+        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
+        const subject = `Course Nomination Approval - ${course.course_name}`;
+        const html = getBaseEmailHtml(`
+                    <h3>Dear ${enrollment.first_name},</h3>
+                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
+                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
+                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
+                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
+                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
+                    <br><br>
+                    <p>Link expires in 7 days.</p>
+                `);
+
+        await emailService.sendEmail(enrollment.email, subject, html);
+      }
+    }
+
+    res.status(201).json({
+      message: "Candidates added and notified successfully",
+      enrollmentIds,
+    });
+  } catch (error) {
+    console.error("Error adding candidates by admin:", error);
+    res.status(400).json({ message: error.message });
+  }
+};
+
 exports.getEnrolledCandidates = async (req, res) => {
   try {
     const courseId = req.params.id;
