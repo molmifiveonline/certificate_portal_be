@@ -1077,6 +1077,8 @@ function buildTrainingRecordWorkbook(year, rows) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("SFGMO - Monthly Completed list");
 
+  worksheet.views = [{ state: "frozen", ySplit: 9, xSplit: 0 }];
+
   worksheet.columns = [
     { width: 14 },
     { width: 52.11 },
