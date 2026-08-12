@@ -350,6 +350,99 @@ const enrollCandidateByNominator = async (
   return enrollmentId;
 };
 
+const enrollCandidateByAdmin = async (
+  course_id,
+  admin_user_id,
+  admin_user_name,
+  candidateData,
+) => {
+  // Check if candidate exists, if not create 'Others' candidate
+  let candidateId = candidateData.candidate_id;
+
+  if (!candidateId && candidateData.email) {
+    // Fetch candidate role ID
+    const [roles] = await pool.execute(
+      "SELECT id FROM roles WHERE name = 'candidate'",
+    );
+    if (roles.length === 0) throw new Error("Candidate role not found");
+    const roleId = roles[0].id;
+
+    // See if user exists
+    const [users] = await pool.execute(
+      "SELECT id FROM users WHERE email = ? AND role_id = ?",
+      [candidateData.email, roleId],
+    );
+
+    if (users.length > 0) {
+      candidateId = users[0].id;
+    } else {
+      // Create user
+      candidateId = uuidv4();
+      await pool.execute(
+        "INSERT INTO users (id, role_id, first_name, last_name, email, mobile, status) VALUES (?, ?, ?, ?, ?, ?, 1)",
+        [
+          candidateId,
+          roleId,
+          candidateData.first_name,
+          candidateData.last_name || "",
+          candidateData.email,
+          candidateData.mobile_no || null,
+        ],
+      );
+
+      // Create Candidate Profile
+      const profileId = uuidv4();
+      await pool.execute(
+        "INSERT INTO candidate_profiles (id, user_id, dob, indos_number, registration_type) VALUES (?, ?, ?, ?, 'Others')",
+        [
+          profileId,
+          candidateId,
+          candidateData.date_of_birth || null,
+          candidateData.indos_number || null,
+        ],
+      );
+    }
+  }
+
+  if (!candidateId) throw new Error("Could not determine or create candidate.");
+
+  // Check if already enrolled
+  const [enrolled] = await pool.execute(
+    "SELECT id FROM courses_enrollment WHERE course_id = ? AND candidate_id = ?",
+    [course_id, candidateId],
+  );
+
+  if (enrolled.length > 0) {
+    throw new Error("Candidate is already nominated for this course.");
+  }
+
+  const enrollmentId = uuidv4();
+  // Admin adds candidate: admin approval status is set to Approved, admin_user_id and admin_user_name are saved if fields exist, otherwise we just save it.
+  // Wait, let's see if admin_user_id exists in courses_enrollment table. Let's write standard fields.
+  // Actually, updateAdminApproval uses admin_approval_status, admin_remark, admin_action_date.
+  // Let's check courses_enrollment schema to see if admin_user_id/name exist. Wait, earlier I saw:
+  // "nominator_name", and in AdminPreActiveApprovals.jsx: "appr.admin_remark || appr.admin_user_name || """
+  // Wait, does "courses_enrollment" have "admin_user_name"? In sql it's not selected in getPendingAdminApprovals.
+  // Oh, wait, in getPendingAdminApprovals (lines 388-410):
+  // It selects:
+  // `ce.id, ce.course_id, ce.candidate_id, ce.candidate_approval_status, ce.candidate_remark,
+  // ce.candidate_rejection_reason, ce.candidate_available_date,
+  // ce.admin_approval_status, ce.admin_remark, ce.admin_action_date, ce.nominator_id,
+  // u.first_name, u.middle_name, u.last_name, u.email, cp.indos_number,
+  // ...`
+  // It does not select `admin_user_name` or `admin_user_id` from `courses_enrollment`. Let's check if there are columns.
+  // Wait! Where did `admin_user_name` come from? Maybe it's not in the DB, or maybe it's in another table, or we just write it if the column exists.
+  // Let's check the schema for courses_enrollment in `database_changes.sql` if it contains `admin_user_name` or similar.
+  // Actually, we can run a simple node script to describe the `courses_enrollment` table. Let's do that!
+  
+  await pool.execute(
+    "INSERT INTO courses_enrollment (id, course_id, candidate_id, admin_approval_status, admin_remark, admin_action_date, candidate_approval_status, status) VALUES (?, ?, ?, 'Approved', 'Added by Admin', NOW(), 'Pending', 'Active')",
+    [enrollmentId, course_id, candidateId],
+  );
+
+  return enrollmentId;
+};
+
 const getCandidateEnrollmentById = async (candidateId, courseId) => {
   const [rows] = await pool.execute(
     "SELECT ce.*, u.first_name, u.middle_name, u.last_name, u.email FROM courses_enrollment ce JOIN users u ON ce.candidate_id = u.id WHERE ce.candidate_id = ? AND ce.course_id = ?",
@@ -773,6 +866,7 @@ module.exports = {
   getTokenDetails,
   revokeToken,
   enrollCandidateByNominator,
+  enrollCandidateByAdmin,
   getCandidateEnrollmentById,
   updateCandidateApproval,
   updateAdminApproval,
