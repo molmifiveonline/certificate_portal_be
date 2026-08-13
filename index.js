@@ -87,6 +87,8 @@ app.use("/api/feedback-forms", feedbackFormRoutes);
 app.use("/api/question-bank", questionBankRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/system-manual", systemManualRoutes);
+const studyMaterialRoutes = require("./routes/studyMaterialRoutes");
+app.use("/api/study-materials", studyMaterialRoutes);
 app.use("/api/system-manual-categories", systemManualCategoryRoutes);
 app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/reimbursements", reimbursementRoutes);
