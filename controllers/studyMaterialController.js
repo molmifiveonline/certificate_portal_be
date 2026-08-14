@@ -4,13 +4,15 @@ const { ok, error } = require("../utils/responseHandler");
 
 const getStudyMaterials = async (req, res) => {
   try {
-    const { search, page, limit, sort_by, sort_order } = req.query;
+    const { search, page, limit, sort_by, sort_order, master_course_id, user_type } = req.query;
     const result = await StudyMaterialDao.getAllStudyMaterials({
       search,
       page,
       limit,
       sort_by,
       sort_order,
+      master_course_id,
+      user_type,
     });
     return ok(res, "Study Materials fetched successfully", result);
   } catch (err) {

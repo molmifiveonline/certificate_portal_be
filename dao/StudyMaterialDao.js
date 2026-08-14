@@ -18,6 +18,16 @@ class StudyMaterialDao {
       params.push(searchTerm, searchTerm);
     }
 
+    if (filters.master_course_id) {
+      baseQuery += " AND sm.master_course_id = ?";
+      params.push(filters.master_course_id);
+    }
+
+    if (filters.user_type) {
+      baseQuery += " AND (sm.user_type = ? OR sm.user_type = 'both')";
+      params.push(filters.user_type);
+    }
+
     // Get total count for pagination
     const countQuery = `SELECT COUNT(*) as totalCount ${baseQuery}`;
     const [countResult] = await db.query(countQuery, params);
