@@ -1040,10 +1040,11 @@ exports.getAiReportDataset = async (req, res) => {
 
 exports.chatWithReportAi = async (req, res) => {
   try {
-    const { report_type, params = {}, prompt } = req.body;
+    const { report_type = "general", params = {}, prompt, message, history = [] } = req.body;
+    const userMessage = (message || prompt || "").trim();
 
-    if (!prompt || !String(prompt).trim()) {
-      return res.status(400).json({ message: "Please enter a question for AI." });
+    if (!userMessage) {
+      return res.status(400).json({ message: "Please enter a message for AI." });
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -1052,23 +1053,93 @@ exports.chatWithReportAi = async (req, res) => {
       });
     }
 
-    const dataset = await buildAiReportDataset(report_type, params);
-    const answer = await askOpenAiForReportAnswer(dataset, prompt);
+    // Determine target report type from user query if set to general
+    let targetType = report_type;
+    const lower = userMessage.toLowerCase();
+    if (!targetType || targetType === "general") {
+      if (
+        lower.includes("feedback") ||
+        lower.includes("rating") ||
+        lower.includes("score") ||
+        lower.includes("lowest") ||
+        lower.includes("highest") ||
+        lower.includes("trainer") ||
+        lower.includes("faculty") ||
+        lower.includes("satisfaction") ||
+        lower.includes("question") ||
+        lower.includes("comment")
+      ) {
+        targetType = "feedback";
+      } else if (
+        lower.includes("certificate") ||
+        lower.includes("cert") ||
+        lower.includes("issued") ||
+        lower.includes("candidate")
+      ) {
+        targetType = "certificate";
+      } else if (
+        lower.includes("trg-218") ||
+        lower.includes("218") ||
+        lower.includes("training record") ||
+        lower.includes("annual record")
+      ) {
+        targetType = "training_record";
+      } else if (
+        lower.includes("trg-219") ||
+        lower.includes("219") ||
+        lower.includes("activity") ||
+        lower.includes("calendar") ||
+        lower.includes("schedule") ||
+        lower.includes("week")
+      ) {
+        targetType = "training_activities";
+      } else {
+        targetType = "feedback"; // Default to feedback data
+      }
+    }
+
+    let dataset = null;
+    try {
+      dataset = await buildAiReportDataset(targetType, params);
+    } catch (err) {
+      console.warn("Initial dataset fetch failed, attempting wider search:", err.message);
+      // If failed, try with wide default range
+      try {
+        dataset = await buildAiReportDataset(targetType, {
+          start_date: "2020-01-01",
+          end_date: new Date().toISOString().slice(0, 10),
+          year: new Date().getFullYear(),
+          start_month: 1,
+        });
+      } catch (fallbackErr) {
+        console.warn("Fallback dataset search also failed:", fallbackErr.message);
+      }
+    }
+
+    const conversationResult = await askOpenAiChatConversation(userMessage, history, dataset, targetType);
 
     return res.status(200).json({
       message: "AI response generated successfully",
-      report: {
-        report_type: dataset.report_type,
-        report_label: dataset.report_label,
-        row_count: dataset.row_count,
-        returned_row_count: dataset.returned_row_count,
-        truncated: dataset.truncated,
-      },
-      answer,
+      reply: conversationResult.reply,
+      report: dataset
+        ? {
+            report_type: dataset.report_type,
+            report_label: dataset.report_label,
+            row_count: dataset.row_count,
+            returned_row_count: dataset.returned_row_count,
+            truncated: dataset.truncated,
+          }
+        : null,
+      error: false,
     });
   } catch (error) {
     console.error("Report AI Chat Error:", error.response?.data || error);
     res.status(error.statusCode || 500).json({
+      reply:
+        error.response?.data?.error?.message ||
+        error.message ||
+        "I apologize, I encountered a technical issue. Please try again or check backend logs.",
+      error: true,
       message:
         error.response?.data?.error?.message ||
         error.message ||
@@ -1100,22 +1171,27 @@ async function buildAiReportDataset(reportType, params = {}) {
 }
 
 async function buildFeedbackAiDataset(params = {}) {
-  const { start_date, end_date, topic, manager } = params;
+  const today = new Date().toISOString().slice(0, 10);
+  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const start_date = params.start_date || oneYearAgo;
+  const end_date = params.end_date || today;
+
   const filters = {};
-  if (topic) filters.topic = topic;
-  if (manager) filters.manager = manager;
+  if (params.topic) filters.topic = params.topic;
+  if (params.manager) filters.manager = params.manager;
 
-  if (!start_date || !end_date) {
-    throw httpError(400, "Please provide both start and end dates for feedback report.");
-  }
-
-  const feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds(
+  let feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds(
     start_date,
     end_date,
   );
 
+  // If no questions in default date range, try all time
+  if (feedbackQuestionIds.length === 0 && !params.start_date) {
+    feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds("2020-01-01", today);
+  }
+
   if (feedbackQuestionIds.length === 0) {
-    throw httpError(404, "No feedback data found for the specified date range.");
+    throw httpError(404, "No feedback data found.");
   }
 
   const questionsData =
@@ -1323,19 +1399,22 @@ async function buildFeedbackAiDataset(params = {}) {
 }
 
 async function buildCertificateAiDataset(params = {}) {
-  const { start_date, end_date, topic, manager, company } = params;
-  if (!start_date || !end_date) {
-    throw httpError(400, "Please provide both start and end dates for certificate report.");
-  }
+  const today = new Date().toISOString().slice(0, 10);
+  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const start_date = params.start_date || oneYearAgo;
+  const end_date = params.end_date || today;
 
   const filters = {};
-  if (topic) filters.topic = topic;
-  if (manager) filters.manager = manager;
-  if (company) filters.company = company;
+  if (params.topic) filters.topic = params.topic;
+  if (params.manager) filters.manager = params.manager;
+  if (params.company) filters.company = params.company;
 
-  const data = await ReportDao.getCertificateReport(start_date, end_date, filters);
+  let data = await ReportDao.getCertificateReport(start_date, end_date, filters);
+  if (data.length === 0 && !params.start_date) {
+    data = await ReportDao.getCertificateReport("2020-01-01", today, filters);
+  }
   if (data.length === 0) {
-    throw httpError(404, "No certificates found for the specified date range.");
+    throw httpError(404, "No certificates found.");
   }
 
   const allTrainerIds = [];
@@ -1399,21 +1478,16 @@ async function buildCertificateAiDataset(params = {}) {
 }
 
 async function buildTrainingRecordAiDataset(params = {}) {
-  const parsedYear = Number(params.year);
   const currentYear = new Date().getUTCFullYear();
-  if (
-    !params.year ||
-    !Number.isInteger(parsedYear) ||
-    parsedYear < 2000 ||
-    parsedYear > currentYear
-  ) {
-    throw httpError(400, "Please provide a valid year for training record report.");
-  }
+  const parsedYear = Number(params.year) || currentYear;
 
   const today = new Date().toISOString().slice(0, 10);
-  const reportData = await ReportDao.getTrainingRecordReport(parsedYear, today);
+  let reportData = await ReportDao.getTrainingRecordReport(parsedYear, today);
+  if (reportData.length === 0 && !params.year) {
+    reportData = await ReportDao.getTrainingRecordReport(parsedYear - 1, today);
+  }
   if (reportData.length === 0) {
-    throw httpError(404, "No completed training data found for the specified year.");
+    throw httpError(404, "No completed training data found for the training record.");
   }
 
   const normalizedRows = normalizeTrainingRecordRows(reportData);
@@ -1459,30 +1533,26 @@ async function buildTrainingRecordAiDataset(params = {}) {
 }
 
 async function buildTrainingActivitiesAiDataset(params = {}) {
-  const parsedMonth = Number(params.start_month);
-  const parsedYear = Number(params.year);
-  if (
-    !params.start_month ||
-    !Number.isInteger(parsedMonth) ||
-    parsedMonth < 1 ||
-    parsedMonth > 12
-  ) {
-    throw httpError(400, "Please provide a valid start_month between 1 and 12.");
-  }
-  if (
-    !params.year ||
-    !Number.isInteger(parsedYear) ||
-    parsedYear < 2000 ||
-    parsedYear > 2100
-  ) {
-    throw httpError(400, "Please provide a valid year for training activities report.");
-  }
+  const currentYear = new Date().getUTCFullYear();
+  const currentMonth = new Date().getUTCMonth() + 1;
+  const parsedMonth = Number(params.start_month) || currentMonth;
+  const parsedYear = Number(params.year) || currentYear;
 
   const windowBounds = getTrainingActivitiesWindow(parsedYear, parsedMonth);
-  const reportData = await ReportDao.getTrainingActivitiesReport(
+  let reportData = await ReportDao.getTrainingActivitiesReport(
     windowBounds.windowStart,
     windowBounds.windowEnd,
   );
+
+  if (reportData.length === 0) {
+    // Try current year Q1
+    const fallbackBounds = getTrainingActivitiesWindow(parsedYear, 1);
+    reportData = await ReportDao.getTrainingActivitiesReport(
+      fallbackBounds.windowStart,
+      fallbackBounds.windowEnd,
+    );
+  }
+
   if (reportData.length === 0) {
     throw httpError(404, "No training activity data found for the selected period.");
   }
@@ -1491,9 +1561,9 @@ async function buildTrainingActivitiesAiDataset(params = {}) {
     reportData,
     windowBounds.weeks,
   );
-  const weekKeys = windowBounds.weeks.map((week, index) => ({
-    key: `week_${index + 1}`,
-    label: `${formatMonthHeaderLabel(week.start)} ${week.label}`,
+  const weekKeys = windowBounds.weeks.map((week) => ({
+    key: normalizeColumnKey(`${week.monthKey}_${week.label}`),
+    label: `${formatMonthHeaderLabel(week.start)} - ${week.label}`,
   }));
   const columns = [
     { key: "row_id", label: "Row ID" },
@@ -1563,6 +1633,89 @@ async function buildHotelAiDataset(params = {}) {
   }));
 
   return createAiDataset("hotel", params, columns, rows);
+}
+
+async function askOpenAiChatConversation(userMessage, history = [], dataset = null, reportType = "general") {
+  const model =
+    process.env.OPENAI_AUTOMATION_DECISION_MODEL ||
+    process.env.OPENAI_DEFAULT_MODEL ||
+    process.env.OPENAI_MODEL ||
+    "gpt-4o-mini";
+
+  let datasetContext = "";
+  if (dataset && dataset.rows && dataset.rows.length > 0) {
+    datasetContext = `\n\n### Current Report Dataset Context (${dataset.report_label || reportType}):
+Total Records: ${dataset.row_count} (showing ${dataset.returned_row_count} rows)
+Columns: ${dataset.columns.map((c) => c.label).join(", ")}
+Dataset Records / Rows:
+${JSON.stringify(dataset.rows.slice(0, 150), null, 2)}`;
+  }
+
+  const systemPrompt = `You are Aria, the intelligent AI report concierge for the MOLMI Training and Certification Portal.
+
+Your role:
+Provide direct, immediate, and actionable analysis of training and certificate reports in the portal:
+1. **Feedback Reports**: Candidate evaluation ratings (out of 10), trainer scores, design, delivery, faculty, venue, and comments.
+2. **Certificate Reports**: Issued certificates, course names, candidate ranks, topics, managers, locations, and dates.
+3. **TRG-218 Training Records**: Annual summary of completed trainings and candidate matrices.
+4. **TRG-219 Training Activities**: Scheduled course calendar, weekly activities, inhouse vs. outhouse courses.
+
+Guidelines:
+- ALWAYS answer the user's question directly and immediately based on the dataset attached in context.
+- When asked for "lowest ratings" or "lowest feedback ratings":
+  • Examine all feedback rows, individual rating items, course averages, and overall averages.
+  • Identify the records/courses/questions with the lowest scores (especially scores < 8 or bottom scores in the data).
+  • Present them in a neat markdown table (e.g. Course Name | Candidate/Trainer | Rating / Question | Score) and summarize key problem areas.
+- NEVER ask the user to provide a date range or filters when replying to their query. Use the available dataset immediately.
+- Use GitHub Flavored Markdown (**bolding**, bullet points, numbered lists, and markdown tables).
+- Be concise, structured, professional, and clear.${datasetContext}`;
+
+  const formattedMessages = [
+    { role: "system", content: systemPrompt },
+  ];
+
+  if (Array.isArray(history)) {
+    const recentHistory = history.slice(-15);
+    for (const h of recentHistory) {
+      if (h && (h.role === "user" || h.role === "assistant") && h.content) {
+        formattedMessages.push({
+          role: h.role,
+          content: String(h.content),
+        });
+      }
+    }
+  }
+
+  formattedMessages.push({
+    role: "user",
+    content: userMessage,
+  });
+
+  // Use gpt-4o-mini or configured model
+  const effectiveModel = model.includes("gpt-5") ? "gpt-4o-mini" : model;
+
+  const response = await axios.post(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      model: effectiveModel,
+      messages: formattedMessages,
+      temperature: 0.7,
+      max_tokens: 1500,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 60000,
+    },
+  );
+
+  const reply =
+    response.data?.choices?.[0]?.message?.content ||
+    "I processed your request, but could not generate a response. Please try again.";
+
+  return { reply: reply.trim() };
 }
 
 async function askOpenAiForReportAnswer(dataset, userPrompt) {
