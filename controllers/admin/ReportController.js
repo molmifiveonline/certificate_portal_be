@@ -1128,6 +1128,7 @@ exports.chatWithReportAi = async (req, res) => {
             row_count: dataset.row_count,
             returned_row_count: dataset.returned_row_count,
             truncated: dataset.truncated,
+            params: dataset.params || {},
           }
         : null,
       error: false,
@@ -1167,14 +1168,25 @@ async function buildAiReportDataset(reportType, params = {}) {
     return buildHotelAiDataset(params);
   }
 
-  throw httpError(400, "Please select a valid report type.");
+      throw httpError(400, "Please select a valid report type.");
 }
 
 async function buildFeedbackAiDataset(params = {}) {
   const today = new Date().toISOString().slice(0, 10);
-  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const start_date = params.start_date || oneYearAgo;
-  const end_date = params.end_date || today;
+  let start_date = params.start_date;
+  let end_date = params.end_date || today;
+
+  if (!start_date) {
+    const latestFeedbackDate = await ReportDao.getLatestFeedbackDate();
+    if (latestFeedbackDate) {
+      const latestObj = new Date(latestFeedbackDate);
+      end_date = latestObj.toISOString().slice(0, 10);
+      const oneYearBeforeLatest = new Date(latestObj.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      start_date = oneYearBeforeLatest;
+    } else {
+      start_date = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    }
+  }
 
   const filters = {};
   if (params.topic) filters.topic = params.topic;
@@ -1187,7 +1199,7 @@ async function buildFeedbackAiDataset(params = {}) {
 
   // If no questions in default date range, try all time
   if (feedbackQuestionIds.length === 0 && !params.start_date) {
-    feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds("2020-01-01", today);
+    feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds("2020-01-01", "2099-12-31");
   }
 
   if (feedbackQuestionIds.length === 0) {
@@ -1213,11 +1225,14 @@ async function buildFeedbackAiDataset(params = {}) {
     questionIdsByLegacyKey[key].push(q.id);
   });
 
-  const allPairs = await ReportDao.getCandidateCoursePairs(
+  let allPairs = await ReportDao.getCandidateCoursePairs(
     start_date,
     end_date,
     filters,
   );
+  if (allPairs.length === 0 && !params.start_date) {
+    allPairs = await ReportDao.getCandidateCoursePairs("2020-01-01", "2099-12-31", filters);
+  }
   if (allPairs.length === 0) {
     throw httpError(404, "No feedback data found.");
   }
@@ -1298,93 +1313,123 @@ async function buildFeedbackAiDataset(params = {}) {
     { key: "course_no", label: "Course No." },
     { key: "location", label: "Location of course conducted" },
     { key: "instructors", label: "Instructors Name(s)" },
-    ...LEGACY_FEEDBACK_RATING_COLUMNS.map((column, index) => ({
-      key: `rating_${index + 1}`,
-      label: getFeedbackColumnHeader(column),
+    { key: "company", label: "Manning Company" },
+    ...LEGACY_FEEDBACK_RATING_COLUMNS.map((col) => ({
+      key: getFeedbackColumnKey(col),
+      label: col.question,
     })),
     { key: "average", label: "Average" },
     {
       key: "overall_course_evaluation_average",
-      label: "Overall Course evaluation average",
+      label: "Overall Course Evaluation Average",
     },
-    ...LEGACY_FEEDBACK_COMMENT_COLUMNS.map((column, index) => ({
-      key: `comment_${index + 1}`,
-      label: getFeedbackColumnHeader(column),
+    ...LEGACY_FEEDBACK_COMMENT_COLUMNS.map((col) => ({
+      key: getFeedbackColumnKey(col),
+      label: col.question,
     })),
   ];
 
-  const rows = [];
   const courseAverages = {};
-  let rowId = 1;
+  const rows = [];
 
   for (const pair of allPairs) {
     const course = coursesMap[pair.active_course_id];
     const candidate = candidatesMap[pair.candidate_id];
+    const submissionDate = pair.created_at;
+
     if (!course || !candidate) continue;
 
     const trainer = trainersMap[course.primary_trainer_id];
-    const primaryTrainerName = trainer
-      ? `${trainer.prefix || ""}.${trainer.first_name} ${trainer.last_name || ""}`
-      : "";
-    const secondaryTrainerNames = getSecondaryTrainerNames(
-      course.secondary_trainer_ids,
-      trainersMap,
-    );
-    const fullTrainerString =
-      primaryTrainerName +
-      (secondaryTrainerNames ? ` / ${secondaryTrainerNames}` : "");
+    const trainerName = trainer
+      ? `${trainer.prefix || ""}.${trainer.first_name} ${trainer.last_name || ""}`.trim()
+      : "--";
+
+    let secondaryTrainerNames = [];
+    if (
+      course.secondary_trainer_ids &&
+      typeof course.secondary_trainer_ids === "string"
+    ) {
+      const sIds = course.secondary_trainer_ids
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      secondaryTrainerNames = sIds
+        .map((id) => {
+          const t = trainersMap[id];
+          return t
+            ? `${t.prefix || ""}.${t.first_name} ${t.last_name || ""}`.trim()
+            : null;
+        })
+        .filter(Boolean);
+    }
+
+    const allInstructors = [trainerName, ...secondaryTrainerNames]
+      .filter((n) => n && n !== "--")
+      .join(", ") || "--";
+
     const masterCourseName =
-      masterCoursesMap[course.master_course_name] || course.course_name;
+      masterCoursesMap[course.master_course_name] ||
+      course.course_name ||
+      "--";
+
+    const ratingValues = [];
+    const ratingEntries = {};
+    LEGACY_FEEDBACK_RATING_COLUMNS.forEach((col) => {
+      const val = getAnswerForLegacyColumn(pair.candidate_id, pair.active_course_id, col);
+      const key = getFeedbackColumnKey(col);
+      ratingEntries[key] = val;
+      const num = Number(val);
+      if (!Number.isNaN(num) && num > 0) ratingValues.push(num);
+    });
+
+    const average =
+      ratingValues.length > 0
+        ? Number(
+            (
+              ratingValues.reduce((sum, v) => sum + v, 0) /
+              ratingValues.length
+            ).toFixed(2),
+          )
+        : "--";
+
+    const commentEntries = {};
+    LEGACY_FEEDBACK_COMMENT_COLUMNS.forEach((col) => {
+      commentEntries[getFeedbackColumnKey(col)] = getAnswerForLegacyColumn(
+        pair.candidate_id,
+        pair.active_course_id,
+        col,
+      );
+    });
 
     const row = {
-      row_id: rowId++,
-      feedback_submission_date: formatDateForAi(pair.created_at),
-      candidate_name: `${candidate.first_name || ""} ${candidate.last_name || ""}`.trim(),
-      employee_or_passport: candidate.employee_id || candidate.passport_no || "",
+      row_id: rows.length + 1,
+      feedback_submission_date: formatDateForAi(submissionDate),
+      candidate_name: `${candidate.first_name || ""} ${candidate.middle_name || ""} ${candidate.last_name || ""}`.trim(),
+      employee_or_passport: candidate.employee_id || candidate.passport_no || "--",
       course_start_date: formatDateForAi(course.start_date),
       course_end_date: formatDateForAi(course.end_date),
-      rank: candidate.rank || "",
-      manager: candidate.manager || "",
-      course_name: masterCourseName || "",
-      participant_count: participantMap[course.id] || "",
-      course_no: course.course_id || "",
-      location: course.type_of_location || "",
-      instructors: fullTrainerString,
+      rank: candidate.rank || "--",
+      manager: candidate.manager || "--",
+      course_name: masterCourseName,
+      participant_count: participantMap[course.id] || "--",
+      course_no: course.course_id || "--",
+      location: course.type_of_location || "--",
+      instructors: allInstructors,
+      company: "--",
+      ...ratingEntries,
+      average,
+      overall_course_evaluation_average: "--",
+      ...commentEntries,
     };
-
-    let ratingSum = 0;
-    let ratingCount = 0;
-    LEGACY_FEEDBACK_RATING_COLUMNS.forEach((column, index) => {
-      const value = getAnswerForLegacyColumn(
-        pair.candidate_id,
-        pair.active_course_id,
-        column,
-      );
-      row[`rating_${index + 1}`] = value;
-      const numericValue = parseFloat(value);
-      if (!Number.isNaN(numericValue)) {
-        ratingSum += numericValue;
-        ratingCount++;
-      }
-    });
-
-    row.average = ratingCount > 0 ? Number((ratingSum / ratingCount).toFixed(2)) : 0;
-    row.overall_course_evaluation_average = "";
-
-    LEGACY_FEEDBACK_COMMENT_COLUMNS.forEach((column, index) => {
-      row[`comment_${index + 1}`] = getAnswerForLegacyColumn(
-        pair.candidate_id,
-        pair.active_course_id,
-        column,
-      );
-    });
 
     if (!courseAverages[masterCourseName]) {
       courseAverages[masterCourseName] = { total: 0, count: 0, rowIndexes: [] };
     }
-    courseAverages[masterCourseName].total += Number(row.average) || 0;
-    courseAverages[masterCourseName].count++;
-    courseAverages[masterCourseName].rowIndexes.push(rows.length);
+    if (typeof average === "number") {
+      courseAverages[masterCourseName].total += average;
+      courseAverages[masterCourseName].count++;
+      courseAverages[masterCourseName].rowIndexes.push(rows.length);
+    }
     rows.push(row);
   }
 
@@ -1395,14 +1440,25 @@ async function buildFeedbackAiDataset(params = {}) {
     });
   });
 
-  return createAiDataset("feedback", params, columns, rows);
+  return createAiDataset("feedback", { ...params, start_date, end_date }, columns, rows);
 }
 
 async function buildCertificateAiDataset(params = {}) {
   const today = new Date().toISOString().slice(0, 10);
-  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const start_date = params.start_date || oneYearAgo;
-  const end_date = params.end_date || today;
+  let start_date = params.start_date;
+  let end_date = params.end_date || today;
+
+  if (!start_date) {
+    const latestCertDate = await ReportDao.getLatestCertificateDate();
+    if (latestCertDate) {
+      const latestObj = new Date(latestCertDate);
+      end_date = latestObj.toISOString().slice(0, 10);
+      const oneYearBeforeLatest = new Date(latestObj.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      start_date = oneYearBeforeLatest;
+    } else {
+      start_date = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    }
+  }
 
   const filters = {};
   if (params.topic) filters.topic = params.topic;
@@ -1411,7 +1467,7 @@ async function buildCertificateAiDataset(params = {}) {
 
   let data = await ReportDao.getCertificateReport(start_date, end_date, filters);
   if (data.length === 0 && !params.start_date) {
-    data = await ReportDao.getCertificateReport("2020-01-01", today, filters);
+    data = await ReportDao.getCertificateReport("2020-01-01", "2099-12-31", filters);
   }
   if (data.length === 0) {
     throw httpError(404, "No certificates found.");
@@ -1474,17 +1530,26 @@ async function buildCertificateAiDataset(params = {}) {
     };
   });
 
-  return createAiDataset("certificate", params, columns, rows);
+  return createAiDataset("certificate", { ...params, start_date, end_date }, columns, rows);
 }
 
 async function buildTrainingRecordAiDataset(params = {}) {
   const currentYear = new Date().getUTCFullYear();
-  const parsedYear = Number(params.year) || currentYear;
+  let parsedYear = Number(params.year);
+
+  if (!parsedYear) {
+    const latestDbYear = await ReportDao.getLatestTrainingRecordYear();
+    parsedYear = Number(latestDbYear) || currentYear;
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   let reportData = await ReportDao.getTrainingRecordReport(parsedYear, today);
   if (reportData.length === 0 && !params.year) {
-    reportData = await ReportDao.getTrainingRecordReport(parsedYear - 1, today);
+    const nextYearBound = `${parsedYear}-12-31`;
+    reportData = await ReportDao.getTrainingRecordReport(parsedYear, nextYearBound);
+    if (reportData.length === 0) {
+      reportData = await ReportDao.getTrainingRecordReport(parsedYear - 1, today);
+    }
   }
   if (reportData.length === 0) {
     throw httpError(404, "No completed training data found for the training record.");
@@ -1529,14 +1594,25 @@ async function buildTrainingRecordAiDataset(params = {}) {
     return row;
   });
 
-  return createAiDataset("training_record", params, columns, rows);
+  return createAiDataset("training_record", { ...params, year: parsedYear }, columns, rows);
 }
 
 async function buildTrainingActivitiesAiDataset(params = {}) {
   const currentYear = new Date().getUTCFullYear();
   const currentMonth = new Date().getUTCMonth() + 1;
-  const parsedMonth = Number(params.start_month) || currentMonth;
-  const parsedYear = Number(params.year) || currentYear;
+  let parsedMonth = Number(params.start_month);
+  let parsedYear = Number(params.year);
+
+  if (!parsedYear || !parsedMonth) {
+    const latestPeriod = await ReportDao.getLatestTrainingActivitiesPeriod();
+    if (latestPeriod && latestPeriod.latest_year) {
+      if (!parsedYear) parsedYear = Number(latestPeriod.latest_year);
+      if (!parsedMonth) parsedMonth = Number(latestPeriod.latest_month) || currentMonth;
+    } else {
+      if (!parsedYear) parsedYear = currentYear;
+      if (!parsedMonth) parsedMonth = currentMonth;
+    }
+  }
 
   const windowBounds = getTrainingActivitiesWindow(parsedYear, parsedMonth);
   let reportData = await ReportDao.getTrainingActivitiesReport(
@@ -1592,7 +1668,7 @@ async function buildTrainingActivitiesAiDataset(params = {}) {
     return row;
   });
 
-  return createAiDataset("training_activities", params, columns, rows);
+  return createAiDataset("training_activities", { ...params, year: parsedYear, start_month: parsedMonth }, columns, rows);
 }
 
 async function buildHotelAiDataset(params = {}) {
@@ -1642,16 +1718,34 @@ async function askOpenAiChatConversation(userMessage, history = [], dataset = nu
     process.env.OPENAI_MODEL ||
     "gpt-4o-mini";
 
+  const currentDateStr = new Date().toISOString().slice(0, 10);
   let datasetContext = "";
   if (dataset && dataset.rows && dataset.rows.length > 0) {
+    // Limit row slice based on complexity/width to stay safely below token limits (10-25k tokens max)
+    const maxAiRows = dataset.report_type === "feedback" ? 45 : 75;
+    const slicedRows = dataset.rows.slice(0, maxAiRows);
+
+    // Filter out redundant empty/placeholder fields to save massive amounts of tokens
+    const compactRows = slicedRows.map((row) => {
+      const cleanRow = {};
+      for (const [k, v] of Object.entries(row)) {
+        if (v !== "" && v !== "--" && v !== null && v !== undefined) {
+          cleanRow[k] = v;
+        }
+      }
+      return cleanRow;
+    });
+
     datasetContext = `\n\n### Current Report Dataset Context (${dataset.report_label || reportType}):
-Total Records: ${dataset.row_count} (showing ${dataset.returned_row_count} rows)
+Total Records: ${dataset.row_count} (analyzing latest ${compactRows.length} rows)
+Applied Filters / Parameters: ${JSON.stringify(dataset.params || {})}
 Columns: ${dataset.columns.map((c) => c.label).join(", ")}
-Dataset Records / Rows:
-${JSON.stringify(dataset.rows.slice(0, 150), null, 2)}`;
+Dataset Records / Rows (JSON):
+${JSON.stringify(compactRows)}`;
   }
 
   const systemPrompt = `You are Aria, the intelligent AI report concierge for the MOLMI Training and Certification Portal.
+Current System Date: ${currentDateStr}
 
 Your role:
 Provide direct, immediate, and actionable analysis of training and certificate reports in the portal:
@@ -1662,6 +1756,7 @@ Provide direct, immediate, and actionable analysis of training and certificate r
 
 Guidelines:
 - ALWAYS answer the user's question directly and immediately based on the dataset attached in context.
+- Prioritize Latest Data: When the user asks for recent records, latest metrics, or the "last 3 months" / "last X months" without mentioning a specific custom date range, always identify and report on the most recent completed months/periods available in the active dataset.
 - When asked for "lowest ratings" or "lowest feedback ratings":
   • Examine all feedback rows, individual rating items, course averages, and overall averages.
   • Identify the records/courses/questions with the lowest scores (especially scores < 8 or bottom scores in the data).
@@ -1675,12 +1770,17 @@ Guidelines:
   ];
 
   if (Array.isArray(history)) {
-    const recentHistory = history.slice(-15);
+    const recentHistory = history.slice(-6);
     for (const h of recentHistory) {
       if (h && (h.role === "user" || h.role === "assistant") && h.content) {
+        // Cap lengthy prior assistant markdown outputs in history to 1200 chars
+        const trimmedContent =
+          h.role === "assistant" && String(h.content).length > 1200
+            ? String(h.content).slice(0, 1200) + "..."
+            : String(h.content);
         formattedMessages.push({
           role: h.role,
-          content: String(h.content),
+          content: trimmedContent,
         });
       }
     }

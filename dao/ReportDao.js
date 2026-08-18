@@ -403,6 +403,48 @@ class ReportDao {
       totalPages: limit ? Math.ceil(totalCount / limit) : 1,
     };
   }
+
+  static async getLatestTrainingRecordYear() {
+    const query = `
+      SELECT MAX(YEAR(end_date)) as latest_year 
+      FROM courses 
+      WHERE end_date IS NOT NULL 
+        AND status NOT IN ('Deleted', 'Cancelled')
+    `;
+    const [rows] = await pool.execute(query);
+    return rows[0]?.latest_year || new Date().getUTCFullYear();
+  }
+
+  static async getLatestFeedbackDate() {
+    const query = `
+      SELECT MAX(created_at) as latest_date 
+      FROM feedback_question_answer
+    `;
+    const [rows] = await pool.execute(query);
+    return rows[0]?.latest_date || null;
+  }
+
+  static async getLatestCertificateDate() {
+    const query = `
+      SELECT MAX(COALESCE(issue_date, created_at)) as latest_date 
+      FROM certificates
+    `;
+    const [rows] = await pool.execute(query);
+    return rows[0]?.latest_date || null;
+  }
+
+  static async getLatestTrainingActivitiesPeriod() {
+    const query = `
+      SELECT 
+        MAX(YEAR(start_date)) as latest_year,
+        MAX(MONTH(start_date)) as latest_month
+      FROM courses 
+      WHERE start_date IS NOT NULL 
+        AND status NOT IN ('Deleted', 'Cancelled')
+    `;
+    const [rows] = await pool.execute(query);
+    return rows[0] || null;
+  }
 }
 
 module.exports = ReportDao;
