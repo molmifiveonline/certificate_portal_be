@@ -950,3 +950,32 @@ CREATE TABLE IF NOT EXISTS `user_otp_verifications` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
+-- Date: 2026-08-13 - Study Material Module
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `study_materials` (
+  `id` CHAR(36) NOT NULL,
+  `master_course_id` CHAR(36) NOT NULL,
+  `category` VARCHAR(255) NOT NULL,
+  `user_type` VARCHAR(20) NOT NULL,                    -- 'trainer', 'candidate', 'both'
+  `access_type` VARCHAR(20) NOT NULL DEFAULT 'view',   -- 'view', 'view_download'
+  `status` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_master_course_id` (`master_course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `study_material_files` (
+  `id` CHAR(36) NOT NULL,
+  `study_material_id` CHAR(36) NOT NULL,
+  `file_name` VARCHAR(255) NOT NULL,            -- stored filename on disk
+  `file_original_name` VARCHAR(255) NOT NULL,   -- original uploaded filename
+  `display_name` VARCHAR(255) NOT NULL,         -- user-editable name (defaults to original name)
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_study_material_id` (`study_material_id`),
+  CONSTRAINT `fk_sm_files_material` FOREIGN KEY (`study_material_id`)
+    REFERENCES `study_materials` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
