@@ -28,33 +28,19 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter (restrict to standard document formats and images)
+// File filter (documents, images, videos, audio, archives)
 const fileFilter = (req, file, cb) => {
-  const allowedExts = /jpeg|jpg|png|pdf|doc|docx|xls|xlsx|ppt|pptx/;
-  const allowedMimes = [
-    "image/jpeg",
-    "image/png",
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ];
+  const allowedExts = /jpeg|jpg|png|webp|gif|svg|bmp|tiff|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|rtf|odt|ods|odp|mp4|webm|mkv|avi|mov|wmv|flv|m4v|3gp|mp3|wav|ogg|aac|m4a|flac|wma|zip|rar|7z|tar|gz/i;
 
-  const extname = allowedExts.test(
-    path.extname(file.originalname).toLowerCase(),
-  );
-  const mimetype =
-    allowedMimes.includes(file.mimetype) || allowedExts.test(file.mimetype);
+  const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+  const isValidExt = allowedExts.test(ext);
 
-  if (extname) {
+  if (isValidExt) {
     return cb(null, true);
   } else {
     cb(
       new Error(
-        "Only images and standard documents (PDF, Word, Excel, PPT) are allowed!",
+        `File type '.${ext}' is not supported for study materials. Allowed formats include PDF, Word, Excel, PowerPoint, Images, Videos (MP4/WebM/MOV), Audio, and Archives.`,
       ),
     );
   }
@@ -63,6 +49,9 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500 MB max per file
+  },
 });
 
 module.exports = upload;

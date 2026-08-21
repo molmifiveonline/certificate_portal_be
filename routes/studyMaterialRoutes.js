@@ -1,8 +1,21 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
 const studyMaterialController = require("../controllers/studyMaterialController");
 const uploadStudyMaterial = require("../middleware/studyMaterialUploadMiddleware");
 const { protect, authorize } = require("../middleware/authMiddleware");
+
+// Wrapper to catch multer errors and return proper JSON response
+const handleUpload = (req, res, next) => {
+  uploadStudyMaterial.array("files", 50)(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ success: false, message: err.message });
+    } else if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+};
 
 // All routes require authentication
 router.use(protect);
@@ -20,13 +33,13 @@ router.get(
 router.post(
   "/",
   authorize("SuperAdmin", "Admin", "admin"),
-  uploadStudyMaterial.array("files", 50), // Set high limit for multi-files
+  handleUpload,
   studyMaterialController.addStudyMaterial,
 );
 router.put(
   "/:id",
   authorize("SuperAdmin", "Admin", "admin"),
-  uploadStudyMaterial.array("files", 50),
+  handleUpload,
   studyMaterialController.updateStudyMaterial,
 );
 router.delete(
