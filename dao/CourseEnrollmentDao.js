@@ -184,9 +184,11 @@ class CourseEnrollmentDao {
   }
 
   static async getCandidateVenueDetails(courseId, candidateId) {
+    const hasCost = await hasColumn("courses_enrollment", "cost");
     const query = `
       SELECT 
         id, venue_name, venue_address, venue_contact, venue_map_link, venue_email, offline_date, from_date, to_date, remarks
+        ${hasCost ? ", cost" : ""}
       FROM courses_enrollment
       WHERE course_id = ? AND candidate_id = ?
     `;
@@ -204,6 +206,7 @@ class CourseEnrollmentDao {
       "from_date",
     );
     const hasToDate = Object.prototype.hasOwnProperty.call(details, "to_date");
+    const hasCost = await hasColumn("courses_enrollment", "cost");
     const {
       venue_name,
       venue_address,
@@ -213,6 +216,7 @@ class CourseEnrollmentDao {
       offline_date,
       from_date,
       to_date,
+      cost,
       remarks,
     } = details;
     const query = `
@@ -221,25 +225,32 @@ class CourseEnrollmentDao {
           offline_date = CASE WHEN ? THEN ? ELSE offline_date END,
           from_date = CASE WHEN ? THEN ? ELSE from_date END,
           to_date = CASE WHEN ? THEN ? ELSE to_date END,
+          ${hasCost ? "cost = ?," : ""}
           remarks = ?
       WHERE course_id = ? AND candidate_id = ?
     `;
-    const [result] = await pool.execute(query, [
-      venue_name,
-      venue_address,
-      venue_contact,
-      venue_map_link,
-      venue_email,
+    const values = [
+      venue_name === undefined ? null : venue_name,
+      venue_address === undefined ? null : venue_address,
+      venue_contact === undefined ? null : venue_contact,
+      venue_map_link === undefined ? null : venue_map_link,
+      venue_email === undefined ? null : venue_email,
       hasOfflineDate,
       offline_date || null,
       hasFromDate,
       from_date || null,
       hasToDate,
       to_date || null,
-      remarks,
+    ];
+    if (hasCost) {
+      values.push(cost === undefined || cost === "" ? null : cost);
+    }
+    values.push(
+      remarks === undefined ? null : remarks,
       courseId,
       candidateId,
-    ]);
+    );
+    const [result] = await pool.execute(query, values);
     return result.affectedRows > 0;
   }
 

@@ -319,6 +319,7 @@ exports.updateVenueDetails = async (req, res) => {
       venue_email: req.body.hotel_email || req.body.venue_email,
       venue_map_link: req.body.venue_map_link || null,
       offline_date: req.body.offline_date || null,
+      cost: req.body.cost || null,
       remarks: req.body.remarks || null,
     };
     await CourseEnrollmentDao.updateVenueDetails(req.params.id, req.params.candidateId, details);

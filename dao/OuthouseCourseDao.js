@@ -113,7 +113,9 @@ class OuthouseCourseDao {
     if (!keys.length) return null;
 
     const setClause = keys.map((key) => `${key} = ?`).join(", ");
-    const values = keys.map((key) => data[key]);
+    const values = keys.map((key) =>
+      data[key] === undefined ? null : data[key],
+    );
     values.push(id);
 
     const predicate = await this.buildOuthousePredicate("courses");

@@ -19,6 +19,26 @@ const {
 const { generateTrainingReportPdf } = require("../utils/trainingReportPdf");
 const { getFrontendUrl } = require("../utils/urlUtils");
 
+const getCourseLocationDetails = async (course = {}) => {
+  if (course.location_id) {
+    const LocationDao = require("../dao/LocationDao");
+    const location = await LocationDao.getLocationById(course.location_id);
+    if (location) {
+      return {
+        name: location.location_name || "",
+        address: location.address || "",
+        map_link: location.google_map_link || "",
+      };
+    }
+  }
+
+  return {
+    name: course.other_location || course.location || course.location_id || "",
+    address: "",
+    map_link: "",
+  };
+};
+
 exports.createCourse = async (req, res) => {
   try {
     const { topic: topicId, start_date, end_date, type_of_course } = req.body;
@@ -305,6 +325,7 @@ exports.emailPrimaryTrainer = async (req, res) => {
     const subject = `Course Assignment Notification - ${course.course_name}`;
 
     const portalUrl = getFrontendUrl();
+    const trainingLocation = await getCourseLocationDetails(course);
     let successfullySent = 0;
     for (const trainerId of trainerIds) {
       const trainer = await trainerDao.getTrainerById(trainerId);
@@ -319,7 +340,8 @@ exports.emailPrimaryTrainer = async (req, res) => {
           start_date: startDateFormatted,
           end_date: endDateFormatted,
           duration: course.duration || course.no_of_days || '',
-          training_location: course.type_of_location === "Online" ? "Online" : (course.other_location || course.type_of_location || ''),
+          location_type: course.type_of_location || '',
+          training_location: trainingLocation.name,
           whatsapp_group_link: course.whatsapp_link || '',
           description: course.description || ''
         });
@@ -373,18 +395,7 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
     </p>
   `;
 
-  let training_location_name = "";
-  let training_address = "";
-  let training_map_link = "";
-  if (course.location_id) {
-    const LocationDao = require("../dao/LocationDao");
-    const location = await LocationDao.getLocationById(course.location_id);
-    if (location) {
-      training_location_name = location.location_name;
-      training_address = location.address;
-      training_map_link = location.google_map_link;
-    }
-  }
+  const trainingLocation = await getCourseLocationDetails(course);
 
   let trainer_name = "";
   if (course.primary_trainer_id) {
@@ -416,6 +427,10 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
       trainer_name,
       start_time: course.start_time,
       end_time: course.end_time,
+      location_type: course.type_of_location || '',
+      training_location_name: trainingLocation.name,
+      training_address: trainingLocation.address,
+      training_map_link: trainingLocation.map_link,
       meeting_link: course.zoom_link,
       whatsapp_link: course.whatsapp_link,
       email: candidateEnrollment.email,
@@ -434,9 +449,10 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
       reporting_time: course.reporting_time,
       start_time: course.start_time,
       end_time: course.end_time,
-      training_location_name,
-      training_address,
-      training_map_link,
+      location_type: course.type_of_location || '',
+      training_location_name: trainingLocation.name,
+      training_address: trainingLocation.address,
+      training_map_link: trainingLocation.map_link,
       venue_name: venue ? venue.venue_name : '',
       venue_address: venue ? venue.venue_address : '',
       venue_contact: venue ? venue.venue_contact : '',

@@ -158,6 +158,7 @@ const getWelcomeCandidateOfflineHtml = (data) => {
           ${reportingTimeHtml}
           <li><strong>COURSE START TIME:</strong> ${data.start_time || '09:30'} IST</li>
           <li><strong>COURSE END TIME:</strong> ${data.end_time || '17:30'} IST</li>
+          <li><strong>LOCATION TYPE:</strong> ${data.location_type || ''}</li>
       </ul>
   </div>
 
@@ -254,6 +255,8 @@ const getWelcomeCandidateOnlineHtml = (data) => {
           <li><strong>COURSE START TIME:</strong> ${data.start_time || '09:30'} IST</li>
           <li><strong>COURSE END TIME:</strong> ${data.end_time || '17:30'} IST</li>
           <li style="font-size: 12px; color: #475569; font-style: italic;">*TRAINING TIME AS PER INDIAN STANDARD TIME ZONE KINDLY ADJUST AS PER YOUR LOCAL TIME ZONE.</li>
+          <li><strong>LOCATION TYPE:</strong> ${data.location_type || 'Online'}</li>
+          <li><strong>LOCATION OF TRAINING:</strong> ${data.training_location_name || ''}</li>
           <li><strong>TRAINING MODE:</strong> Online (VIA ${data.training_platform || 'ZOOM'} OR TEAMS)</li>
           <li><strong>ZOOM/TEAMS LINK:</strong> <a href="${data.meeting_link}">${data.meeting_link || ''}</a></li>
           <li><strong>WHATSAPP GROUP:</strong> <a href="${data.whatsapp_link}">Join here</a> to stay updated with day-to-day notifications.</li>
@@ -330,6 +333,7 @@ const getCourseTrainerHtml = (data) => {
           <li><strong>Course Start Date:</strong> ${data.start_date}</li>
           <li><strong>Course End Date:</strong> ${data.end_date}</li>
           <li><strong>Duration (Days):</strong> ${data.duration}</li>
+          <li><strong>Location Type:</strong> ${data.location_type || ''}</li>
           <li><strong>Location of Training:</strong> ${data.training_location || ''}</li>
           <li><strong>WhatsApp Group Link:</strong> <a href="${data.whatsapp_group_link || '#'}">WhatsApp Link</a></li>
           <li style="margin-top: 12px;"><strong class="course-description">Course Description:</strong><br>${data.description || ''}</li>
@@ -367,6 +371,7 @@ const getCourseCandidateHtml = (data) => {
                   <li><strong>Course end Time:</strong> 17:30 HRS at IST</li>
               </ul>
           </li>
+          <li><strong>Location Type:</strong> ${data.location_type || ''}</li>
           <li><strong>Training Location:</strong> ${data.training_location || ''}</li>
           <li><strong>Zoom Link:</strong> ${data.zoom_link || ''}</li>
       </ul>

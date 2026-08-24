@@ -739,6 +739,22 @@ ALTER TABLE courses_enrollment
   ADD COLUMN IF NOT EXISTS to_date DATE NULL,
   ADD COLUMN IF NOT EXISTS remarks TEXT NULL;
 
+SET @courses_enrollment_cost_column_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'courses_enrollment'
+    AND COLUMN_NAME = 'cost'
+);
+SET @courses_enrollment_cost_column_sql := IF(
+  @courses_enrollment_cost_column_exists = 0,
+  'ALTER TABLE courses_enrollment ADD COLUMN cost DECIMAL(10,2) NULL',
+  'SELECT 1'
+);
+PREPARE courses_enrollment_cost_column_stmt FROM @courses_enrollment_cost_column_sql;
+EXECUTE courses_enrollment_cost_column_stmt;
+DEALLOCATE PREPARE courses_enrollment_cost_column_stmt;
+
 UPDATE courses_enrollment ce
 JOIN courses c ON c.id = ce.course_id
 SET
