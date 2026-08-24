@@ -995,3 +995,22 @@ CREATE TABLE IF NOT EXISTS `study_material_files` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
+-- Date: 2026-08-24 - Certificate Status Pool
+-- ---------------------------------------------------------
+SET @has_cert_status_pool := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'certificates'
+    AND COLUMN_NAME = 'status_pool'
+);
+SET @cert_status_pool_sql := IF(
+  @has_cert_status_pool = 0,
+  'ALTER TABLE `certificates` ADD COLUMN `status_pool` VARCHAR(50) DEFAULT NULL AFTER `status`',
+  'SELECT "certificates.status_pool already exists"'
+);
+PREPARE cert_status_pool_stmt FROM @cert_status_pool_sql;
+EXECUTE cert_status_pool_stmt;
+DEALLOCATE PREPARE cert_status_pool_stmt;
+
+

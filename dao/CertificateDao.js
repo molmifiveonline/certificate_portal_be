@@ -101,6 +101,7 @@ class CertificateDao {
       location = null,
       course_conduct = null,
       status,
+      status_pool = null,
       from_date = null,
       to_date = null,
       days = null,
@@ -117,10 +118,10 @@ class CertificateDao {
       INSERT INTO certificates (
         id, certificate_no, type, topic, course_level, course_id, 
         active_course_id, candidate_id, trainer_id, location, 
-        course_conduct, status, is_hidden, from_date, to_date, days, 
+        course_conduct, status, status_pool, is_hidden, from_date, to_date, days, 
         issue_date, show_logo, is_manual, 
         description1, remarks, subid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -136,6 +137,7 @@ class CertificateDao {
       location,
       course_conduct,
       status || 0,
+      status_pool || null,
       is_hidden || 0,
       from_date || null,
       to_date || null,
@@ -303,6 +305,7 @@ class CertificateDao {
       "location",
       "course_conduct",
       "status",
+      "status_pool",
       "from_date",
       "to_date",
       "days",

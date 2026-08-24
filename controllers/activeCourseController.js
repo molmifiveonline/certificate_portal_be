@@ -883,6 +883,10 @@ exports.generateCertificate = async (req, res) => {
       "SELECT cp.nationality FROM users u LEFT JOIN candidate_profiles cp ON u.id = cp.user_id WHERE u.id = ?",
       [candidateId],
     );
+    const [enrollmentRows] = await pool.execute(
+      "SELECT status_pool FROM courses_enrollment WHERE course_id = ? AND candidate_id = ? LIMIT 1",
+      [activeCourseId, candidateId],
+    );
     const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);
     const { certificate_no, subid } = await generateCertificateNumber({
       type,
@@ -906,6 +910,7 @@ exports.generateCertificate = async (req, res) => {
           ? course.other_location
           : course.type_of_location,
       course_conduct: course.type_of_location === "Online" ? "ONL" : "ONS",
+      status_pool: enrollmentRows[0]?.status_pool || null,
       from_date: course.start_date,
       to_date: course.end_date,
       issue_date: generationDate,

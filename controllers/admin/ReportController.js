@@ -28,6 +28,7 @@ const LEGACY_FEEDBACK_META_HEADERS = [
   "Rank Last served on vessel before this course",
   "Name of the manager (last served)",
   "Course Name",
+  "INHOUSE/OUTHOUSE",
   "No. of Participants",
   "Course No. (This information will be provided in your welcome letter)",
   "Location of course conducted",
@@ -313,9 +314,10 @@ exports.exportFeedbackReport = async (req, res) => {
       row.push(candidate.employee_id || candidate.passport_no);
       row.push(new Date(course.start_date).toLocaleDateString("en-GB"));
       row.push(new Date(course.end_date).toLocaleDateString("en-GB"));
-      row.push(candidate.rank);
+      row.push(getCandidatePositionLabel(candidate.rank));
       row.push(candidate.manager);
       row.push(masterCourseName);
+      row.push(getCourseHouseType(course));
       row.push(participantMap[course.id] || "--");
       row.push(course.course_id);
       row.push(course.type_of_location);
@@ -478,6 +480,8 @@ exports.exportCertificateReport = async (req, res) => {
       "Name as per Shipmate/platform/registry",
       "Rank",
       "Last manager",
+      "Last vessel",
+      "Status Pool",
       "Topic",
       "Master Course Name",
       "INHOUSE/OUTHOUSE",
@@ -510,22 +514,19 @@ exports.exportCertificateReport = async (req, res) => {
         }
       }
 
-      // Extract last part of course id
-      const courseIdParts = (item.active_course_code || "").split("-");
-      const lastPart =
-        courseIdParts.length > 0 ? courseIdParts[courseIdParts.length - 1] : "";
-
       return [
         index + 1,
-        item.empId,
+        getCertificateReportCandidateIdentifier(item),
         `${item.cand_first_name} ${item.cand_last_name}`,
-        item.rank,
-        item.manager,
+        getCandidatePositionLabel(item.rank),
+        getCertificateReportManager(item),
+        item.last_vessel_name || "",
+        item.status_pool || "",
         item.topic,
         item.master_course_name,
-        item.type_of_course,
+        getCourseHouseType(item),
         item.location,
-        lastPart,
+        getCertificateReportCourseSequence(item.active_course_code),
         new Date(item.from_date).toLocaleDateString("en-GB").replace(/\//g, "-"),
         new Date(item.to_date).toLocaleDateString("en-GB").replace(/\//g, "-"),
         item.days,
@@ -592,6 +593,99 @@ exports.exportCertificateReport = async (req, res) => {
       .json({ message: "Internal Server Error", error: error.message });
   }
 };
+
+function getCertificateReportCandidateIdentifier(item) {
+  return [item.empId, item.passport_no]
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
+}
+
+function getCertificateReportManager(item) {
+  const manager = String(item.manager || "").trim();
+  const hasManagerValue = manager.replace(/[()\s]/g, "").length > 0;
+
+  return hasManagerValue ? manager : "New Candidate";
+}
+
+function getCourseHouseType(item = {}) {
+  const value = String(
+    item.type_of_course || item.course_type || "",
+  ).trim();
+  const normalized = value.toLowerCase().replace(/[\s_-]+/g, "");
+
+  if (normalized.includes("outhouse") || Number(item.is_outhouse) === 1) {
+    return "OUTHOUSE";
+  }
+
+  if (!value || normalized.includes("inhouse")) {
+    return "INHOUSE";
+  }
+
+  return value;
+}
+
+function getCertificateReportCourseSequence(courseCode) {
+  return String(courseCode || "")
+    .trim()
+    .split(/[/-]/)
+    .filter(Boolean)
+    .pop() || "";
+}
+
+function getCandidatePositionLabel(rank) {
+  const value = String(rank || "").trim();
+  if (!value) return "";
+
+  const compactValue = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const directRankMap = {
+    MASTER: "Master",
+    MSTR: "Master",
+    CAPT: "Captain",
+    COFF: "Chief Officer",
+    COF: "Chief Officer",
+    CHOFF: "Chief Officer",
+    CHIEFOFFICER: "Chief Officer",
+    ACOFF: "Addl Chief Officer",
+    ACOF: "Addl Chief Officer",
+    ADDLCHIEFOFFICER: "Addl Chief Officer",
+    "2OFF": "2nd Officer",
+    "2NDOFFICER": "2nd Officer",
+    "3OFF": "3rd Officer",
+    "3RDOFFICER": "3rd Officer",
+    "4MTE": "4th Mate",
+    "4THMATE": "4th Mate",
+    CENG: "Chief Engineer",
+    CHIEFENGINEER: "Chief Engineer",
+    "1AEN": "1st Asst Engineer",
+    "1STASSTENGINEER": "1st Asst Engineer",
+    A1AEN: "Addl 1st Asst Engineer",
+    ADDL1STASSTENGINEER: "Addl 1st Asst Engineer",
+    "2AEN": "2nd Asst Engineer",
+    "2NDASSTENGINEER": "2nd Asst Engineer",
+    "3AEN": "3rd Asst Engineer",
+    "3RDASSTENGINEER": "3rd Asst Engineer",
+    TUIE: "Asst. Engineer (TUIE)",
+    ASSTENGINEERTUIE: "Asst. Engineer (TUIE)",
+    ASSTENGINEERENGCADET: "Asst. Engineer (TUIE)",
+    OFFICERINTRAININGENGINE: "Asst. Engineer (TUIE)",
+    TUID: "Deck Cadet (TUID)",
+    DECKCADETTUID: "Deck Cadet (TUID)",
+    OFFICERINTRAININGDECK: "Deck Cadet (TUID)",
+    ETO: "Electro Technical Officer",
+    ELTOF: "Electro Technical Officer",
+    ELECTROTECHNICALOFFICER: "Electro Technical Officer",
+    OSMN: "Ordinary Seaman",
+    ORDINARYSEAMAN: "Ordinary Seaman",
+    ABSM: "Able Body Seaman",
+    ABLEBODYSEAMAN: "Able Body Seaman",
+    MSMN: "Messman",
+    OILR: "Oiler",
+    ENGTR: "Engine Trainee",
+    DKTR: "Deck Trainee",
+  };
+
+  return directRankMap[compactValue] || value;
+}
 
 exports.exportTrainingRecordReport = async (req, res) => {
   try {
@@ -1013,26 +1107,31 @@ function normalizeTrainingRecordRows(courseInstances) {
   const grouped = new Map();
 
   courseInstances.forEach((item) => {
-    const courseName = item.course_name || "Untitled Course";
+    const courseName = normalizeTrainingRecordCourseName(item.course_name);
     const trainingPeriodDays = Number(item.training_period_days) || 0;
     const monthIndex = Math.max(0, (Number(item.end_month) || 1) - 1);
     const traineeCount = Number(item.trainee_count) || 0;
     const section = getTrainingRecordSection(item);
-    const key = `${section}__${courseName}__${trainingPeriodDays}`;
+    const key = `${section}__${courseName.toLowerCase()}`;
 
     if (!grouped.has(key)) {
       grouped.set(key, {
         section,
         courseName,
-        trainingPeriodDays,
+        trainingPeriodDays: new Set(),
         monthlyTime: Array(12).fill(0),
         monthlyTrainees: Array(12).fill(0),
+        monthlyMandays: Array(12).fill(0),
       });
     }
 
     const current = grouped.get(key);
+    if (trainingPeriodDays) {
+      current.trainingPeriodDays.add(trainingPeriodDays);
+    }
     current.monthlyTime[monthIndex] += 1;
     current.monthlyTrainees[monthIndex] += traineeCount;
+    current.monthlyMandays[monthIndex] += traineeCount * trainingPeriodDays;
   });
 
   return Array.from(grouped.values())
@@ -1047,12 +1146,13 @@ function normalizeTrainingRecordRows(courseInstances) {
         serialNo: index + 1,
         section: item.section,
         courseName: item.courseName,
-        trainingPeriodDays: item.trainingPeriodDays,
+        trainingPeriodDays: formatTrainingPeriodDays(item.trainingPeriodDays),
         monthlyTime: item.monthlyTime,
         monthlyTrainees: item.monthlyTrainees,
+        monthlyMandays: item.monthlyMandays,
         totalTime,
         totalTrainees,
-        totalMandays: totalTrainees * item.trainingPeriodDays,
+        totalMandays: item.monthlyMandays.reduce((sum, value) => sum + value, 0),
       };
     })
     .sort((a, b) => {
@@ -1065,12 +1165,27 @@ function normalizeTrainingRecordRows(courseInstances) {
       if (a.courseName !== b.courseName) {
         return a.courseName.localeCompare(b.courseName);
       }
-      return a.trainingPeriodDays - b.trainingPeriodDays;
+      return 0;
     })
     .map((item, index) => ({
       ...item,
       serialNo: index + 1,
     }));
+}
+
+function normalizeTrainingRecordCourseName(value) {
+  return String(value || "Untitled Course").trim().replace(/\s+/g, " ");
+}
+
+function formatTrainingPeriodDays(values) {
+  const days = Array.from(values)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+
+  if (days.length === 0) return "";
+  if (days.length === 1) return days[0];
+  return days.join(" / ");
 }
 
 function buildTrainingRecordWorkbook(year, rows) {
@@ -1234,7 +1349,7 @@ function addTrainingRecordTotals(worksheet, rows) {
 
     item.monthlyTrainees.forEach((value, index) => {
       monthlyTraineeTotals[index] += value;
-      monthlyMandaysTotals[index] += value * item.trainingPeriodDays;
+      monthlyMandaysTotals[index] += item.monthlyMandays[index] || 0;
     });
   });
 

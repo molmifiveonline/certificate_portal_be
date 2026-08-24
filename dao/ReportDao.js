@@ -215,6 +215,34 @@ class ReportDao {
                 c.to_date,
                 c.days,
                 c.status,
+                COALESCE(
+                  NULLIF(c.status_pool, ''),
+                  NULLIF(direct_enrollment.status_pool, ''),
+                  (
+                    SELECT NULLIF(fallback_enrollment.status_pool, '')
+                    FROM courses fallback_course
+                    LEFT JOIN courses_enrollment fallback_enrollment
+                      ON fallback_enrollment.course_id = fallback_course.id
+                     AND fallback_enrollment.candidate_id = c.candidate_id
+                     AND (
+                       fallback_enrollment.status != 'Deleted'
+                       OR fallback_enrollment.status IS NULL
+                     )
+                    WHERE fallback_course.master_course_id = c.course_id
+                      AND c.from_date IS NOT NULL
+                      AND c.to_date IS NOT NULL
+                      AND DATE(fallback_course.start_date) = DATE(c.from_date)
+                      AND DATE(fallback_course.end_date) = DATE(c.to_date)
+                      AND (
+                        fallback_course.is_pre_active = 0
+                        OR fallback_course.is_pre_active IS NULL
+                      )
+                    ORDER BY
+                      CASE WHEN fallback_enrollment.id IS NOT NULL THEN 0 ELSE 1 END,
+                      fallback_course.created_at DESC
+                    LIMIT 1
+                  )
+                ) as status_pool,
                 c.show_logo,
                 c.topic,
                 c.location,
@@ -228,6 +256,7 @@ class ReportDao {
                 curr_cp.employee_id as empId,
                 curr_cp.rank,
                 curr_cp.manager,
+                curr_cp.last_vessel_name,
                 
                 COALESCE(
                   NULLIF(course.course_name, ''),
@@ -258,8 +287,88 @@ class ReportDao {
                   NULLIF(mc.master_course_name, ''),
                   NULLIF(c.topic, '')
                 ) as course_name,
-                course.course_type as type_of_course,
-                course.course_id as active_course_code,
+                COALESCE(
+                  NULLIF(course.course_type, ''),
+                  (
+                    SELECT NULLIF(fallback_course.course_type, '')
+                    FROM courses fallback_course
+                    LEFT JOIN courses_enrollment fallback_enrollment
+                      ON fallback_enrollment.course_id = fallback_course.id
+                     AND fallback_enrollment.candidate_id = c.candidate_id
+                     AND (
+                       fallback_enrollment.status != 'Deleted'
+                       OR fallback_enrollment.status IS NULL
+                     )
+                    WHERE fallback_course.master_course_id = c.course_id
+                      AND c.from_date IS NOT NULL
+                      AND c.to_date IS NOT NULL
+                      AND DATE(fallback_course.start_date) = DATE(c.from_date)
+                      AND DATE(fallback_course.end_date) = DATE(c.to_date)
+                      AND (
+                        fallback_course.is_pre_active = 0
+                        OR fallback_course.is_pre_active IS NULL
+                      )
+                    ORDER BY
+                      CASE WHEN fallback_enrollment.id IS NOT NULL THEN 0 ELSE 1 END,
+                      fallback_course.created_at DESC
+                    LIMIT 1
+                  )
+                ) as type_of_course,
+                COALESCE(
+                  course.is_outhouse,
+                  (
+                    SELECT fallback_course.is_outhouse
+                    FROM courses fallback_course
+                    LEFT JOIN courses_enrollment fallback_enrollment
+                      ON fallback_enrollment.course_id = fallback_course.id
+                     AND fallback_enrollment.candidate_id = c.candidate_id
+                     AND (
+                       fallback_enrollment.status != 'Deleted'
+                       OR fallback_enrollment.status IS NULL
+                     )
+                    WHERE fallback_course.master_course_id = c.course_id
+                      AND c.from_date IS NOT NULL
+                      AND c.to_date IS NOT NULL
+                      AND DATE(fallback_course.start_date) = DATE(c.from_date)
+                      AND DATE(fallback_course.end_date) = DATE(c.to_date)
+                      AND (
+                        fallback_course.is_pre_active = 0
+                        OR fallback_course.is_pre_active IS NULL
+                      )
+                    ORDER BY
+                      CASE WHEN fallback_enrollment.id IS NOT NULL THEN 0 ELSE 1 END,
+                      fallback_course.created_at DESC
+                    LIMIT 1
+                  ),
+                  0
+                ) as is_outhouse,
+                COALESCE(
+                  NULLIF(course.course_id, ''),
+                  (
+                    SELECT NULLIF(fallback_course.course_id, '')
+                    FROM courses fallback_course
+                    LEFT JOIN courses_enrollment fallback_enrollment
+                      ON fallback_enrollment.course_id = fallback_course.id
+                     AND fallback_enrollment.candidate_id = c.candidate_id
+                     AND (
+                       fallback_enrollment.status != 'Deleted'
+                       OR fallback_enrollment.status IS NULL
+                     )
+                    WHERE fallback_course.master_course_id = c.course_id
+                      AND c.from_date IS NOT NULL
+                      AND c.to_date IS NOT NULL
+                      AND DATE(fallback_course.start_date) = DATE(c.from_date)
+                      AND DATE(fallback_course.end_date) = DATE(c.to_date)
+                      AND (
+                        fallback_course.is_pre_active = 0
+                        OR fallback_course.is_pre_active IS NULL
+                      )
+                    ORDER BY
+                      CASE WHEN fallback_enrollment.id IS NOT NULL THEN 0 ELSE 1 END,
+                      fallback_course.created_at DESC
+                    LIMIT 1
+                  )
+                ) as active_course_code,
                 course.secondary_trainer_ids,
                 
                 mc.master_course_name,
@@ -272,6 +381,13 @@ class ReportDao {
             LEFT JOIN users u_cand ON c.candidate_id = u_cand.id
             LEFT JOIN candidate_profiles curr_cp ON u_cand.id = curr_cp.user_id
             LEFT JOIN courses course ON c.active_course_id = course.id
+            LEFT JOIN courses_enrollment direct_enrollment
+              ON direct_enrollment.course_id = c.active_course_id
+             AND direct_enrollment.candidate_id = c.candidate_id
+             AND (
+               direct_enrollment.status != 'Deleted'
+               OR direct_enrollment.status IS NULL
+             )
             LEFT JOIN master_course mc ON c.course_id = mc.id
             LEFT JOIN users u_trainer ON c.trainer_id = u_trainer.id
             LEFT JOIN trainer_profiles tp ON u_trainer.id = tp.user_id
@@ -302,7 +418,12 @@ class ReportDao {
     const query = `
       SELECT
         c.id AS course_id,
-        c.course_name,
+        COALESCE(
+          NULLIF(TRIM(c.master_course_name), ''),
+          NULLIF(TRIM(mc.master_course_name), ''),
+          NULLIF(TRIM(c.course_name), ''),
+          'Untitled Course'
+        ) AS course_name,
         c.course_type,
         c.type_of_location,
         DATE(c.start_date) AS start_date,
@@ -317,18 +438,24 @@ class ReportDao {
           END
         ) AS trainee_count
       FROM courses c
+      LEFT JOIN master_course mc ON mc.id = c.master_course_id
       LEFT JOIN courses_enrollment ce ON ce.course_id = c.id
       WHERE c.end_date IS NOT NULL
         AND YEAR(c.end_date) = ?
         AND DATE(c.end_date) < ?
       GROUP BY
         c.id,
-        c.course_name,
+        COALESCE(
+          NULLIF(TRIM(c.master_course_name), ''),
+          NULLIF(TRIM(mc.master_course_name), ''),
+          NULLIF(TRIM(c.course_name), ''),
+          'Untitled Course'
+        ),
         DATE(c.start_date),
         DATE(c.end_date),
         MONTH(c.end_date),
         GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0)
-      ORDER BY c.course_name ASC, training_period_days ASC, DATE(c.end_date) ASC
+      ORDER BY course_name ASC, training_period_days ASC, DATE(c.end_date) ASC
     `;
 
     const [rows] = await pool.execute(query, [year, currentDate]);
