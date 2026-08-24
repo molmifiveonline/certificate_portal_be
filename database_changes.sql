@@ -739,6 +739,22 @@ ALTER TABLE courses_enrollment
   ADD COLUMN IF NOT EXISTS to_date DATE NULL,
   ADD COLUMN IF NOT EXISTS remarks TEXT NULL;
 
+SET @courses_enrollment_cost_column_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'courses_enrollment'
+    AND COLUMN_NAME = 'cost'
+);
+SET @courses_enrollment_cost_column_sql := IF(
+  @courses_enrollment_cost_column_exists = 0,
+  'ALTER TABLE courses_enrollment ADD COLUMN cost DECIMAL(10,2) NULL',
+  'SELECT 1'
+);
+PREPARE courses_enrollment_cost_column_stmt FROM @courses_enrollment_cost_column_sql;
+EXECUTE courses_enrollment_cost_column_stmt;
+DEALLOCATE PREPARE courses_enrollment_cost_column_stmt;
+
 UPDATE courses_enrollment ce
 JOIN courses c ON c.id = ce.course_id
 SET
@@ -977,5 +993,24 @@ CREATE TABLE IF NOT EXISTS `study_material_files` (
   CONSTRAINT `fk_sm_files_material` FOREIGN KEY (`study_material_id`)
     REFERENCES `study_materials` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+-- Date: 2026-08-24 - Certificate Status Pool
+-- ---------------------------------------------------------
+SET @has_cert_status_pool := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'certificates'
+    AND COLUMN_NAME = 'status_pool'
+);
+SET @cert_status_pool_sql := IF(
+  @has_cert_status_pool = 0,
+  'ALTER TABLE `certificates` ADD COLUMN `status_pool` VARCHAR(50) DEFAULT NULL AFTER `status`',
+  'SELECT "certificates.status_pool already exists"'
+);
+PREPARE cert_status_pool_stmt FROM @cert_status_pool_sql;
+EXECUTE cert_status_pool_stmt;
+DEALLOCATE PREPARE cert_status_pool_stmt;
 
 
