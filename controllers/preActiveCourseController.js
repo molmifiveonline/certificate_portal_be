@@ -664,3 +664,61 @@ exports.getNominatorToken = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
+
+exports.getCandidateNominations = async (req, res) => {
+  try {
+    const candidateId = req.user?.id;
+    if (!candidateId) {
+      return res.status(401).json({ message: "Candidate user not found." });
+    }
+
+    const { status, search } = req.query;
+    const rows = await PreActiveCourseDao.getCandidateNominations(candidateId, {
+      status,
+      search,
+    });
+    res.status(200).json({ data: rows });
+  } catch (error) {
+    console.error("Error fetching candidate nominations:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.candidateApprovalByEnrollment = async (req, res) => {
+  try {
+    const candidateId = req.user?.id;
+    const { enrollmentId } = req.params;
+    const { status, remark, rejection_reason, available_date } = req.body;
+
+    if (!candidateId) {
+      return res.status(401).json({ message: "Candidate user not found." });
+    }
+
+    if (!["Approved", "Rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status provided." });
+    }
+
+    const success = await PreActiveCourseDao.updateCandidateApprovalByEnrollment(
+      enrollmentId,
+      candidateId,
+      status,
+      remark,
+      rejection_reason,
+      available_date,
+    );
+
+    if (success) {
+      res.status(200).json({ message: `Nomination ${status.toLowerCase()} successfully.` });
+    } else {
+      res.status(400).json({ message: "Failed to update nomination status or enrollment not found." });
+    }
+  } catch (error) {
+    console.error("Error updating candidate nomination:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+

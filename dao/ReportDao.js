@@ -229,7 +229,35 @@ class ReportDao {
                 curr_cp.rank,
                 curr_cp.manager,
                 
-                course.course_name,
+                COALESCE(
+                  NULLIF(course.course_name, ''),
+                  (
+                    SELECT NULLIF(fallback_course.course_name, '')
+                    FROM courses fallback_course
+                    LEFT JOIN courses_enrollment fallback_enrollment
+                      ON fallback_enrollment.course_id = fallback_course.id
+                     AND fallback_enrollment.candidate_id = c.candidate_id
+                     AND (
+                       fallback_enrollment.status != 'Deleted'
+                       OR fallback_enrollment.status IS NULL
+                     )
+                    WHERE fallback_course.master_course_id = c.course_id
+                      AND c.from_date IS NOT NULL
+                      AND c.to_date IS NOT NULL
+                      AND DATE(fallback_course.start_date) = DATE(c.from_date)
+                      AND DATE(fallback_course.end_date) = DATE(c.to_date)
+                      AND (
+                        fallback_course.is_pre_active = 0
+                        OR fallback_course.is_pre_active IS NULL
+                      )
+                    ORDER BY
+                      CASE WHEN fallback_enrollment.id IS NOT NULL THEN 0 ELSE 1 END,
+                      fallback_course.created_at DESC
+                    LIMIT 1
+                  ),
+                  NULLIF(mc.master_course_name, ''),
+                  NULLIF(c.topic, '')
+                ) as course_name,
                 course.course_type as type_of_course,
                 course.course_id as active_course_code,
                 course.secondary_trainer_ids,
