@@ -493,7 +493,9 @@ class ReportDao {
     let query = `
       SELECT 
         ce.id as enrollment_id,
-        ce.venue_name as hotel_name,
+        COALESCE(hd_uuid.venue_name, hd_legacy.venue_name, ce.venue_name) as hotel_name,
+        ce.from_date as hotel_from_date,
+        ce.to_date as hotel_to_date,
         c.course_name,
         c.start_date,
         c.end_date,
@@ -507,13 +509,17 @@ class ReportDao {
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
       JOIN courses c ON ce.course_id = c.id
+      LEFT JOIN hotel_details hd_uuid ON ce.venue_name = hd_uuid.id
+      LEFT JOIN legacy_id_map lim ON (lim.entity_type = 'hotel_detail' OR lim.entity_type = 'hotel_details') AND lim.legacy_id = ce.venue_name
+      LEFT JOIN hotel_details hd_legacy ON lim.new_id = hd_legacy.id
       WHERE ce.venue_name IS NOT NULL AND ce.venue_name != ''
+        AND LOWER(ce.venue_name) NOT IN ('local', 'undefined')
         AND (ce.is_observer = 0 OR ce.is_observer IS NULL)
     `;
     const params = [];
 
     if (filters.hotel_name) {
-      query += ` AND ce.venue_name LIKE ?`;
+      query += ` AND COALESCE(hd_uuid.venue_name, hd_legacy.venue_name, ce.venue_name) LIKE ?`;
       params.push(`%${filters.hotel_name}%`);
     }
 
@@ -553,6 +559,7 @@ class ReportDao {
     return {
       data: rows,
       total: totalCount,
+      totalCount: totalCount,
       page: page || 1,
       limit: limit || totalCount,
       totalPages: limit ? Math.ceil(totalCount / limit) : 1,

@@ -1091,12 +1091,110 @@ exports.getHotelReport = async (req, res) => {
       message: "Hotel report fetched successfully",
       data: data.data,
       total: data.total,
+      totalCount: data.totalCount || data.total,
       page: data.page,
       limit: data.limit,
       totalPages: data.totalPages,
     });
   } catch (error) {
     console.error("Get Hotel Report Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
+exports.exportHotelReport = async (req, res) => {
+  try {
+    const { hotel_name, employee, course_name } = req.body;
+    const filters = {
+      hotel_name,
+      employee,
+      course_name,
+    };
+
+    const data = await ReportDao.getHotelReport(filters);
+    const reportData = data.data;
+
+    if (!reportData || reportData.length === 0) {
+      return res.status(404).json({
+        message: "No hotel allocations found for the selected filters.",
+      });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Hotel Report");
+
+    const headers = [
+      "Sr. No.",
+      "Hotel Name",
+      "Employee ID",
+      "Employee Name",
+      "Course Name",
+      "Course Start Date",
+      "Course End Date",
+      "Hotel Start Date",
+      "Hotel End Date"
+    ];
+
+    const headerRow = worksheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "0060AA" },
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
+
+    reportData.forEach((row, index) => {
+      const dataRow = worksheet.addRow([
+        index + 1,
+        row.hotel_name || "-",
+        row.employee_id || "-",
+        `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+        row.course_name || "-",
+        row.start_date ? new Date(row.start_date).toLocaleDateString("en-GB") : "-",
+        row.end_date ? new Date(row.end_date).toLocaleDateString("en-GB") : "-",
+        row.hotel_from_date ? new Date(row.hotel_from_date).toLocaleDateString("en-GB") : "-",
+        row.hotel_to_date ? new Date(row.hotel_to_date).toLocaleDateString("en-GB") : "-"
+      ]);
+      dataRow.eachCell(cell => {
+          cell.alignment = { vertical: "middle" };
+      });
+    });
+
+    worksheet.columns.forEach((column) => {
+      let maxColumnLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxColumnLength) {
+          maxColumnLength = columnLength;
+        }
+      });
+      column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="Hotel_Report.xlsx"',
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export Hotel Report Error:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -1790,6 +1888,10 @@ function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
     if (isSectionHeader) {
       row.font = { name: "Arial", bold: true, size: 11 };
       row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = {
+          horizontal: "left",
+          vertical: "middle",
+        };
         cell.fill = {
           type: "pattern",
           pattern: "solid",
@@ -1800,14 +1902,6 @@ function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
     } else {
       row.height = 32;
     }
-  }
-
-  for (let columnNumber = 8; columnNumber <= 7 + weekCount; columnNumber++) {
-    worksheet.getColumn(columnNumber).alignment = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: true,
-    };
   }
 }
 
