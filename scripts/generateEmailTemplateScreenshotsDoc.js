@@ -196,8 +196,12 @@ const preActiveNominatorTemplate = () => `
   <p>We invite you to nominate candidates for the upcoming course: <strong>${sample.courseName}</strong>.</p>
   <p><strong>Start Date:</strong> ${formatDate("2026-07-01", "start")}</p>
   <p><strong>End Date:</strong> ${formatDate("2026-07-05", "end")}</p>
+  <p><strong>Location of Training:</strong> MOLMI Training Centre, Mumbai</p>
+  <p><strong>Type of Course:</strong> In house</p>
+  <p><strong>Course Description:</strong> Comprehensive bridge team management training for senior officers.</p>
+  <p><strong>Remarks:</strong> Nominations must be submitted at least 3 days prior to start date.</p>
   <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
-  <a href="${sample.nominationLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Nominate Candidates</a>
+  <a href="${sample.nominationLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Nominate Candidates</a>
   <br><br>
   <p>Link expires in 7 days.</p>`;
 
@@ -206,6 +210,10 @@ const preActiveCandidateApprovalTemplate = () => `
   <p>You have been nominated to attend the course <strong>${sample.courseName}</strong>.</p>
   <p><strong>Start Date:</strong> ${formatDate("2026-07-01", "start")}</p>
   <p><strong>End Date:</strong> ${formatDate("2026-07-05", "end")}</p>
+  <p><strong>Location of Training:</strong> MOLMI Training Centre, Mumbai</p>
+  <p><strong>Type of Course:</strong> In house</p>
+  <p><strong>Course Description:</strong> Comprehensive bridge team management training for senior officers.</p>
+  <p><strong>Remarks:</strong> Please review and provide your confirmation promptly.</p>
   <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
   <a href="${sample.candidateApprovalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px;">Review Nomination</a>
   <br><br>

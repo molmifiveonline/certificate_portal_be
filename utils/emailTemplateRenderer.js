@@ -1,4 +1,4 @@
-const getBaseEmailHtml = (bodyContent) => {
+const getBaseEmailHtml = (bodyContent, maxWidth = "600px") => {
   const year = new Date().getFullYear();
   return `<html>
 <head>
@@ -12,7 +12,7 @@ const getBaseEmailHtml = (bodyContent) => {
             padding: 20px 0;
         }
         .content {
-            max-width: 600px;
+            max-width: ${maxWidth};
             margin: 0 auto;
             padding: 32px;
             background-color: #ffffff;
@@ -336,36 +336,151 @@ const getWelcomeCandidateOnlineHtml = (data) => {
   return getBaseEmailHtml(body);
 };
 
+const renderEnrolledCandidatesTable = (candidates = []) => {
+  if (!candidates || candidates.length === 0) {
+    return `
+    <div class="card">
+        <div class="card-title">Enrolled Candidates (0)</div>
+        <p style="color: #64748b; font-style: italic; margin: 0; font-size: 14px;">No candidates enrolled yet.</p>
+    </div>`;
+  }
+
+  const rows = candidates
+    .map((c, idx) => {
+      const candidateName =
+        c.candidate_name ||
+        `${c.first_name || ""} ${c.middle_name ? c.middle_name + " " : ""}${c.last_name || ""}`.trim() ||
+        "-";
+      const empId = c.empId || c.employee_id || "-";
+      const email = c.email || "-";
+      const cdcPassport = c.cdc_passport || c.passport_no || "-";
+      const rankDesignation = c.rank || c.designation || "-";
+      const dobFormatted = c.dob
+        ? new Date(c.dob).toLocaleDateString("en-GB").replace(/\//g, "-")
+        : "-";
+      const nationality = c.nationality || "-";
+      const manager = c.manager || c.manning_company || "-";
+      const observer = c.is_observer ? "Yes" : "No";
+
+      return `
+      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #334155;">
+        <td style="padding: 8px 6px; text-align: center; border: 1px solid #e2e8f0;">${idx + 1}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${empId}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">${candidateName}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${email}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${cdcPassport}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${rankDesignation}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${dobFormatted}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${nationality}</td>
+        <td style="padding: 8px 6px; border: 1px solid #e2e8f0;">${manager}</td>
+        <td style="padding: 8px 6px; text-align: center; border: 1px solid #e2e8f0;">${observer}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `
+    <div class="card" style="overflow-x: auto;">
+        <div class="card-title">Enrolled Candidates (${candidates.length})</div>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+            <thead>
+                <tr style="background-color: #f1f5f9; color: #0f172a; font-size: 12px; font-weight: 600; text-transform: uppercase;">
+                    <th style="padding: 8px 6px; text-align: center; border: 1px solid #cbd5e1; width: 35px;">#</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">Emp ID</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">Candidate Name</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">Email</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">CDC / Passport</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">Rank / Desig</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">DOB</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">Nationality</th>
+                    <th style="padding: 8px 6px; border: 1px solid #cbd5e1;">Manager</th>
+                    <th style="padding: 8px 6px; text-align: center; border: 1px solid #cbd5e1;">Observer</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>
+    </div>`;
+};
+
 const getCourseTrainerHtml = (data) => {
+  const isOnline = data.location_type === "Online";
+
+  const timingHtml =
+    data.start_time || data.end_time
+      ? `<li><strong>Course Timing:</strong> ${data.start_time || "09:30"} IST to ${data.end_time || "17:30"} IST</li>`
+      : `<li><strong>Course Timing:</strong> 09:30 IST to 17:30 IST</li>`;
+
+  let locationHtml = `<li><strong>Location Type:</strong> ${data.location_type || "-"}</li>`;
+  if (data.training_location) {
+    locationHtml += `<li><strong>Training Location:</strong> ${data.training_location}</li>`;
+  }
+  if (data.training_address) {
+    locationHtml += `<li><strong>Training Address:</strong> ${data.training_address}</li>`;
+  }
+  if (data.training_map_link) {
+    locationHtml += `<li><strong>Training Location Map Link:</strong> <a href="${data.training_map_link}">${data.training_map_link}</a></li>`;
+  }
+
+  let onlineDetailsHtml = "";
+  if (isOnline || data.zoom_link) {
+    onlineDetailsHtml = `
+    <div class="card">
+        <div class="card-title">Online Meeting Details</div>
+        <ul class="info-list">
+            <li><strong>Meeting / Zoom Link:</strong> <a href="${data.zoom_link || "#"}">${data.zoom_link || "N/A"}</a></li>
+            ${data.zoom_username ? `<li><strong>Meeting ID / Username:</strong> ${data.zoom_username}</li>` : ""}
+            ${data.zoom_password ? `<li><strong>Passcode / Password:</strong> ${data.zoom_password}</li>` : ""}
+        </ul>
+    </div>`;
+  }
+
+  const trainersInfo = [];
+  if (data.primary_trainer_name) {
+    trainersInfo.push(`<li><strong>Primary Trainer:</strong> ${data.primary_trainer_name}</li>`);
+  }
+  if (data.secondary_trainer_names) {
+    trainersInfo.push(`<li><strong>Secondary Trainer(s):</strong> ${data.secondary_trainer_names}</li>`);
+  }
+
+  const candidatesTableHtml = data.candidates_html || renderEnrolledCandidatesTable(data.candidates);
+
   const body = `
   <div class='header'>
-      <h2>Course Creation</h2>
+      <h2>Course Assignment Notification</h2>
   </div>
-  <p style="font-size: 15px; color: #1e293b;">Dear ${data.trainer_name},</p>
-  <p style="font-size: 14px; color: #334155;">We are excited to inform you that you have been enrolled as a trainer for the following course:</p>
+  <p style="font-size: 15px; color: #1e293b;">Dear ${data.trainer_name || "Trainer"},</p>
+  <p style="font-size: 14px; color: #334155;">You have been enrolled as a trainer for the following active course. Below are the course details and list of enrolled candidates:</p>
   
   <div class="card">
       <div class="card-title">Course Details</div>
       <ul class="info-list">
-          <li><strong>Course Name:</strong> ${data.course_name}</li>
-          <li><strong>Course ID:</strong> ${data.course_id}</li>
-          <li><strong>Course Start Date:</strong> ${data.start_date}</li>
-          <li><strong>Course End Date:</strong> ${data.end_date}</li>
-          <li><strong>Duration (Days):</strong> ${data.duration}</li>
-          <li><strong>Location Type:</strong> ${data.location_type || ""}</li>
-          <li><strong>Location of Training:</strong> ${data.training_location || ""}</li>
-          <li><strong>WhatsApp Group Link:</strong> <a href="${data.whatsapp_group_link || "#"}">WhatsApp Link</a></li>
-          <li style="margin-top: 12px;"><strong class="course-description">Course Description:</strong><br>${data.description || ""}</li>
+          <li><strong>Course Name:</strong> ${data.course_name || "-"}</li>
+          <li><strong>Course ID:</strong> ${data.course_id || "-"}</li>
+          ${data.topic ? `<li><strong>Topic / Master Course:</strong> ${data.topic}</li>` : ""}
+          ${data.course_type ? `<li><strong>Course Type:</strong> ${data.course_type}</li>` : ""}
+          ${data.course_level ? `<li><strong>Course Level:</strong> ${data.course_level}</li>` : ""}
+          <li><strong>Duration:</strong> ${data.duration} ${data.duration > 1 ? "Days" : "Day"} (${data.start_date} to ${data.end_date})</li>
+          ${timingHtml}
+          ${trainersInfo.join("")}
+          ${locationHtml}
+          ${data.whatsapp_group_link ? `<li><strong>WhatsApp Group:</strong> <a href="${data.whatsapp_group_link}">Join WhatsApp Group</a></li>` : ""}
+          ${data.remarks ? `<li><strong>Remarks:</strong> ${data.remarks}</li>` : ""}
+          ${data.description ? `<li style="margin-top: 10px;"><strong>Course Description:</strong><br>${data.description}</li>` : ""}
       </ul>
   </div>
 
-  <div style="font-size: 14px; color: #334155;">
+  ${onlineDetailsHtml}
+
+  ${candidatesTableHtml}
+
+  <div style="font-size: 14px; color: #334155; margin-top: 20px;">
       <p>As a trainer, your expertise will greatly benefit the candidates throughout their learning journey.</p>
       <p>Please make sure to engage with the candidates and provide them with the support they need.</p>
-      <p>If you have any questions or need further information, feel free to reach out.</p>
-      <p style="font-weight: bold;">Thank you for your dedication!</p>
+      <p>If you have any questions or need further assistance, please feel free to reach out to the training coordinator.</p>
+      <p style="font-weight: bold; margin-top: 16px;">Thank you for your dedication!</p>
   </div>`;
-  return getBaseEmailHtml(body);
+  return getBaseEmailHtml(body, "780px");
 };
 
 const getCourseCandidateHtml = (data) => {
@@ -540,6 +655,40 @@ const getCandidateRegistrationHtml = (data) => {
   return getBaseEmailHtml(body);
 };
 
+const getNominationRequestHtml = (data) => {
+  const body = `
+  <h3>Dear ${data.nominator_name || "Nominator"},</h3>
+  <p>We invite you to nominate candidates for the upcoming course: <strong>${data.course_name || ""}</strong>.</p>
+  <p><strong>Start Date:</strong> ${data.start_date || "-"}</p>
+  <p><strong>End Date:</strong> ${data.end_date || "-"}</p>
+  <p><strong>Location of Training:</strong> ${data.location_of_training || "-"}</p>
+  <p><strong>Type of Course:</strong> ${data.type_of_course || "-"}</p>
+  <p><strong>Course Description:</strong> ${data.description || "-"}</p>
+  <p><strong>Remarks:</strong> ${data.remarks || "-"}</p>
+  <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
+  <a href="${data.portal_link}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Nominate Candidates</a>
+  <br><br>
+  <p>Link expires in 7 days.</p>`;
+  return getBaseEmailHtml(body);
+};
+
+const getCourseNominationApprovalHtml = (data) => {
+  const body = `
+  <h3>Dear ${data.candidate_name || "Candidate"},</h3>
+  <p>You have been nominated to attend the course <strong>${data.course_name || ""}</strong>.</p>
+  <p><strong>Start Date:</strong> ${data.start_date || "-"}</p>
+  <p><strong>End Date:</strong> ${data.end_date || "-"}</p>
+  <p><strong>Location of Training:</strong> ${data.location_of_training || "-"}</p>
+  <p><strong>Type of Course:</strong> ${data.type_of_course || "-"}</p>
+  <p><strong>Course Description:</strong> ${data.description || "-"}</p>
+  <p><strong>Remarks:</strong> ${data.remarks || "-"}</p>
+  <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
+  <a href="${data.portal_link}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
+  <br><br>
+  <p>Link expires in 7 days.</p>`;
+  return getBaseEmailHtml(body);
+};
+
 module.exports = {
   getBaseEmailHtml,
   getWelcomeCandidateOfflineHtml,
@@ -549,4 +698,6 @@ module.exports = {
   getTrainerForgotPasswordHtml,
   getTrainerResetPasswordHtml,
   getCandidateRegistrationHtml,
+  getNominationRequestHtml,
+  getCourseNominationApprovalHtml,
 };
