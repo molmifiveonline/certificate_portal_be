@@ -93,7 +93,7 @@ class CourseEnrollmentDao {
         u.first_name, u.middle_name, u.last_name, u.email, u.mobile, 
         CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
-        cp.dob, cp.nationality, cp.designation, ce.trainer_comment,
+        cp.dob, cp.nationality, cp.designation, cp.last_vessel_name as last_vessel, ce.trainer_comment,
         (
           SELECT MAX(cert.issue_date)
           FROM certificates cert
@@ -123,6 +123,16 @@ class CourseEnrollmentDao {
     const [result] = await pool.execute(query, [
       statusPool,
       courseId,
+      candidateId,
+    ]);
+    return result.affectedRows > 0;
+  }
+
+  static async updateLastVessel(courseId, candidateId, lastVessel) {
+    const query =
+      "UPDATE candidate_profiles SET last_vessel_name = ? WHERE user_id = ?";
+    const [result] = await pool.execute(query, [
+      lastVessel,
       candidateId,
     ]);
     return result.affectedRows > 0;

@@ -724,6 +724,17 @@ exports.updateStatusPool = async (req, res) => {
   }
 };
 
+exports.updateLastVessel = async (req, res) => {
+  try {
+    const { lastVessel } = req.body;
+    await CourseEnrollmentDao.updateLastVessel(req.params.id, req.params.candidateId, lastVessel);
+    res.status(200).json({ message: "Last vessel updated" });
+  } catch (error) {
+    console.error("Error updating last vessel:", error);
+    res.status(500).json({ message: "Error updating last vessel", error: error.message });
+  }
+};
+
 exports.updateObserverStatus = async (req, res) => {
   try {
     const { isObserver } = req.body;
