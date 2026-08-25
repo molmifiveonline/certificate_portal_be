@@ -319,6 +319,8 @@ exports.updateVenueDetails = async (req, res) => {
       venue_email: req.body.hotel_email || req.body.venue_email,
       venue_map_link: req.body.venue_map_link || null,
       offline_date: req.body.offline_date || null,
+      from_date: req.body.from_date || null,
+      to_date: req.body.to_date || null,
       cost: req.body.cost || null,
       remarks: req.body.remarks || null,
     };
