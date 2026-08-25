@@ -180,6 +180,19 @@ const sendCourseNotificationsToNominators = async (courseId) => {
   const nominators = nominatorsResult.data || []; // Fix iteration bug
   let sentCount = 0;
 
+  const locationOfTraining =
+    course.location_name ||
+    course.other_location ||
+    course.type_of_location ||
+    course.location ||
+    "-";
+  const typeOfCourse =
+    course.course_type || course.type_of_course || "-";
+  const courseDescription = course.description || "-";
+  const remarks = course.remarks || "-";
+
+  const { getNominationRequestHtml } = require("../utils/emailTemplateRenderer");
+
   for (const nominator of nominators) {
     if (nominator.email) {
       const token = await PreActiveCourseDao.createToken(
@@ -191,18 +204,18 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const frontendUrl = getFrontendUrl();
       const portalLink = `${frontendUrl}/nominate/${token}`;
 
-      const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
       const subject = `Nomination Request for Course: ${course.course_name}`;
-      const html = getBaseEmailHtml(`
-                  <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
-                  <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
-                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                  <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
-                  <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Nominate Candidates</a>
-                  <br><br>
-                  <p>Link expires in 7 days.</p>
-              `);
+      const html = getNominationRequestHtml({
+        nominator_name: getNominatorDisplayName(nominator),
+        course_name: course.course_name,
+        start_date: formatEmailDateTime(course.start_date, "start"),
+        end_date: formatEmailDateTime(course.end_date, "end"),
+        location_of_training: locationOfTraining,
+        type_of_course: typeOfCourse,
+        description: courseDescription,
+        remarks: remarks,
+        portal_link: portalLink,
+      });
 
       await emailService.sendEmail(nominator.email, subject, html);
       sentCount++;
@@ -296,6 +309,19 @@ exports.nominatorAddCandidate = async (req, res) => {
     const frontendUrl = getFrontendUrl();
     const enrollmentIds = [];
 
+    const locationOfTraining =
+      course.location_name ||
+      course.other_location ||
+      course.type_of_location ||
+      course.location ||
+      "-";
+    const typeOfCourse =
+      course.course_type || course.type_of_course || "-";
+    const courseDescription = course.description || "-";
+    const remarks = course.remarks || "-";
+
+    const { getCourseNominationApprovalHtml } = require("../utils/emailTemplateRenderer");
+
     for (const candidateData of candidates) {
       const enrollmentId = await PreActiveCourseDao.enrollCandidateByNominator(
         courseId,
@@ -317,18 +343,18 @@ exports.nominatorAddCandidate = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
 
-        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = getBaseEmailHtml(`
-                    <h3>Dear ${enrollment.first_name},</h3>
-                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `);
+        const html = getCourseNominationApprovalHtml({
+          candidate_name: enrollment.first_name || enrollment.candidate_name,
+          course_name: course.course_name,
+          start_date: formatEmailDateTime(course.start_date, "start"),
+          end_date: formatEmailDateTime(course.end_date, "end"),
+          location_of_training: locationOfTraining,
+          type_of_course: typeOfCourse,
+          description: courseDescription,
+          remarks: remarks,
+          portal_link: portalLink,
+        });
 
         await emailService.sendEmail(enrollment.email, subject, html);
       }
@@ -372,6 +398,19 @@ exports.adminAddCandidate = async (req, res) => {
       ? [req.user.first_name, req.user.last_name].filter(Boolean).join(" ") || req.user.email
       : "Admin";
 
+    const locationOfTraining =
+      course.location_name ||
+      course.other_location ||
+      course.type_of_location ||
+      course.location ||
+      "-";
+    const typeOfCourse =
+      course.course_type || course.type_of_course || "-";
+    const courseDescription = course.description || "-";
+    const remarks = course.remarks || "-";
+
+    const { getCourseNominationApprovalHtml } = require("../utils/emailTemplateRenderer");
+
     for (const candidateData of candidates) {
       const enrollmentId = await PreActiveCourseDao.enrollCandidateByAdmin(
         courseId,
@@ -391,18 +430,18 @@ exports.adminAddCandidate = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
 
-        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = getBaseEmailHtml(`
-                    <h3>Dear ${enrollment.first_name},</h3>
-                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `);
+        const html = getCourseNominationApprovalHtml({
+          candidate_name: enrollment.first_name || enrollment.candidate_name,
+          course_name: course.course_name,
+          start_date: formatEmailDateTime(course.start_date, "start"),
+          end_date: formatEmailDateTime(course.end_date, "end"),
+          location_of_training: locationOfTraining,
+          type_of_course: typeOfCourse,
+          description: courseDescription,
+          remarks: remarks,
+          portal_link: portalLink,
+        });
 
         await emailService.sendEmail(enrollment.email, subject, html);
       }
@@ -448,6 +487,19 @@ exports.notifyCandidates = async (req, res) => {
 
     const frontendUrl = getFrontendUrl();
 
+    const locationOfTraining =
+      course.location_name ||
+      course.other_location ||
+      course.type_of_location ||
+      course.location ||
+      "-";
+    const typeOfCourse =
+      course.course_type || course.type_of_course || "-";
+    const courseDescription = course.description || "-";
+    const remarks = course.remarks || "-";
+
+    const { getCourseNominationApprovalHtml } = require("../utils/emailTemplateRenderer");
+
     for (const candidate of enrollments) {
       // Only send to pending candidates
       if (
@@ -461,18 +513,18 @@ exports.notifyCandidates = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${token}`;
 
-        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = getBaseEmailHtml(`
-                    <h3>Dear ${candidate.candidate_name},</h3>
-                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `);
+        const html = getCourseNominationApprovalHtml({
+          candidate_name: candidate.candidate_name || candidate.first_name,
+          course_name: course.course_name,
+          start_date: formatEmailDateTime(course.start_date, "start"),
+          end_date: formatEmailDateTime(course.end_date, "end"),
+          location_of_training: locationOfTraining,
+          type_of_course: typeOfCourse,
+          description: courseDescription,
+          remarks: remarks,
+          portal_link: portalLink,
+        });
 
         await emailService.sendEmail(candidate.email, subject, html);
         sentCount++;

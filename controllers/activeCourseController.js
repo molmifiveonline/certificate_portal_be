@@ -285,65 +285,88 @@ exports.emailPrimaryTrainer = async (req, res) => {
     const trainerIds = [];
     if (course.primary_trainer_id) trainerIds.push(course.primary_trainer_id);
     if (course.secondary_trainer_ids) {
-      const secondaries = course.secondary_trainer_ids.split(",").map(id => id.trim()).filter(Boolean);
+      const secondaries = course.secondary_trainer_ids
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
       trainerIds.push(...secondaries);
     }
 
     if (trainerIds.length === 0) {
-      return res.status(400).json({ message: "No trainers assigned to this course" });
+      return res
+        .status(400)
+        .json({ message: "No trainers assigned to this course" });
     }
 
     // Fetch Candidates List
     const candidates = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
-    let candidatesHtml = `<p style="color: #64748b; font-style: italic;">No candidates enrolled yet.</p>`;
 
-    if (candidates && candidates.length > 0) {
-      candidatesHtml = `
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid #e2e8f0; font-family: sans-serif; font-size: 14px;">
-          <thead>
-            <tr style="background-color: #f8fafc; text-align: left; color: #1e293b;">
-              <th>Name</th>
-              <th>Email</th>
-              <th>Rank</th>
-              <th>Manager</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${candidates.map(c => `
-              <tr style="border-bottom: 1px solid #e2e8f0; color: #334155;">
-                <td>${c.first_name || ''} ${c.last_name || ''}</td>
-                <td>${c.email || '-'}</td>
-                <td>${c.rank || '-'}</td>
-                <td>${c.manager || '-'}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
+    // Fetch Trainer details for primary and secondary names
+    let primaryTrainerName = "";
+    if (course.primary_trainer_id) {
+      const pTrainer = await trainerDao.getTrainerById(course.primary_trainer_id);
+      if (pTrainer) {
+        primaryTrainerName = `${pTrainer.first_name || ""} ${pTrainer.last_name || ""}`.trim();
+      }
+    }
+
+    const secondaryTrainerNames = [];
+    if (course.secondary_trainer_ids) {
+      const secIds = course.secondary_trainer_ids
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      for (const sId of secIds) {
+        const sTrainer = await trainerDao.getTrainerById(sId);
+        if (sTrainer) {
+          secondaryTrainerNames.push(
+            `${sTrainer.first_name || ""} ${sTrainer.last_name || ""}`.trim()
+          );
+        }
+      }
     }
 
     const subject = `Course Assignment Notification - ${course.course_name}`;
-
-    const portalUrl = getFrontendUrl();
     const trainingLocation = await getCourseLocationDetails(course);
+
+    const startDateFormatted = course.start_date
+      ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+      : "-";
+    const endDateFormatted = course.end_date
+      ? new Date(course.end_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+      : "-";
+
+    const { getCourseTrainerHtml } = require("../utils/emailTemplateRenderer");
     let successfullySent = 0;
+
     for (const trainerId of trainerIds) {
       const trainer = await trainerDao.getTrainerById(trainerId);
       if (trainer && trainer.email) {
-        const { getCourseTrainerHtml } = require("../utils/emailTemplateRenderer");
-        const startDateFormatted = course.start_date ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '-';
-        const endDateFormatted = course.end_date ? new Date(course.end_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '-';
         const html = getCourseTrainerHtml({
-          trainer_name: `${trainer.first_name || ''} ${trainer.last_name || ''}`,
+          trainer_name: `${trainer.first_name || ""} ${trainer.last_name || ""}`.trim(),
           course_name: course.course_name,
-          course_id: course.course_id || course.id || '',
+          course_id: course.course_id || course.id || "",
+          topic: course.topic || course.master_course_name || "",
+          course_type: course.course_type || course.type_of_course || "",
+          course_level: course.course_level || "",
           start_date: startDateFormatted,
           end_date: endDateFormatted,
-          duration: course.duration || course.no_of_days || '',
-          location_type: course.type_of_location || '',
+          start_time: course.start_time || "09:30",
+          end_time: course.end_time || "17:30",
+          duration: course.duration || course.no_of_days || "",
+          location_type: course.type_of_location || "",
           training_location: trainingLocation.name,
-          whatsapp_group_link: course.whatsapp_link || '',
-          description: course.description || ''
+          training_address: trainingLocation.address,
+          training_map_link: trainingLocation.map_link,
+          zoom_link: course.zoom_link || "",
+          zoom_username: course.zoom_username || "",
+          zoom_password: course.zoom_password || "",
+          whatsapp_group_link: course.whatsapp_link || "",
+          primary_trainer_name: primaryTrainerName,
+          secondary_trainer_names: secondaryTrainerNames.join(", "),
+          remarks: course.remarks || "",
+          description: course.description || "",
+          candidates: candidates || [],
         });
         await emailService.sendEmail(trainer.email, subject, html);
         successfullySent++;
@@ -352,10 +375,14 @@ exports.emailPrimaryTrainer = async (req, res) => {
 
     await ActiveCourseDao.update(courseId, { primary_trainer_email_status: 1 });
 
-    res.status(200).json({ message: `Email sent to ${successfullySent} trainer(s)` });
+    res
+      .status(200)
+      .json({ message: `Email sent to ${successfullySent} trainer(s)` });
   } catch (error) {
     console.error("Error emailing trainers:", error);
-    res.status(500).json({ message: "Error sending email", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error sending email", error: error.message });
   }
 };
 const isOnlineCourse = (course) => course?.type_of_location === "Online";
