@@ -100,31 +100,38 @@ const getBaseEmailHtml = (bodyContent) => {
 };
 
 const getWelcomeCandidateOfflineHtml = (data) => {
-  const reportingTimeHtml = data.type !== 'online' ? `<li><strong>COURSE REPORTING TIME:</strong> ${data.reporting_time || '09:15'} IST</li>` : '';
-  
-  let venueHtml = '';
-  if (data.type === 'online') {
-      venueHtml = `
+  const reportingTimeHtml =
+    data.type !== "online"
+      ? `<li><strong>COURSE REPORTING TIME:</strong> ${data.reporting_time || "09:15"} IST</li>`
+      : "";
+
+  let venueHtml = "";
+  if (data.type === "online") {
+    venueHtml = `
       <div class="card">
           <div class="card-title">Meeting Details</div>
           <ul class="info-list">
               <li><strong>ZOOM LINK:</strong> <a href="${data.zoom_link}">${data.zoom_link}</a></li>
           </ul>
       </div>`;
-  } else if (data.venue_name && data.venue_name.toLowerCase() !== 'local') {
-      venueHtml = `
+  } else if (data.venue_name && data.venue_name.toLowerCase() !== "local") {
+    venueHtml = `
       <div class="card">
           <div class="card-title">HOTEL LOCATION DETAILS</div>
           <ul class="info-list">
               <li><strong>HOTEL NAME:</strong> ${data.venue_name}</li>
-              <li><strong>ADDRESS:</strong> ${data.venue_address || ''}</li>
-              <li><strong>CONTACT NUMBER:</strong> ${data.venue_contact || ''}</li>
-              <li><strong>GOOGLE MAP LINK:</strong> <a href="${data.venue_map_link}">${data.venue_map_link || ''}</a></li>
+              <li><strong>ADDRESS:</strong> ${data.venue_address || ""}</li>
+              <li><strong>CONTACT NUMBER:</strong> ${data.venue_contact || ""}</li>
+              <li><strong>GOOGLE MAP LINK:</strong> <a href="${data.venue_map_link}">${data.venue_map_link || ""}</a></li>
           </ul>
       </div>`;
   }
 
-  const docAttachedHtml = (data.type !== 'online' && data.venue_name && data.venue_name.toLowerCase() !== 'local') ? `
+  const docAttachedHtml =
+    data.type !== "online" &&
+    data.venue_name &&
+    data.venue_name.toLowerCase() !== "local"
+      ? `
   <div class="card">
       <div class="card-title">DOCUMENTS ATTACHED (AS APPLICABLE)</div>
       <ul class="info-list" style="list-style: bullet; padding-left: 20px;">
@@ -132,42 +139,46 @@ const getWelcomeCandidateOfflineHtml = (data) => {
           <li>REIMBURSEMENT FORM</li>
           <li>OTHER REQUIRED DOCUMENTS</li>
       </ul>
-  </div>` : '';
+  </div>`
+      : "";
 
-  const medicalAssistanceHtml = data.type !== 'online' ? `
-  <p style="font-size: 14px; color: #475569;">PLEASE ENSURE YOU REPORT AT THE TRAINING LOCATION ON TIME. IN CASE OF ANY MEDICAL ASSISTANCE DURING YOUR STAY, PLEASE CONTACT:</p>` : '';
+  const medicalAssistanceHtml =
+    data.type !== "online"
+      ? `
+  <p style="font-size: 14px; color: #475569;">PLEASE ENSURE YOU REPORT AT THE TRAINING LOCATION ON TIME. IN CASE OF ANY MEDICAL ASSISTANCE DURING YOUR STAY, PLEASE CONTACT:</p>`
+      : "";
 
   const body = `
   <div class='header'>
       <h2>WELCOME TO MOLTCI (ONSITE COURSE)</h2>
   </div>
-  <p style="font-size: 15px; color: #1e293b;">DEAR ${String(data.candidate_name || '').toUpperCase()},</p>
+  <p style="font-size: 15px; color: #1e293b;">DEAR ${String(data.candidate_name || "").toUpperCase()},</p>
   <p style="font-size: 14px; color: #334155;">GOOD DAY,</p>
   <p style="font-size: 14px; color: #334155;">MOL TRAINING CENTRE NOMINATES YOU TO UNDERGO THE FOLLOWING TRAINING.</p>
-  <p style="font-size: 15px; color: #0f172a;">WELCOME ! ABOARD! YOU HAVE BEEN SUCCESSFULLY ENROLLED IN: <strong>${String(data.course_name || '').toUpperCase()}</strong></p>
+  <p style="font-size: 15px; color: #0f172a;">WELCOME ! ABOARD! YOU HAVE BEEN SUCCESSFULLY ENROLLED IN: <strong>${String(data.course_name || "").toUpperCase()}</strong></p>
   
   <div class="card">
       <div class="card-title">COURSE DETAILS</div>
       <ul class="info-list">
-          <li><strong>COURSE ID:</strong> ${data.course_id || ''}</li>
+          <li><strong>COURSE ID:</strong> ${data.course_id || ""}</li>
           <li>
-            <strong>DURATION:</strong> ${data.duration} ${data.duration > 1 ? 'DAYS' : 'DAY'}
+            <strong>DURATION:</strong> ${data.duration} ${data.duration > 1 ? "DAYS" : "DAY"}
             (${data.start_date} to ${data.end_date})
           </li>
-          <li><strong>PRIMARY TRAINER:</strong> ${!data.trainer_name ? 'Not Mentioned' : data.trainer_name}</li>
+          <li><strong>PRIMARY TRAINER:</strong> ${!data.trainer_name ? "Not Mentioned" : data.trainer_name}</li>
           ${reportingTimeHtml}
-          <li><strong>COURSE START TIME:</strong> ${data.start_time || '09:30'} IST</li>
-          <li><strong>COURSE END TIME:</strong> ${data.end_time || '17:30'} IST</li>
-          <li><strong>LOCATION TYPE:</strong> ${data.location_type || ''}</li>
+          <li><strong>COURSE START TIME:</strong> ${data.start_time || "09:30"} IST</li>
+          <li><strong>COURSE END TIME:</strong> ${data.end_time || "17:30"} IST</li>
+          <li><strong>LOCATION TYPE:</strong> ${data.location_type || ""}</li>
       </ul>
   </div>
 
   <div class="card">
       <div class="card-title">TRAINING LOCATION DETAILS</div>
       <ul class="info-list">
-          <li><strong>LOCATION (VENUE):</strong> ${data.training_location_name || ''}</li>
-          <li><strong>TRAINING LOCATION ADDRESS:</strong> ${data.training_address || ''}</li>
-          <li><strong>TRAINING LOCATION MAP LINK:</strong> ${data.training_map_link || ''}</li>
+          <li><strong>LOCATION (VENUE):</strong> ${data.training_location_name || ""}</li>
+          <li><strong>TRAINING LOCATION ADDRESS:</strong> ${data.training_address || ""}</li>
+          <li><strong>TRAINING LOCATION MAP LINK:</strong> ${data.training_map_link || ""}</li>
       </ul>
   </div>
 
@@ -180,16 +191,16 @@ const getWelcomeCandidateOfflineHtml = (data) => {
   
   <div class="card">
       <div class="card-title">COMMUNICATION</div>
-      <p style="margin: 0; font-size: 14px;"><strong>WHATSAPP GROUP: </strong><a href="${data.whatsapp_link}"> JOIN HERE</a> FOR DAY-TO-DAY NOTIFICATIONS AND UPDATES.</p>
+      <p style="margin: 0; font-size: 14px;"><strong>WHATSAPP GROUP: </strong>${data.whatsapp_link ? `<a href="${data.whatsapp_link}">JOIN HERE</a>` : "- JOIN HERE"} FOR DAY-TO-DAY NOTIFICATIONS AND UPDATES.</p>
   </div>
 
   <div class="card">
       <div class="card-title">LOG IN REQUIREMENTS FOR CANDIDATE PLATFORM</div>
       <ul class="info-list">
           <li>LOG IN TO YOUR CANDIDATE SECTION USING BELOW LINK</li>
-          <li>LINK : <a href="https://certificate.molmi.info/" >https://certificate.molmi.info/</a></li>
+          <li>LINK : <a href="https://molminavis.com/" >https://molminavis.com/</a></li>
           <li>USER ID &#8211; ${data.email}</li>
-          <li>PASSWORD &#8211; ${data.password || '12345 (DEFAULT IF NOT CHANGED PREVIOUSLY)'}</li>
+          <li>PASSWORD &#8211; ${data.password || "12345 (DEFAULT IF NOT CHANGED PREVIOUSLY)"}</li>
       </ul>
   </div>
 
@@ -218,14 +229,18 @@ const getWelcomeCandidateOfflineHtml = (data) => {
       </ul>
   </div>
 
-  ${(data.approveLink && data.rejectLink) ? `
+  ${
+    data.approveLink && data.rejectLink
+      ? `
   <div style="margin: 24px 0; text-align: center;">
       <p style="font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #0f172a;">Please acknowledge your enrollment by clicking one of the links below:</p>
       <p>
         <a href="${data.approveLink}" class="button button-success" style="color: white !important;">Approve</a>
         <a href="${data.rejectLink}" class="button button-danger" style="margin-left: 10px; color: white !important;">Reject</a>
       </p>
-  </div>` : ''}
+  </div>`
+      : ""
+  }
 
   <p style="font-size: 14px; color: #334155;">PLEASE CONFIRM RECEIPT OF EMAIL.</p>
   <p style="font-size: 14px; color: #334155; font-weight: bold;">WE THANK YOU FOR CONFIRMING YOUR PARTICIPATION AND LOOK FORWARD TO WELCOMING YOU TO THE TRAINING.</p>`;
@@ -238,27 +253,27 @@ const getWelcomeCandidateOnlineHtml = (data) => {
   <div class='header'>
       <h2>WELCOME TO MOLTCI (ONLINE COURSE)</h2>
   </div>
-  <p style="font-size: 15px; color: #1e293b;">DEAR ${String(data.candidate_name || '').toUpperCase()},</p>
+  <p style="font-size: 15px; color: #1e293b;">DEAR ${String(data.candidate_name || "").toUpperCase()},</p>
   <p style="font-size: 14px; color: #334155;">GOOD DAY,</p>
   <p style="font-size: 14px; color: #334155;">MOL TRAINING CENTRE NOMINATES YOU TO UNDERGO THE FOLLOWING TRAINING.</p>
-  <p style="font-size: 15px; color: #0f172a;">WELCOME ! ABOARD! YOU HAVE BEEN SUCCESSFULLY ENROLLED IN: <strong>${String(data.course_name || '').toUpperCase()}</strong></p>
+  <p style="font-size: 15px; color: #0f172a;">WELCOME ! ABOARD! YOU HAVE BEEN SUCCESSFULLY ENROLLED IN: <strong>${String(data.course_name || "").toUpperCase()}</strong></p>
   
   <div class="card">
       <div class="card-title">COURSE DETAILS</div>
       <ul class="info-list">
-          <li><strong>COURSE ID:</strong> ${data.course_id || ''}</li>
+          <li><strong>COURSE ID:</strong> ${data.course_id || ""}</li>
           <li>
-            <strong>DURATION:</strong> ${data.duration} ${data.duration > 1 ? 'DAYS' : 'DAY'}
+            <strong>DURATION:</strong> ${data.duration} ${data.duration > 1 ? "DAYS" : "DAY"}
             (${data.start_date} to ${data.end_date})
           </li>
-          <li><strong>PRIMARY TRAINER:</strong> ${!data.trainer_name ? 'Not Mentioned' : data.trainer_name}</li>
-          <li><strong>COURSE START TIME:</strong> ${data.start_time || '09:30'} IST</li>
-          <li><strong>COURSE END TIME:</strong> ${data.end_time || '17:30'} IST</li>
+          <li><strong>PRIMARY TRAINER:</strong> ${!data.trainer_name ? "Not Mentioned" : data.trainer_name}</li>
+          <li><strong>COURSE START TIME:</strong> ${data.start_time || "09:30"} IST</li>
+          <li><strong>COURSE END TIME:</strong> ${data.end_time || "17:30"} IST</li>
           <li style="font-size: 12px; color: #475569; font-style: italic;">*TRAINING TIME AS PER INDIAN STANDARD TIME ZONE KINDLY ADJUST AS PER YOUR LOCAL TIME ZONE.</li>
-          <li><strong>LOCATION TYPE:</strong> ${data.location_type || 'Online'}</li>
-          <li><strong>LOCATION OF TRAINING:</strong> ${data.training_location_name || ''}</li>
-          <li><strong>TRAINING MODE:</strong> Online (VIA ${data.training_platform || 'ZOOM'} OR TEAMS)</li>
-          <li><strong>ZOOM/TEAMS LINK:</strong> <a href="${data.meeting_link}">${data.meeting_link || ''}</a></li>
+          <li><strong>LOCATION TYPE:</strong> ${data.location_type || "Online"}</li>
+          <li><strong>LOCATION OF TRAINING:</strong> ${data.training_location_name || ""}</li>
+          <li><strong>TRAINING MODE:</strong> Online (VIA ${data.training_platform || "ZOOM"} OR TEAMS)</li>
+          <li><strong>ZOOM/TEAMS LINK:</strong> <a href="${data.meeting_link}">${data.meeting_link || ""}</a></li>
           <li><strong>WHATSAPP GROUP:</strong> <a href="${data.whatsapp_link}">Join here</a> to stay updated with day-to-day notifications.</li>
       </ul>
   </div>
@@ -278,9 +293,9 @@ const getWelcomeCandidateOnlineHtml = (data) => {
       <div class="card-title">LOG IN REQUIREMENTS FOR CANDIDATE PLATFORM</div>
       <ul class="info-list">
           <li>LOG IN TO YOUR CANDIDATE SECTION USING BELOW LINK</li>
-          <li>LINK : <a href="https://certificate.molmi.info/" >https://certificate.molmi.info/</a></li>
+          <li>LINK : <a href="https://molminavis.com/" >https://molminavis.com/</a></li>
           <li>USER ID &#8211; ${data.email}</li>
-          <li>PASSWORD &#8211; ${data.password || '12345 (DEFAULT IF NOT CHANGED PREVIOUSLY)'}</li>
+          <li>PASSWORD &#8211; ${data.password || "12345 (DEFAULT IF NOT CHANGED PREVIOUSLY)"}</li>
       </ul>
   </div>
 
@@ -302,14 +317,18 @@ const getWelcomeCandidateOnlineHtml = (data) => {
       </ul>
   </div>
 
-  ${(data.approveLink && data.rejectLink) ? `
+  ${
+    data.approveLink && data.rejectLink
+      ? `
   <div style="margin: 24px 0; text-align: center;">
       <p style="font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #0f172a;">Please acknowledge your enrollment by clicking one of the links below:</p>
       <p>
         <a href="${data.approveLink}" class="button button-success" style="color: white !important;">Approve</a>
         <a href="${data.rejectLink}" class="button button-danger" style="margin-left: 10px; color: white !important;">Reject</a>
       </p>
-  </div>` : ''}
+  </div>`
+      : ""
+  }
 
   <p style="font-size: 14px; color: #334155;">PLEASE CONFIRM RECEIPT OF EMAIL.</p>
   <p style="font-size: 14px; color: #334155; font-weight: bold;">WE THANK YOU FOR CONFIRMING YOUR PARTICIPATION AND LOOK FORWARD TO WELCOMING YOU TO THE TRAINING.</p>`;
@@ -333,10 +352,10 @@ const getCourseTrainerHtml = (data) => {
           <li><strong>Course Start Date:</strong> ${data.start_date}</li>
           <li><strong>Course End Date:</strong> ${data.end_date}</li>
           <li><strong>Duration (Days):</strong> ${data.duration}</li>
-          <li><strong>Location Type:</strong> ${data.location_type || ''}</li>
-          <li><strong>Location of Training:</strong> ${data.training_location || ''}</li>
-          <li><strong>WhatsApp Group Link:</strong> <a href="${data.whatsapp_group_link || '#'}">WhatsApp Link</a></li>
-          <li style="margin-top: 12px;"><strong class="course-description">Course Description:</strong><br>${data.description || ''}</li>
+          <li><strong>Location Type:</strong> ${data.location_type || ""}</li>
+          <li><strong>Location of Training:</strong> ${data.training_location || ""}</li>
+          <li><strong>WhatsApp Group Link:</strong> <a href="${data.whatsapp_group_link || "#"}">WhatsApp Link</a></li>
+          <li style="margin-top: 12px;"><strong class="course-description">Course Description:</strong><br>${data.description || ""}</li>
       </ul>
   </div>
 
@@ -364,22 +383,22 @@ const getCourseCandidateHtml = (data) => {
       <ul class="info-list">
           <li><strong>Course ID:</strong> ${data.course_id}</li>
           <li><strong>Duration:</strong> ${data.duration} days, from <strong>${data.start_date}</strong> to <strong>${data.end_date}</strong></li>
-          <li><strong>Primary Trainer:</strong> ${data.trainer_name || 'Not Mentioned'}</li>
+          <li><strong>Primary Trainer:</strong> ${data.trainer_name || "Not Mentioned"}</li>
           <li><strong>Course reporting Time:</strong> 09:15 HRS at IST , UTC – TIMING
               <ul style="list-style: none; padding-left: 15px; margin-top: 4px;">
                   <li><strong>Course start Time:</strong> 09:30 HRS at IST</li>
                   <li><strong>Course end Time:</strong> 17:30 HRS at IST</li>
               </ul>
           </li>
-          <li><strong>Location Type:</strong> ${data.location_type || ''}</li>
-          <li><strong>Training Location:</strong> ${data.training_location || ''}</li>
-          <li><strong>Zoom Link:</strong> ${data.zoom_link || ''}</li>
+          <li><strong>Location Type:</strong> ${data.location_type || ""}</li>
+          <li><strong>Training Location:</strong> ${data.training_location || ""}</li>
+          <li><strong>Zoom Link:</strong> ${data.zoom_link || ""}</li>
       </ul>
   </div>
 
   <div class="card">
       <div class="card-title">Communication & Setup</div>
-      <p style="margin: 0 0 12px; font-size: 14px;"><strong>WhatsApp Group:</strong> <a href="${data.whatsapp_group_link || '#'}">WhatsApp Link</a> to stay updated with day-to-day notifications.</p>
+      <p style="margin: 0 0 12px; font-size: 14px;"><strong>WhatsApp Group:</strong> <a href="${data.whatsapp_group_link || "#"}">WhatsApp Link</a> to stay updated with day-to-day notifications.</p>
       <p style="margin: 0 0 12px; font-size: 14px;">Please join the WhatsApp group for important updates and arrive at the training location on time.</p>
       <p style="margin: 0 0 12px; font-size: 14px;">For any questions, feel free to reach out to us on same.</p>
       <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold;">FOR ONLINE COURSES:</p>
@@ -463,7 +482,8 @@ const getTrainerResetPasswordHtml = (data) => {
 };
 
 const getCandidateRegistrationHtml = (data) => {
-  const resetLinkHtml = data.isSelfRegistration ? `
+  const resetLinkHtml = data.isSelfRegistration
+    ? `
   <div class="card">
       <div class="card-title">Action Required</div>
       <p style="margin: 0 0 12px; font-size: 14px;">Please set your password to access your account:</p>
@@ -472,7 +492,8 @@ const getCandidateRegistrationHtml = (data) => {
       </p>
       <p style="font-size: 12px; color: #64748b; margin-top: 10px;">This link will expire in 24 hours.</p>
   </div>
-  ` : `
+  `
+    : `
   <div class="card">
       <div class="card-title">Account Access</div>
       <p style="margin: 0; font-size: 14px;"><strong>Password:</strong> (As set by Administrator)</p>
@@ -484,27 +505,27 @@ const getCandidateRegistrationHtml = (data) => {
   <div class='header'>
       <h2>Candidate Registration</h2>
   </div>
-  <p style="font-size: 15px; color: #1e293b;">Dear ${data.prefix || ''} ${data.first_name} ${data.middle_name || ''} ${data.last_name},</p>
+  <p style="font-size: 15px; color: #1e293b;">Dear ${data.prefix || ""} ${data.first_name} ${data.middle_name || ""} ${data.last_name},</p>
   <p style="font-size: 14px; color: #334155;">Congratulations on your registration! We are pleased to welcome you. Below are your registration details:</p>
   
   <div class="card">
       <div class="card-title">Registration Details</div>
       <ul class="info-list">
-          <li><strong>Employee ID:</strong> ${data.empId || '-'}</li>
-          <li><strong>Rank Last Served on Vessel:</strong> ${data.rank || '-'}</li>
-          <li><strong>Prefix:</strong> ${data.prefix || '-'}</li>
-          <li><strong>Surname:</strong> ${data.last_name || '-'}</li>
-          <li><strong>First Name:</strong> ${data.first_name || '-'}</li>
-          <li><strong>Middle Name:</strong> ${data.middle_name || '-'}</li>
-          <li><strong>Gender:</strong> ${data.gender || '-'}</li>
-          <li><strong>C.D.C / Passport:</strong> ${data.cdc_passport || '-'}</li>
+          <li><strong>Employee ID:</strong> ${data.empId || "-"}</li>
+          <li><strong>Rank Last Served on Vessel:</strong> ${data.rank || "-"}</li>
+          <li><strong>Prefix:</strong> ${data.prefix || "-"}</li>
+          <li><strong>Surname:</strong> ${data.last_name || "-"}</li>
+          <li><strong>First Name:</strong> ${data.first_name || "-"}</li>
+          <li><strong>Middle Name:</strong> ${data.middle_name || "-"}</li>
+          <li><strong>Gender:</strong> ${data.gender || "-"}</li>
+          <li><strong>C.D.C / Passport:</strong> ${data.cdc_passport || "-"}</li>
           <li><strong>Vessel Type:</strong> -</li>
           <li><strong>Vessel Name:</strong> -</li>
-          <li><strong>Birth Date:</strong> ${data.dob || '-'}</li>
-          <li><strong>Nationality:</strong> ${data.nationality || '-'}</li>
+          <li><strong>Birth Date:</strong> ${data.dob || "-"}</li>
+          <li><strong>Nationality:</strong> ${data.nationality || "-"}</li>
           <li><strong>Seaman Book No.:</strong> -</li>
-          <li><strong>WhatsApp Number:</strong> ${data.whatsapp || '-'}</li>
-          <li><strong>Alternate Number:</strong> ${data.alternate_mobile || '-'}</li>
+          <li><strong>WhatsApp Number:</strong> ${data.whatsapp || "-"}</li>
+          <li><strong>Alternate Number:</strong> ${data.alternate_mobile || "-"}</li>
       </ul>
   </div>
   

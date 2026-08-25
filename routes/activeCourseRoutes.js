@@ -84,6 +84,12 @@ router.put(
   activeCourseController.updateStatusPool,
 );
 router.put(
+  "/:id/candidates/:candidateId/last-vessel",
+  protect,
+  checkPermission("manage_active_course_enrollment", ["Trainer"]),
+  activeCourseController.updateLastVessel,
+);
+router.put(
   "/:id/candidates/:candidateId/observer",
   protect,
   checkPermission("manage_active_course_enrollment"),

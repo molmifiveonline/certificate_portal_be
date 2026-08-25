@@ -18,5 +18,6 @@ router.post(
 );
 router.post("/certificate/export", checkPermission("export_reports"), ReportController.exportCertificateReport);
 router.get("/hotel", checkPermission("view_reports"), ReportController.getHotelReport);
+router.post("/hotel/export", checkPermission("export_reports"), ReportController.exportHotelReport);
 
 module.exports = router;
