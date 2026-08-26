@@ -5,10 +5,40 @@ const MasterCourseDao = require("../dao/MasterCourseDao");
 const TrainerDao = require("../dao/trainerDao");
 const FeedbackQuestionDao = require("../dao/feedbackQuestionDao");
 
+const pool = require("../config/db");
+
 const getFeedbackCourseTypeForCourse = (course) => {
   const locationType = (course?.type_of_location || "").toLowerCase().trim();
   if (locationType === "online") return "Online";
   return "Offline";
+};
+
+const checkPostAssessmentStatus = async (courseId, candidateId) => {
+  const [postAssessmentRows] = await pool.execute(
+    `SELECT a.id, a.title 
+     FROM assessment a 
+     WHERE a.course_id = ? 
+       AND a.type_of_test IN ('Post', '2') 
+       AND a.status = 1 
+       AND (a.candidate_ids IS NULL OR a.candidate_ids = '' OR FIND_IN_SET(?, a.candidate_ids) > 0 OR a.type_of_test IN ('1', '2'))
+     LIMIT 1`,
+    [courseId, candidateId]
+  );
+  const postAssessmentExists = postAssessmentRows.length > 0;
+
+  let postAssessmentCompleted = false;
+  if (postAssessmentExists) {
+    const postAssessmentId = postAssessmentRows[0].id;
+    const [resultRows] = await pool.execute(
+      `SELECT id FROM assessment_results 
+       WHERE assessment_id = ? AND candidate_id = ? AND course_id = ? AND status = 'Completed'
+       LIMIT 1`,
+      [postAssessmentId, candidateId, courseId]
+    );
+    postAssessmentCompleted = resultRows.length > 0;
+  }
+
+  return { postAssessmentExists, postAssessmentCompleted };
 };
 
 class FeedbackAnswerController {
@@ -23,6 +53,23 @@ class FeedbackAnswerController {
         !Array.isArray(answers)
       ) {
         return res.status(400).json({ message: "Invalid input data" });
+      }
+
+      const { postAssessmentExists, postAssessmentCompleted } =
+        await checkPostAssessmentStatus(active_course_id, candidate_id);
+
+      if (!postAssessmentExists) {
+        return res.status(400).json({
+          message:
+            "Post-assessment has not been created for this course. Feedback cannot be submitted yet.",
+        });
+      }
+
+      if (!postAssessmentCompleted) {
+        return res.status(400).json({
+          message:
+            "You must complete the post-course assessment before submitting feedback.",
+        });
       }
 
       const results = [];
@@ -418,6 +465,9 @@ class FeedbackAnswerController {
         return res.status(404).json({ message: "Course not found" });
       }
 
+      const { postAssessmentExists, postAssessmentCompleted } =
+        await checkPostAssessmentStatus(courseId, candidateId);
+
       const FeedbackFormDao = require("../dao/FeedbackFormDao");
       const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
       const form = await FeedbackFormDao.getByCourseType(feedbackCourseType);
@@ -428,6 +478,8 @@ class FeedbackAnswerController {
         answers: hasSubmitted ? existingAnswers : null,
         form,
         feedbackCourseType,
+        postAssessmentExists,
+        postAssessmentCompleted,
         message: form
           ? undefined
           : `No active ${feedbackCourseType} feedback form configured`,
@@ -448,6 +500,23 @@ class FeedbackAnswerController {
 
       if (!active_course_id || !answers || !Array.isArray(answers)) {
         return res.status(400).json({ message: "Invalid input data" });
+      }
+
+      const { postAssessmentExists, postAssessmentCompleted } =
+        await checkPostAssessmentStatus(active_course_id, candidate_id);
+
+      if (!postAssessmentExists) {
+        return res.status(400).json({
+          message:
+            "Post-assessment has not been created for this course. Feedback cannot be submitted yet.",
+        });
+      }
+
+      if (!postAssessmentCompleted) {
+        return res.status(400).json({
+          message:
+            "You must complete the post-course assessment before submitting feedback.",
+        });
       }
 
       const results = [];

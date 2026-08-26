@@ -38,19 +38,48 @@ class DashboardDao {
     return stats;
   }
 
+  static async getCandidateStats(candidateId) {
+    const activePredicate = await ActiveCourseDao.buildActivePredicate("c");
+
+    // 1. Total Active Courses (where candidate is enrolled and course is active)
+    const [courseResult] = await pool.query(
+      `SELECT COUNT(DISTINCT c.id) as count 
+       FROM courses c
+       JOIN courses_enrollment ce ON c.id = ce.course_id
+       WHERE ce.candidate_id = ? 
+         AND ${activePredicate}
+         AND c.status NOT IN ('Completed', 'Course Completed', 'Cancelled')
+         AND (ce.status != 'Deleted' OR ce.status IS NULL)`,
+      [candidateId]
+    );
+
+    // 2. Total Certificates (for this candidate, non-hidden)
+    const [certificateResult] = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM certificates 
+       WHERE candidate_id = ? AND COALESCE(is_hidden, 0) = 0`,
+      [candidateId]
+    );
+
+    return {
+      activeCourses: courseResult[0]?.count || 0,
+      totalCertificates: certificateResult[0]?.count || 0,
+    };
+  }
+
   static async getCourses(filters = {}, page = 1, limit = 10) {
     const offset = (page - 1) * limit;
     let whereClause = `WHERE c.status != 'Deleted'`;
     const params = [];
 
-    if (filters.trainer_id) {
-      whereClause += ` AND c.primary_trainer_id = ?`;
-      params.push(filters.trainer_id);
-    }
-
     if (filters.master_course_id) {
       whereClause += ` AND c.master_course_id = ?`;
       params.push(filters.master_course_id);
+    }
+
+    if (filters.trainer_id) {
+      whereClause += ` AND c.primary_trainer_id = ?`;
+      params.push(filters.trainer_id);
     }
 
     if (filters.start_date && filters.end_date) {
