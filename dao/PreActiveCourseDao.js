@@ -2,6 +2,14 @@ const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 const { hasColumn } = require("../utils/schemaUtils");
 
+const normalizeCourseType = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const isOuthouseCourseType = (value) =>
+  normalizeCourseType(value) === "outhouse";
+
 // ==========================================
 // Pre-Active Course Operations
 // ==========================================
@@ -595,8 +603,7 @@ const getRejectedCandidateApprovals = async (options = {}) => {
     String(sort_order).toLowerCase() === "asc" ? "ASC" : "DESC";
 
   let whereClause = `
-    WHERE c.is_pre_active = 1
-      AND ce.candidate_approval_status = 'Rejected'
+    WHERE ce.candidate_approval_status = 'Rejected'
       AND (ce.status != 'Deleted' OR ce.status IS NULL)
   `;
   const params = [];
@@ -710,10 +717,20 @@ const getRejectedCandidateApprovals = async (options = {}) => {
 // Convert and Reports
 // ==========================================
 
-const convertToActiveCourse = async (id) => {
+const convertToActiveCourse = async (id, courseType) => {
+  const setParts = ["is_pre_active = 0", "status = 'Initiated'"];
+  const params = [];
+
+  if (await hasColumn("courses", "is_outhouse")) {
+    setParts.push("is_outhouse = ?");
+    params.push(isOuthouseCourseType(courseType) ? 1 : 0);
+  }
+
+  params.push(id);
+
   const [result] = await pool.execute(
-    "UPDATE courses SET is_pre_active = 0, status = 'Initiated' WHERE id = ? AND is_pre_active = 1",
-    [id],
+    `UPDATE courses SET ${setParts.join(", ")} WHERE id = ? AND is_pre_active = 1`,
+    params,
   );
   return result.affectedRows > 0;
 };
@@ -941,6 +958,7 @@ module.exports = {
   getPendingAdminApprovals,
   getRejectedCandidateApprovals,
   convertToActiveCourse,
+  isOuthouseCourseType,
   getAdminRemarksReport,
   getNominatorNotifiedCourses,
   getNominatorEnrollments,
@@ -948,4 +966,3 @@ module.exports = {
   getExistingCourseIds,
   bulkUpsert,
 };
-
