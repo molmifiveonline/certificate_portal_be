@@ -277,6 +277,15 @@ const login = async (req, res) => {
       const candidateId =
         roleName.toLowerCase() === "candidate" ? user.id : null;
 
+      let registrationType = null;
+      if (roleName.toLowerCase() === "candidate") {
+        const [candidateRows] = await db.query(
+          "SELECT registration_type FROM candidate_profiles WHERE user_id = ?",
+          [user.id]
+        );
+        registrationType = candidateRows[0]?.registration_type || null;
+      }
+
       const [permissions] = await db.query(
         `SELECT p.slug FROM permissions p
          JOIN role_permissions rp ON p.id = rp.permission_id
@@ -304,6 +313,7 @@ const login = async (req, res) => {
         roleId: user.role_id,
         email: user.email,
         candidate_id: candidateId,
+        registration_type: registrationType,
         adminRolePermissions,
       });
 
@@ -326,6 +336,7 @@ const login = async (req, res) => {
           email: user.email,
           role: roleName,
           candidate_id: candidateId,
+          registration_type: registrationType,
           permissions: permissionSlugs,
           adminRolePermissions,
         },
@@ -581,6 +592,15 @@ const verifyOtp = async (req, res) => {
       const roleName = roles[0]?.name || "unknown";
       const candidateId = roleName.toLowerCase() === "candidate" ? user.id : null;
 
+      let registrationType = null;
+      if (roleName.toLowerCase() === "candidate") {
+        const [candidateRows] = await db.query(
+          "SELECT registration_type FROM candidate_profiles WHERE user_id = ?",
+          [user.id]
+        );
+        registrationType = candidateRows[0]?.registration_type || null;
+      }
+
       const [permissions] = await db.query(
         `SELECT p.slug FROM permissions p
          JOIN role_permissions rp ON p.id = rp.permission_id
@@ -608,6 +628,7 @@ const verifyOtp = async (req, res) => {
         roleId: user.role_id,
         email: user.email,
         candidate_id: candidateId,
+        registration_type: registrationType,
         adminRolePermissions,
       });
 
@@ -631,6 +652,7 @@ const verifyOtp = async (req, res) => {
           email: user.email,
           role: roleName,
           candidate_id: candidateId,
+          registration_type: registrationType,
           permissions: permissionSlugs,
           adminRolePermissions,
         },
@@ -751,5 +773,89 @@ const resendOtp = async (req, res) => {
   }
 };
 
-module.exports = { registerCandidate, login, forgotPassword, resetPassword, verifyOtp, resendOtp };
+const getMe = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    if (req.user.nominator_id) {
+      const nominator = await NominatorDao.getNominatorById(req.user.nominator_id);
+      if (!nominator) {
+        return res.status(404).json({ message: "Nominator not found" });
+      }
+      return res.json({
+        user: {
+          id: nominator.id,
+          first_name: nominator.first_name,
+          last_name: nominator.last_name,
+          email: nominator.email,
+          role: "admin",
+          nominator_id: nominator.id,
+          permissions: NOMINATOR_ADMIN_PERMISSIONS,
+          adminRolePermissions: NOMINATOR_ADMIN_PERMISSIONS,
+        },
+      });
+    }
+
+    const user = await UserDao.findUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const [roles] = await db.query("SELECT name FROM roles WHERE id = ?", [
+      user.role_id,
+    ]);
+    const roleName = roles[0]?.name || "unknown";
+    const candidateId = roleName.toLowerCase() === "candidate" ? user.id : null;
+
+    let registrationType = null;
+    if (roleName.toLowerCase() === "candidate") {
+      const [candidateRows] = await db.query(
+        "SELECT registration_type FROM candidate_profiles WHERE user_id = ?",
+        [user.id]
+      );
+      registrationType = candidateRows[0]?.registration_type || null;
+    }
+
+    const [permissions] = await db.query(
+      `SELECT p.slug FROM permissions p
+       JOIN role_permissions rp ON p.id = rp.permission_id
+       WHERE rp.role_id = ?`,
+      [user.role_id]
+    );
+    const permissionSlugs = permissions.map((p) => p.slug);
+
+    let adminRolePermissions = null;
+    const isSuperAdmin = roleName.toLowerCase() === "superadmin";
+    if (!isSuperAdmin && user.admin_role_id) {
+      const [adminRolePerms] = await db.query(
+        `SELECT p.slug FROM permissions p
+         JOIN role_permissions rp ON p.id = rp.permission_id
+         WHERE rp.role_id = ?`,
+        [user.admin_role_id]
+      );
+      adminRolePermissions = adminRolePerms.map((p) => p.slug);
+    }
+
+    return res.json({
+      user: {
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        role: roleName,
+        candidate_id: candidateId,
+        registration_type: registrationType,
+        permissions: permissionSlugs,
+        adminRolePermissions,
+      },
+    });
+  } catch (error) {
+    console.error("GetMe Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+module.exports = { registerCandidate, login, forgotPassword, resetPassword, verifyOtp, resendOtp, getMe };
 

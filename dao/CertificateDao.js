@@ -188,6 +188,16 @@ class CertificateDao {
       values.push(filters.trainer_id);
     }
 
+    if (filters.candidate_id) {
+      baseQuery += ` AND c.candidate_id = ?`;
+      values.push(filters.candidate_id);
+    }
+
+    if (filters.is_hidden !== undefined && filters.is_hidden !== null && filters.is_hidden !== "") {
+      baseQuery += ` AND COALESCE(c.is_hidden, 0) = ?`;
+      values.push(Number(filters.is_hidden));
+    }
+
     // Get total count
     const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
     const [countResult] = await pool.execute(countQuery, values);

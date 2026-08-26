@@ -779,7 +779,16 @@ const getAvailableOthersCandidates = async (courseId) => {
     SELECT 
       u.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile,
       CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
-      cp.middle_name as profile_middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type
+      cp.middle_name as profile_middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type,
+      cp.nationality, cp.passport_no as cdc_passport, cp.passport_no, cp.employee_id as empId,
+      cp.rank, cp.seaman_book_no, cp.designation, cp.manning_company as manager, cp.manning_company,
+      cp.vessel_type as status_pool, cp.last_vessel_name as last_vessel,
+      (
+        SELECT MAX(cert.issue_date)
+        FROM certificates cert
+        WHERE cert.candidate_id = u.id
+          AND cert.issue_date IS NOT NULL
+      ) as previous_certificate_date
     FROM users u
     JOIN candidate_profiles cp ON u.id = cp.user_id
     JOIN roles r ON u.role_id = r.id

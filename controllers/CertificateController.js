@@ -12,11 +12,24 @@ const {
 
 exports.listCertificates = async (req, res) => {
   try {
-    const { search, status, active_course_id, trainer_id, page, limit } =
+    const { search, status, active_course_id, trainer_id, candidate_id, is_hidden, page, limit } =
       req.query;
+    const filters = { status, active_course_id, trainer_id, candidate_id, is_hidden };
+
+    // Role-based filtering
+    if (req.user?.role) {
+      const role = req.user.role.toLowerCase();
+      if (role === "trainer") {
+        filters.trainer_id = req.user.id;
+      } else if (role === "candidate") {
+        filters.candidate_id = req.user.id;
+        filters.is_hidden = 0;
+      }
+    }
+
     const certificates = await CertificateDao.getAll(
       search,
-      { status, active_course_id, trainer_id },
+      filters,
       page,
       limit,
     );

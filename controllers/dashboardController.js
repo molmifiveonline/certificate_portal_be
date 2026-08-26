@@ -13,6 +13,19 @@ exports.getStats = async (req, res) => {
   }
 };
 
+exports.getCandidateStats = async (req, res) => {
+  try {
+    const candidateId = req.user.id;
+    const stats = await DashboardDao.getCandidateStats(candidateId);
+    res.status(200).json(stats);
+  } catch (error) {
+    console.error("Error fetching candidate stats:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching candidate stats", error: error.message });
+  }
+};
+
 exports.getCourses = async (req, res) => {
   try {
     const filters = {
