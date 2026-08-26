@@ -659,12 +659,24 @@ exports.convertToActiveCourse = async (req, res) => {
       });
     }
 
-    const success = await PreActiveCourseDao.convertToActiveCourse(courseId);
+    const courseType = course.course_type || course.type_of_course;
+    const targetType = PreActiveCourseDao.isOuthouseCourseType(courseType)
+      ? "Outhouse Course"
+      : "Active Course";
+
+    const success = await PreActiveCourseDao.convertToActiveCourse(
+      courseId,
+      courseType,
+    );
 
     if (success) {
       res
         .status(200)
-        .json({ message: "Course converted to Active Course successfully." });
+        .json({
+          message: `Course converted to ${targetType} successfully.`,
+          target_type: targetType,
+          target_id: courseId,
+        });
     } else {
       res.status(400).json({ message: "Failed to convert course." });
     }
@@ -773,4 +785,3 @@ exports.candidateApprovalByEnrollment = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
-
