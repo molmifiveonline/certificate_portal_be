@@ -517,7 +517,7 @@ exports.exportCertificateReport = async (req, res) => {
       return [
         index + 1,
         getCertificateReportCandidateIdentifier(item),
-        `${item.cand_first_name} ${item.cand_last_name}`,
+        getCertificateReportCandidateName(item),
         getCandidatePositionLabel(item.rank),
         getCertificateReportManager(item),
         item.last_vessel_name || "",
@@ -598,6 +598,17 @@ function getCertificateReportCandidateIdentifier(item) {
   return [item.empId, item.passport_no]
     .map((value) => String(value || "").trim())
     .find(Boolean) || "";
+}
+
+function getCertificateReportCandidateName(item) {
+  return [
+    item.cand_first_name,
+    item.cand_middle_name,
+    item.cand_last_name,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function getCertificateReportManager(item) {

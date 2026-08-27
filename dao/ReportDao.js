@@ -391,8 +391,11 @@ class ReportDao {
             LEFT JOIN master_course mc ON c.course_id = mc.id
             LEFT JOIN users u_trainer ON c.trainer_id = u_trainer.id
             LEFT JOIN trainer_profiles tp ON u_trainer.id = tp.user_id
+            LEFT JOIN legacy_id_map cert_legacy_map
+              ON cert_legacy_map.entity_type = 'certificate'
+             AND cert_legacy_map.new_id = c.id
             
-            WHERE c.created_at >= ? AND c.created_at <= ?`;
+            WHERE c.issue_date >= ? AND c.issue_date <= ?`;
     const params = [startDate, endDate];
 
     if (filters.topic) {
@@ -408,7 +411,15 @@ class ReportDao {
       params.push(filters.company);
     }
 
-    query += ` ORDER BY c.created_at DESC`;
+    query += `
+      ORDER BY
+        DATE(c.issue_date) DESC,
+        CASE
+          WHEN cert_legacy_map.legacy_id REGEXP '^[0-9]+$' THEN 0
+          ELSE 1
+        END,
+        CAST(cert_legacy_map.legacy_id AS UNSIGNED) ASC,
+        c.certificate_no ASC`;
 
     const [rows] = await pool.execute(query, params);
     return rows;
