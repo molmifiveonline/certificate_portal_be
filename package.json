@@ -30,6 +30,8 @@
     "migrate:legacy:repair-passwords:apply": "node scripts/migrateLegacyPhpData.js --repair-passwords --apply",
     "migrate:legacy:repair-trainer-permissions:dry-run": "node scripts/migrateLegacyPhpData.js --repair-trainer-permissions --dry-run",
     "migrate:legacy:repair-trainer-permissions:apply": "node scripts/migrateLegacyPhpData.js --repair-trainer-permissions --apply",
+    "cleanup:test-data:dry-run": "node scripts/cleanupNonLegacyTestData.js --dry-run",
+    "cleanup:test-data:apply": "node scripts/cleanupNonLegacyTestData.js --apply",
     "permissions:seed-trainer:dry-run": "node scripts/seedTrainerRolePermissions.js --dry-run",
     "permissions:seed-trainer:apply": "node scripts/seedTrainerRolePermissions.js --apply"
   },
