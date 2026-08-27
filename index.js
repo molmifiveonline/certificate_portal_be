@@ -140,6 +140,7 @@ app.use("/api/certificates", certificateRoutes);
 
 // Static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/api/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/", (req, res) => {
   res.send("API is running...");
