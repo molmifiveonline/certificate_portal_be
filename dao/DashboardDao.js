@@ -154,6 +154,7 @@ class DashboardDao {
 
     const whereClause = `
       WHERE ca.certificate_expiry_date <= ? 
+      AND ca.certificate_expiry_date > '1970-01-02'
       AND (ca.mark_as_read = 0 OR ca.mark_as_read IS NULL)
     `;
 

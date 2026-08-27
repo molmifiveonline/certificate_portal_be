@@ -1014,3 +1014,22 @@ EXECUTE cert_status_pool_stmt;
 DEALLOCATE PREPARE cert_status_pool_stmt;
 
 
+-- Date: 2026-08-27 - Assessment Submitted Answer Sequence
+-- ---------------------------------------------------------
+SET @has_assessment_answer_order := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'assessment_answers'
+    AND COLUMN_NAME = 'answer_order'
+);
+SET @assessment_answer_order_sql := IF(
+  @has_assessment_answer_order = 0,
+  'ALTER TABLE `assessment_answers` ADD COLUMN `answer_order` INT NULL AFTER `is_correct`',
+  'SELECT "assessment_answers.answer_order already exists"'
+);
+PREPARE assessment_answer_order_stmt FROM @assessment_answer_order_sql;
+EXECUTE assessment_answer_order_stmt;
+DEALLOCATE PREPARE assessment_answer_order_stmt;
+
+
