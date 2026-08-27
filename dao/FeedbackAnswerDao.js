@@ -2,6 +2,68 @@ const db = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 
 class FeedbackAnswerDao {
+  static async attachLegacySortIds(rows) {
+    if (!rows.length) return rows;
+
+    const lookups = [
+      {
+        field: "legacy_category_id",
+        entityType: "feedback_category",
+        ids: [
+          ...new Set(
+            rows
+              .map((row) => row.feedback_category_id || row.question_category_id)
+              .filter(Boolean),
+          ),
+        ],
+      },
+      {
+        field: "legacy_question_id",
+        entityType: "feedback_question",
+        ids: [...new Set(rows.map((row) => row.feedback_question_id).filter(Boolean))],
+      },
+      {
+        field: "legacy_answer_id",
+        entityType: "feedback_question_answer",
+        ids: [...new Set(rows.map((row) => row.id).filter(Boolean))],
+      },
+    ];
+
+    for (const lookup of lookups) {
+      if (!lookup.ids.length) continue;
+      const placeholders = lookup.ids.map(() => "?").join(",");
+      const [mapRows] = await db.query(
+        `SELECT new_id, legacy_id
+         FROM legacy_id_map
+         WHERE entity_type = ? AND new_id IN (${placeholders})`,
+        [lookup.entityType, ...lookup.ids],
+      );
+      const map = new Map(mapRows.map((row) => [row.new_id, row.legacy_id]));
+      for (const row of rows) {
+        const sourceId =
+          lookup.field === "legacy_category_id"
+            ? row.feedback_category_id || row.question_category_id
+            : lookup.field === "legacy_question_id"
+              ? row.feedback_question_id
+              : row.id;
+        row[lookup.field] = map.get(sourceId) || null;
+      }
+    }
+
+    const numeric = (value) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : Number.MAX_SAFE_INTEGER;
+    };
+
+    return rows.sort((a, b) =>
+      numeric(b.legacy_category_id) - numeric(a.legacy_category_id) ||
+      numeric(a.legacy_question_id) - numeric(b.legacy_question_id) ||
+      numeric(a.legacy_answer_id) - numeric(b.legacy_answer_id) ||
+      new Date(a.created_at || 0) - new Date(b.created_at || 0) ||
+      String(a.id).localeCompare(String(b.id)),
+    );
+  }
+
   static async create(answerData) {
     const {
       candidate_id,
@@ -219,6 +281,7 @@ class FeedbackAnswerDao {
         fa.*,
         fq.question,
         fq.type,
+        fq.category_id as question_category_id,
         COALESCE(fcq.name, fca.name) as category_name,
         COALESCE(ff.type_of_course, 'N/A') as feedback_type
       FROM feedback_question_answer fa
@@ -230,7 +293,7 @@ class FeedbackAnswerDao {
       ORDER BY fa.created_at ASC, fa.id ASC
     `;
     const [rows] = await db.query(query, [candidate_id, active_course_id]);
-    return rows;
+    return this.attachLegacySortIds(rows);
   }
 }
 
