@@ -99,6 +99,17 @@ const getBaseEmailHtml = (bodyContent, maxWidth = "600px") => {
 </html>`;
 };
 
+const getCandidateLoginRequirementHtml = (email) => `
+  <div class="card">
+      <div class="card-title">LOG IN REQUIREMENTS FOR CANDIDATE PLATFORM</div>
+      <ul class="info-list">
+          <li>LOG IN TO YOUR CANDIDATE SECTION USING BELOW LINK</li>
+          <li>LINK : <a href="https://molminavis.com/" >https://molminavis.com/</a></li>
+          <li>USER ID &#8211; ${email || ""}</li>
+          <li>PASSWORD &#8211; Use your existing candidate portal password. If you do not remember it, please use Forgot Password on the login page.</li>
+      </ul>
+  </div>`;
+
 const getWelcomeCandidateOfflineHtml = (data) => {
   const reportingTimeHtml =
     data.type !== "online"
@@ -194,15 +205,7 @@ const getWelcomeCandidateOfflineHtml = (data) => {
       <p style="margin: 0; font-size: 14px;"><strong>WHATSAPP GROUP: </strong>${data.whatsapp_link ? `<a href="${data.whatsapp_link}">JOIN HERE</a>` : "- JOIN HERE"} FOR DAY-TO-DAY NOTIFICATIONS AND UPDATES.</p>
   </div>
 
-  <div class="card">
-      <div class="card-title">LOG IN REQUIREMENTS FOR CANDIDATE PLATFORM</div>
-      <ul class="info-list">
-          <li>LOG IN TO YOUR CANDIDATE SECTION USING BELOW LINK</li>
-          <li>LINK : <a href="https://molminavis.com/" >https://molminavis.com/</a></li>
-          <li>USER ID &#8211; ${data.email}</li>
-          <li>PASSWORD &#8211; ${data.password || "12345 (DEFAULT IF NOT CHANGED PREVIOUSLY)"}</li>
-      </ul>
-  </div>
+  ${getCandidateLoginRequirementHtml(data.email)}
 
   <div class="card">
       <div class="card-title">IMPORTANT NOTES</div>
@@ -289,15 +292,7 @@ const getWelcomeCandidateOnlineHtml = (data) => {
       </ul>
   </div>
 
-  <div class="card">
-      <div class="card-title">LOG IN REQUIREMENTS FOR CANDIDATE PLATFORM</div>
-      <ul class="info-list">
-          <li>LOG IN TO YOUR CANDIDATE SECTION USING BELOW LINK</li>
-          <li>LINK : <a href="https://molminavis.com/" >https://molminavis.com/</a></li>
-          <li>USER ID &#8211; ${data.email}</li>
-          <li>PASSWORD &#8211; ${data.password || "12345 (DEFAULT IF NOT CHANGED PREVIOUSLY)"}</li>
-      </ul>
-  </div>
+  ${getCandidateLoginRequirementHtml(data.email)}
 
   <div class="card">
       <div class="card-title">IMPORTANT NOTES</div>

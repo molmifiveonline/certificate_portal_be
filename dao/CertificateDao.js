@@ -154,7 +154,7 @@ class CertificateDao {
     return { id, ...data };
   }
 
-  static async getAll(search = "", filters = {}, page, limit) {
+  static async getAll(search = "", filters = {}, page, limit, sortBy = "issue_date", sortOrder = "DESC") {
     let baseQuery = `
       FROM certificates c
       LEFT JOIN users u ON c.candidate_id = u.id
@@ -203,7 +203,20 @@ class CertificateDao {
     const [countResult] = await pool.execute(countQuery, values);
     const total = countResult[0].total;
 
-    // Build data query
+    const validSortColumns = {
+      certificate_no: "c.certificate_no",
+      candidate_name: "candidate_name",
+      type: "c.type",
+      topic: "c.topic",
+      master_course_name: "mc.master_course_name",
+      issue_date: "c.issue_date",
+      status: "c.status",
+      created_at: "c.created_at"
+    };
+
+    const sortColumn = validSortColumns[sortBy] || "c.issue_date";
+    const sortDir = sortOrder && sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
+
     let dataQuery = `
       SELECT c.*, 
              COALESCE(c.from_date, ac.start_date) as from_date,
@@ -221,7 +234,7 @@ class CertificateDao {
              tp.digital_signature,
              mc.master_course_name
       ${baseQuery}
-      ORDER BY c.created_at DESC
+      ORDER BY ${sortColumn} ${sortDir}, c.issue_date DESC, c.created_at DESC, c.certificate_no DESC
     `;
 
     // Add pagination if provided
