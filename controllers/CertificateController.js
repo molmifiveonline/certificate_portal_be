@@ -12,7 +12,7 @@ const {
 
 exports.listCertificates = async (req, res) => {
   try {
-    const { search, status, active_course_id, trainer_id, candidate_id, is_hidden, page, limit } =
+    const { search, status, active_course_id, trainer_id, candidate_id, is_hidden, page, limit, sortBy, sortOrder } =
       req.query;
     const filters = { status, active_course_id, trainer_id, candidate_id, is_hidden };
 
@@ -32,6 +32,8 @@ exports.listCertificates = async (req, res) => {
       filters,
       page,
       limit,
+      sortBy,
+      sortOrder
     );
     res.status(200).json(certificates);
   } catch (error) {
