@@ -135,10 +135,10 @@ class FeedbackAnswerDao {
 
     if (filters.search) {
       whereClauses.push(
-        `(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`,
+        `(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR c.course_name LIKE ?)`,
       );
       const searchTerm = `%${filters.search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (filters.active_course_id) {
@@ -251,10 +251,10 @@ class FeedbackAnswerDao {
 
     if (filters.search) {
       whereClauses.push(
-        `(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)`,
+        `(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR c.course_name LIKE ?)`,
       );
       const searchTerm = `%${filters.search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (filters.active_course_id) {

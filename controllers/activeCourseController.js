@@ -512,7 +512,14 @@ exports.emailCandidate = async (req, res) => {
     // Enforce strict check for Offline Course Welcome Letter
     if (type === "offline") {
       const venue = await CourseEnrollmentDao.getCandidateVenueDetails(courseId, candidateId);
-      if (!venue || !venue.venue_name || !venue.venue_address || !venue.venue_contact || !venue.from_date || !venue.to_date) {
+      const venueName = String(venue?.venue_name || "").trim();
+      const isLocalVenue = venueName.toLowerCase() === "local";
+      const missingVenueDates = !venue?.from_date || !venue?.to_date;
+      const missingHotelDetails =
+        !isLocalVenue &&
+        (!venueName || !venue?.venue_address || !venue?.venue_contact);
+
+      if (!venue || missingVenueDates || missingHotelDetails) {
         return res.status(400).json({ 
           message: "Hotel details and venue date range must be entered for candidate before sending offline welcome letter." 
         });
