@@ -111,8 +111,21 @@ class FeedbackFormDao {
       [id],
     );
 
+    const seenQuestionKeys = new Set();
+    const uniqueQuestions = questions.filter((q) => {
+      const key = [
+        q.category_id || "",
+        String(q.question || "").trim().toLowerCase().replace(/\s+/g, " "),
+        String(q.type || "").trim().toLowerCase(),
+      ].join("|");
+
+      if (seenQuestionKeys.has(key)) return false;
+      seenQuestionKeys.add(key);
+      return true;
+    });
+
     // Get Options for these questions
-    const questionIds = questions.map((q) => q.id);
+    const questionIds = uniqueQuestions.map((q) => q.id);
     let options = [];
     if (questionIds.length > 0) {
       const [optRows] = await db.query(
@@ -125,7 +138,7 @@ class FeedbackFormDao {
     // Structure the data: Group by Category
     const structuredQuestions = {};
 
-    questions.forEach((q) => {
+    uniqueQuestions.forEach((q) => {
       if (!structuredQuestions[q.category_id]) {
         structuredQuestions[q.category_id] = {
           category_name: q.category_name,

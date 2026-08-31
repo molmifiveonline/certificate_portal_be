@@ -138,6 +138,17 @@ class CourseEnrollmentDao {
     return result.affectedRows > 0;
   }
 
+  static async updateCcEmail(courseId, candidateId, ccEmail) {
+    const query =
+      "UPDATE courses_enrollment SET cc_email = ? WHERE course_id = ? AND candidate_id = ?";
+    const [result] = await pool.execute(query, [
+      ccEmail,
+      courseId,
+      candidateId,
+    ]);
+    return result.affectedRows > 0;
+  }
+
   static async updateEmailStatus(courseId, candidateId, status, emailType) {
     const query =
       "UPDATE courses_enrollment SET candidate_email_status = ?, email_type = ? WHERE course_id = ? AND candidate_id = ?";
