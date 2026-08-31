@@ -1032,4 +1032,20 @@ PREPARE assessment_answer_order_stmt FROM @assessment_answer_order_sql;
 EXECUTE assessment_answer_order_stmt;
 DEALLOCATE PREPARE assessment_answer_order_stmt;
 
-
+-- Date: 2026-08-31 - Enrolled Candidates CC Email
+-- ---------------------------------------------------------
+SET @has_courses_enrollment_cc_email := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'courses_enrollment'
+    AND COLUMN_NAME = 'cc_email'
+);
+SET @courses_enrollment_cc_email_sql := IF(
+  @has_courses_enrollment_cc_email = 0,
+  'ALTER TABLE `courses_enrollment` ADD COLUMN `cc_email` VARCHAR(255) NULL AFTER `cost`',
+  'SELECT "courses_enrollment.cc_email already exists"'
+);
+PREPARE courses_enrollment_cc_email_stmt FROM @courses_enrollment_cc_email_sql;
+EXECUTE courses_enrollment_cc_email_stmt;
+DEALLOCATE PREPARE courses_enrollment_cc_email_stmt;

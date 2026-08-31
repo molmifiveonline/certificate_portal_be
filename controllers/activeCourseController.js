@@ -769,6 +769,17 @@ exports.updateLastVessel = async (req, res) => {
   }
 };
 
+exports.updateCcEmail = async (req, res) => {
+  try {
+    const { ccEmail } = req.body;
+    await CourseEnrollmentDao.updateCcEmail(req.params.id, req.params.candidateId, ccEmail);
+    res.status(200).json({ message: "CC email updated" });
+  } catch (error) {
+    console.error("Error updating CC email:", error);
+    res.status(500).json({ message: "Error updating CC email", error: error.message });
+  }
+};
+
 exports.updateObserverStatus = async (req, res) => {
   try {
     const { isObserver } = req.body;
