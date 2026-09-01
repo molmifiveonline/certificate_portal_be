@@ -1676,12 +1676,22 @@ function normalizeTrainingActivitiesRows(courseInstances, weeks) {
         item.start_date,
         item.end_date,
       );
+    const isCancelled = item.status === "Cancelled";
+    const isPreActive =
+      Number(item.is_pre_active) === 1 || item.status === "Pre-Active";
+    const statusCategory = isCancelled
+      ? "Cancelled"
+      : isPreActive
+        ? "Pre-Active"
+        : "Active";
+
     const rowKey = [
       sectionKey,
       normalizedCode,
       (item.master_course_name || item.course_name || "Untitled Course").trim(),
       normalizeTrainingActivitiesMode(item.type_of_location),
       durationDays,
+      statusCategory,
     ].join("__");
 
     if (!grouped.has(rowKey)) {
@@ -1691,24 +1701,29 @@ function normalizeTrainingActivitiesRows(courseInstances, weeks) {
         courseName: (item.master_course_name || item.course_name || "Untitled Course").trim(),
         mode: normalizeTrainingActivitiesMode(item.type_of_location),
         durationDays,
+        status: item.status,
+        isCancelled,
+        isPreActive,
         weeklyEntries: weeks.map(() => []),
       });
     }
 
     const current = grouped.get(rowKey);
-    weeks.forEach((week, index) => {
-      const overlap = getDateRangeOverlap(
-        item.start_date,
-        item.end_date,
-        week.start,
-        week.end,
-      );
-      if (overlap) {
-        current.weeklyEntries[index].push(
-          `${padDate(overlap.start.getUTCDate())}-${padDate(overlap.end.getUTCDate())}`,
+    if (item.start_date && item.end_date) {
+      weeks.forEach((week, index) => {
+        const overlap = getDateRangeOverlap(
+          item.start_date,
+          item.end_date,
+          week.start,
+          week.end,
         );
-      }
-    });
+        if (overlap) {
+          current.weeklyEntries[index].push(
+            `${padDate(overlap.start.getUTCDate())}-${padDate(overlap.end.getUTCDate())}`,
+          );
+        }
+      });
+    }
   });
 
   const rows = Array.from(grouped.values())
@@ -1789,7 +1804,7 @@ function addTrainingActivitiesHeaderRows(worksheet, weeks) {
     sanitizeExcelText("Course Name"),
     sanitizeExcelText("Mode"),
     sanitizeExcelText("Duration Days"),
-    "",
+    sanitizeExcelText("Status"),
     sanitizeExcelText("Month"),
     ...weeks.map((week) => sanitizeExcelText(formatMonthHeaderLabel(week.start))),
   ]);
@@ -1823,16 +1838,29 @@ function addTrainingActivitiesDataRows(worksheet, rows, weekCount) {
       );
     }
 
-    worksheet.addRow([
+    let statusLabel = "Active";
+    if (item.isCancelled) {
+      statusLabel = "Cancelled";
+    } else if (item.isPreActive) {
+      statusLabel = "Pre-Active";
+    }
+
+    const dataRow = worksheet.addRow([
       item.serialNo,
       sanitizeExcelText(item.courseCode),
       sanitizeExcelText(item.courseName),
       sanitizeExcelText(item.mode),
       item.durationDays,
-      "",
+      sanitizeExcelText(statusLabel),
       "",
       ...item.weeklyEntries.map((entry) => sanitizeExcelText(entry)),
     ]);
+    if (item.isCancelled) {
+      dataRow.isCancelled = true;
+    }
+    if (item.isPreActive) {
+      dataRow.isPreActive = true;
+    }
   });
 }
 
@@ -1880,9 +1908,27 @@ function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
       TRG219_SECTION_DEFINITIONS.some(
         (section) => section.title === firstCellValue,
       );
+    const isCancelled = Boolean(row.isCancelled);
+    const isPreActive = Boolean(row.isPreActive);
 
     row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-      cell.font = cell.font || { name: "Arial", size: 10 };
+      let fontColor = undefined;
+      if (isCancelled) {
+        fontColor = { argb: "FFFF0000" };
+      } else if (columnNumber === 6) {
+        if (isPreActive) {
+          fontColor = { argb: "FFED7D31" }; // Orange for Pre-Active
+        } else {
+          fontColor = { argb: "FF00B050" }; // Green for Active
+        }
+      }
+
+      cell.font = {
+        name: "Arial",
+        size: 10,
+        bold: columnNumber === 6 && !isSectionHeader,
+        ...(fontColor ? { color: fontColor } : {}),
+      };
       cell.alignment = {
         horizontal: columnNumber === 3 ? "left" : "center",
         vertical: "middle",
