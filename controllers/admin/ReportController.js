@@ -492,6 +492,7 @@ exports.exportCertificateReport = async (req, res) => {
       "No. of Days",
       "Trainers",
       "Certificate No.",
+      "Certificate Status",
       "Course Name from Active Courses",
     ];
 
@@ -532,6 +533,7 @@ exports.exportCertificateReport = async (req, res) => {
         item.days,
         trainerStr,
         item.certificate_no,
+        Number(item.status) === 0 ? "Valid" : "Invalid",
         item.course_name,
       ];
     });
