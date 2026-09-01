@@ -1,6 +1,37 @@
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 
+const CERTIFICATE_DATE_FIELDS = new Set([
+  "from_date",
+  "to_date",
+  "issue_date",
+  "added_date",
+]);
+
+function formatDateForMysql(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeMysqlDateValue(value) {
+  if (value === null || value === "") return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatDateForMysql(value);
+  }
+  if (typeof value !== "string") return value;
+
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) return formatDateForMysql(parsed);
+
+  return value;
+}
+
 class CertificateDao {
   static async ensureCertificateSequenceTable(connection = pool) {
     await connection.execute(`
@@ -218,13 +249,15 @@ class CertificateDao {
     const sortDir = sortOrder && sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
     let dataQuery = `
-      SELECT c.*, 
-             COALESCE(c.from_date, ac.start_date) as from_date,
-             COALESCE(c.to_date, ac.end_date) as to_date,
+      SELECT c.*,
+             DATE_FORMAT(c.issue_date, '%Y-%m-%d') as issue_date,
+             DATE_FORMAT(c.added_date, '%Y-%m-%d') as added_date,
+             DATE_FORMAT(COALESCE(c.from_date, ac.start_date), '%Y-%m-%d') as from_date,
+             DATE_FORMAT(COALESCE(c.to_date, ac.end_date), '%Y-%m-%d') as to_date,
              CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
              u.email as candidate_email,
              cp.employee_id as empId,
-             cp.dob,
+             DATE_FORMAT(cp.dob, '%Y-%m-%d') as dob,
              cp.nationality,
              cp.prefix as caprefix,
              t.first_name as trainer_first_name,
@@ -260,12 +293,14 @@ class CertificateDao {
 
   static async getById(id) {
     const query = `
-      SELECT c.*, 
-             COALESCE(c.from_date, ac.start_date) as from_date,
-             COALESCE(c.to_date, ac.end_date) as to_date,
+      SELECT c.*,
+             DATE_FORMAT(c.issue_date, '%Y-%m-%d') as issue_date,
+             DATE_FORMAT(c.added_date, '%Y-%m-%d') as added_date,
+             DATE_FORMAT(COALESCE(c.from_date, ac.start_date), '%Y-%m-%d') as from_date,
+             DATE_FORMAT(COALESCE(c.to_date, ac.end_date), '%Y-%m-%d') as to_date,
              CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
              cp.employee_id as empId,
-             cp.dob,
+             DATE_FORMAT(cp.dob, '%Y-%m-%d') as dob,
              cp.officer,
              cp.nationality,
              cp.profile_image,
@@ -295,12 +330,12 @@ class CertificateDao {
              c.certificate_no,
              c.status,
              c.location,
-             c.issue_date,
+             DATE_FORMAT(c.issue_date, '%Y-%m-%d') as issue_date,
              CONCAT_WS(' ', cp.prefix, u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
-             cp.dob,
+             DATE_FORMAT(cp.dob, '%Y-%m-%d') as dob,
              mc.master_course_name,
-             COALESCE(c.from_date, ac.start_date) as from_date,
-             COALESCE(c.to_date, ac.end_date) as to_date,
+             DATE_FORMAT(COALESCE(c.from_date, ac.start_date), '%Y-%m-%d') as from_date,
+             DATE_FORMAT(COALESCE(c.to_date, ac.end_date), '%Y-%m-%d') as to_date,
              CONCAT_WS(' ', tp.prefix, t.first_name, t.last_name) as trainer_name
       FROM certificates c
       LEFT JOIN users u ON c.candidate_id = u.id
@@ -345,7 +380,9 @@ class CertificateDao {
     const filteredData = Object.keys(data)
       .filter((key) => validColumns.includes(key))
       .reduce((obj, key) => {
-        obj[key] = data[key];
+        obj[key] = CERTIFICATE_DATE_FIELDS.has(key)
+          ? normalizeMysqlDateValue(data[key])
+          : data[key];
         return obj;
       }, {});
 

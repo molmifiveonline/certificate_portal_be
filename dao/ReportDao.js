@@ -172,12 +172,6 @@ class ReportDao {
   static async getMasterCoursesByIds(names) {
     if (names.length === 0) return [];
     const placeholders = names.map(() => "?").join(",");
-    // Note: PHP used 'master_course_name' as ID in some places, check schema if needed.
-    // Assuming courses.master_course_name stores the ID or Name.
-    // Based on ActiveCourseDao: master_course_name seems to be just a name string or ID.
-    // ActiveCourseDao: req.body.topic = topicName; // Store Name in DB, not UUID
-    // But let's check MasterCourseDao if possible.
-    // For now, assuming we select by ID if names are IDs, or generic SELECT * FROM master_courses
     const query = `SELECT * FROM master_course WHERE id IN (${placeholders})`;
     const [rows] = await pool.execute(query, names);
     return rows;
@@ -198,7 +192,6 @@ class ReportDao {
   }
 
   // Retrieve full data for Certificate Report
-  // This replicates the complex join from PHP logic but adapted for new schema (Users/Profiles)
   static async getCertificateReport(startDate, endDate, filters = {}) {
     if (endDate.length === 10) endDate += " 23:59:59";
 
@@ -222,7 +215,7 @@ class ReportDao {
                     SELECT NULLIF(fallback_enrollment.status_pool, '')
                     FROM courses fallback_course
                     LEFT JOIN courses_enrollment fallback_enrollment
-                      ON fallback_enrollment.course_id = fallback_course.id
+                    ON fallback_enrollment.course_id = fallback_course.id
                      AND fallback_enrollment.candidate_id = c.candidate_id
                      AND (
                        fallback_enrollment.status != 'Deleted'
@@ -264,7 +257,7 @@ class ReportDao {
                     SELECT NULLIF(fallback_course.course_name, '')
                     FROM courses fallback_course
                     LEFT JOIN courses_enrollment fallback_enrollment
-                      ON fallback_enrollment.course_id = fallback_course.id
+                    ON fallback_enrollment.course_id = fallback_course.id
                      AND fallback_enrollment.candidate_id = c.candidate_id
                      AND (
                        fallback_enrollment.status != 'Deleted'
@@ -293,7 +286,7 @@ class ReportDao {
                     SELECT NULLIF(fallback_course.course_type, '')
                     FROM courses fallback_course
                     LEFT JOIN courses_enrollment fallback_enrollment
-                      ON fallback_enrollment.course_id = fallback_course.id
+                    ON fallback_enrollment.course_id = fallback_course.id
                      AND fallback_enrollment.candidate_id = c.candidate_id
                      AND (
                        fallback_enrollment.status != 'Deleted'
@@ -320,7 +313,7 @@ class ReportDao {
                     SELECT fallback_course.is_outhouse
                     FROM courses fallback_course
                     LEFT JOIN courses_enrollment fallback_enrollment
-                      ON fallback_enrollment.course_id = fallback_course.id
+                    ON fallback_enrollment.course_id = fallback_course.id
                      AND fallback_enrollment.candidate_id = c.candidate_id
                      AND (
                        fallback_enrollment.status != 'Deleted'
@@ -348,7 +341,7 @@ class ReportDao {
                     SELECT NULLIF(fallback_course.course_id, '')
                     FROM courses fallback_course
                     LEFT JOIN courses_enrollment fallback_enrollment
-                      ON fallback_enrollment.course_id = fallback_course.id
+                    ON fallback_enrollment.course_id = fallback_course.id
                      AND fallback_enrollment.candidate_id = c.candidate_id
                      AND (
                        fallback_enrollment.status != 'Deleted'
@@ -484,15 +477,20 @@ class ReportDao {
         c.type_of_location,
         c.course_type,
         c.no_of_days,
+        c.status,
         DATE(c.start_date) AS start_date,
         DATE(c.end_date) AS end_date,
-        COALESCE(c.is_outhouse, 0) AS is_outhouse
+        COALESCE(c.is_outhouse, 0) AS is_outhouse,
+        COALESCE(c.is_pre_active, 0) AS is_pre_active
       FROM courses c
-      WHERE c.start_date IS NOT NULL
-        AND c.end_date IS NOT NULL
-        AND c.status NOT IN ('Deleted', 'Cancelled')
-        AND DATE(c.start_date) <= ?
-        AND DATE(c.end_date) >= ?
+      WHERE c.status NOT IN ('Deleted')
+        AND (
+          (c.start_date IS NOT NULL AND c.end_date IS NOT NULL
+           AND DATE(c.start_date) <= ? AND DATE(c.end_date) >= ?)
+          OR
+          ((c.status = 'Pre-Active' OR COALESCE(c.is_pre_active, 0) = 1)
+           AND (c.start_date IS NULL OR c.end_date IS NULL))
+        )
       ORDER BY DATE(c.start_date) ASC, c.course_name ASC
     `;
 
