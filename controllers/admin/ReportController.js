@@ -285,10 +285,10 @@ exports.exportFeedbackReport = async (req, res) => {
         : "";
 
       const masterCourseName =
-        course.course_name ||
         masterCoursesMap[course.master_course_id] ||
         masterCoursesMap[course.master_course_name] ||
         course.master_course_name ||
+        course.course_name ||
         course.course_id ||
         "";
 
@@ -937,11 +937,11 @@ exports.bulkDownloadFeedbackPDFs = async (req, res) => {
             : "N/A";
 
         masterCourseName =
-          courseDetails.course_name ||
           (resolvedMasterCourseName !== "N/A"
             ? resolvedMasterCourseName
             : "") ||
           courseDetails.master_course_name ||
+          courseDetails.course_name ||
           "N/A";
       }
 
