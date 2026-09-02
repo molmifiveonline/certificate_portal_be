@@ -1351,9 +1351,9 @@ function buildTrainingRecordWorkbook(year, rows) {
   ];
 
   addTrainingRecordHeader(worksheet, year);
-  addTrainingRecordRows(worksheet, rows);
+  const subTotalRowNumbers = addTrainingRecordRows(worksheet, rows);
   const totalRowNumbers = addTrainingRecordTotals(worksheet, rows);
-  styleTrainingRecordSheet(worksheet, totalRowNumbers);
+  styleTrainingRecordSheet(worksheet, [...subTotalRowNumbers, totalRowNumbers]);
 
   return workbook;
 }
@@ -1393,14 +1393,27 @@ function addTrainingRecordTableHeader(worksheet) {
 }
 
 function addTrainingRecordRows(worksheet, rows) {
+  const subTotalRowNumbers = [];
   let currentSection = "";
+  let currentSectionRows = [];
+
+  const addSubTotalsIfAny = () => {
+    if (currentSectionRows.length > 0) {
+      const subtotals = addTrainingRecordSectionTotals(worksheet, currentSectionRows, currentSection);
+      subTotalRowNumbers.push(subtotals);
+    }
+  };
 
   rows.forEach((item) => {
     if (item.section !== currentSection) {
+      addSubTotalsIfAny();
       currentSection = item.section;
+      currentSectionRows = [];
       addTrainingRecordSectionHeader(worksheet, currentSection);
       addTrainingRecordTableHeader(worksheet);
     }
+
+    currentSectionRows.push(item);
 
     const timeRowNumber = worksheet.rowCount + 1;
     const traineeRowNumber = timeRowNumber + 1;
@@ -1440,6 +1453,10 @@ function addTrainingRecordRows(worksheet, rows) {
       wrapText: true,
     };
   });
+
+  addSubTotalsIfAny();
+
+  return subTotalRowNumbers;
 }
 
 function addTrainingRecordSectionHeader(worksheet, section) {
@@ -1459,6 +1476,80 @@ function addTrainingRecordSectionHeader(worksheet, section) {
     left: { style: "thin" },
     bottom: { style: "thin" },
     right: { style: "thin" },
+  };
+}
+
+function addTrainingRecordSectionTotals(worksheet, rows, section) {
+  const monthlyTimeTotals = Array(12).fill(0);
+  const monthlyTraineeTotals = Array(12).fill(0);
+  const monthlyMandaysTotals = Array(12).fill(0);
+
+  let totalTime = 0;
+  let totalTrainees = 0;
+  let totalMandays = 0;
+
+  rows.forEach((item) => {
+    totalTime += item.totalTime;
+    totalTrainees += item.totalTrainees;
+    totalMandays += item.totalMandays;
+
+    item.monthlyTime.forEach((value, index) => {
+      monthlyTimeTotals[index] += value;
+    });
+
+    item.monthlyTrainees.forEach((value, index) => {
+      monthlyTraineeTotals[index] += value;
+      monthlyMandaysTotals[index] += item.monthlyMandays[index] || 0;
+    });
+  });
+
+  const totalTimeRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "TOTAL TIME",
+    "",
+    "",
+    "",
+    ...monthlyTimeTotals.map(toDisplayValue),
+    toDisplayValue(totalTime),
+    "",
+    "",
+    "",
+  ]);
+
+  const totalTraineesRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "Total \r\nTrainees",
+    "",
+    "",
+    "",
+    ...monthlyTraineeTotals.map(toDisplayValue),
+    toDisplayValue(totalTime),
+    toDisplayValue(totalTrainees),
+    toDisplayValue(totalMandays),
+    "",
+  ]);
+
+  const spacerRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([]);
+
+  const totalMandaysRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "",
+    "TOTAL MAN DAYS",
+    "",
+    "", // Leaving label empty for section totals
+    ...monthlyMandaysTotals.map(toDisplayValue),
+    "",
+    "",
+    toDisplayValue(totalMandays),
+    "",
+  ]);
+
+  return {
+    totalTimeRowNumber,
+    totalTraineesRowNumber,
+    spacerRowNumber,
+    totalMandaysRowNumber,
   };
 }
 
@@ -1536,7 +1627,7 @@ function addTrainingRecordTotals(worksheet, rows) {
   };
 }
 
-function styleTrainingRecordSheet(worksheet, totalRowNumbers) {
+function styleTrainingRecordSheet(worksheet, allTotalRowNumbers) {
   [1, 2, 3, 4, 5, 6, 7].forEach((rowNumber) => {
     worksheet.getRow(rowNumber).font = { name: "Arial", bold: rowNumber <= 7 };
   });
@@ -1584,27 +1675,29 @@ function styleTrainingRecordSheet(worksheet, totalRowNumbers) {
     }
   }
 
-  worksheet.getRow(totalRowNumbers.totalTimeRowNumber).font = {
-    name: "Arial",
-    bold: true,
-    size: 10,
-  };
-  worksheet.getRow(totalRowNumbers.totalTraineesRowNumber).font = {
-    name: "Arial",
-    bold: true,
-    size: 10,
-  };
-  worksheet.getRow(totalRowNumbers.totalMandaysRowNumber).font = {
-    name: "Arial",
-    bold: true,
-    size: 10,
-  };
-  worksheet.getRow(totalRowNumbers.spacerRowNumber).eachCell(
-    { includeEmpty: true },
-    (cell) => {
-      cell.border = {};
-    },
-  );
+  allTotalRowNumbers.forEach((totalRowNumbers) => {
+    worksheet.getRow(totalRowNumbers.totalTimeRowNumber).font = {
+      name: "Arial",
+      bold: true,
+      size: 10,
+    };
+    worksheet.getRow(totalRowNumbers.totalTraineesRowNumber).font = {
+      name: "Arial",
+      bold: true,
+      size: 10,
+    };
+    worksheet.getRow(totalRowNumbers.totalMandaysRowNumber).font = {
+      name: "Arial",
+      bold: true,
+      size: 10,
+    };
+    worksheet.getRow(totalRowNumbers.spacerRowNumber).eachCell(
+      { includeEmpty: true },
+      (cell) => {
+        cell.border = {};
+      },
+    );
+  });
 
   for (let rowNumber = 9; rowNumber <= worksheet.rowCount; rowNumber += 2) {
     const row = worksheet.getRow(rowNumber);
