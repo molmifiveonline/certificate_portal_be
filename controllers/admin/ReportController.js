@@ -209,7 +209,11 @@ exports.exportFeedbackReport = async (req, res) => {
     const trainers = await ReportDao.getTrainersByIds(trainerIds);
 
     const masterCourseIds = [
-      ...new Set(courses.map((c) => c.master_course_name)),
+      ...new Set(
+        courses
+          .map((c) => c.master_course_id || c.master_course_name)
+          .filter(Boolean),
+      ),
     ];
     const masterCourses =
       await ReportDao.getMasterCoursesByIds(masterCourseIds);
@@ -281,7 +285,12 @@ exports.exportFeedbackReport = async (req, res) => {
         : "";
 
       const masterCourseName =
-        masterCoursesMap[course.master_course_name] || course.course_name;
+        course.course_name ||
+        masterCoursesMap[course.master_course_id] ||
+        masterCoursesMap[course.master_course_name] ||
+        course.master_course_name ||
+        course.course_id ||
+        "";
 
       // Secondary Trainers
       let secondaryTrainerNames = [];
@@ -919,8 +928,21 @@ exports.bulkDownloadFeedbackPDFs = async (req, res) => {
               ? masterCourse.master_course_name
               : "N/A";
           }
-          masterCourseName = masterCoursesMap[courseDetails.master_course_id];
         }
+
+        const resolvedMasterCourseName =
+          courseDetails.master_course_id &&
+          masterCoursesMap[courseDetails.master_course_id]
+            ? masterCoursesMap[courseDetails.master_course_id]
+            : "N/A";
+
+        masterCourseName =
+          courseDetails.course_name ||
+          (resolvedMasterCourseName !== "N/A"
+            ? resolvedMasterCourseName
+            : "") ||
+          courseDetails.master_course_name ||
+          "N/A";
       }
 
       const feedbackRows = [
