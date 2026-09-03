@@ -1169,7 +1169,8 @@ exports.exportHotelReport = async (req, res) => {
       "Course Start Date",
       "Course End Date",
       "Hotel Start Date",
-      "Hotel End Date"
+      "Hotel End Date",
+      "Cost"
     ];
 
     const headerRow = worksheet.addRow(headers);
@@ -1199,7 +1200,8 @@ exports.exportHotelReport = async (req, res) => {
         row.start_date ? new Date(row.start_date).toLocaleDateString("en-GB") : "-",
         row.end_date ? new Date(row.end_date).toLocaleDateString("en-GB") : "-",
         row.hotel_from_date ? new Date(row.hotel_from_date).toLocaleDateString("en-GB") : "-",
-        row.hotel_to_date ? new Date(row.hotel_to_date).toLocaleDateString("en-GB") : "-"
+        row.hotel_to_date ? new Date(row.hotel_to_date).toLocaleDateString("en-GB") : "-",
+        row.cost !== null && row.cost !== undefined ? row.cost : "-"
       ]);
       dataRow.eachCell(cell => {
           cell.alignment = { vertical: "middle" };

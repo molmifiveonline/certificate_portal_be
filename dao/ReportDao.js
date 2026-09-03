@@ -513,7 +513,8 @@ class ReportDao {
         u.first_name,
         u.middle_name,
         u.last_name,
-        cp.employee_id
+        cp.employee_id,
+        ce.cost
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
