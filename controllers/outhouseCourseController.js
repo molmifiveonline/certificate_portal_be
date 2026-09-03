@@ -39,6 +39,8 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
     <p>You have been enrolled in the outhouse course <strong>${course.course_name}</strong>.</p>
     <p><strong>Start Date:</strong> ${course.start_date}</p>
     <p><strong>End Date:</strong> ${course.end_date}</p>
+    <p><strong>Start Time:</strong> ${course.start_time || "09:30"} IST</p>
+    <p><strong>End Time:</strong> ${course.end_time || "17:30"} IST</p>
   `;
 
   if ((course.type_of_location || "").toLowerCase() === "online") {

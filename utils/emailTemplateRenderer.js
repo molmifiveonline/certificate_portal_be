@@ -494,10 +494,10 @@ const getCourseCandidateHtml = (data) => {
           <li><strong>Course ID:</strong> ${data.course_id}</li>
           <li><strong>Duration:</strong> ${data.duration} days, from <strong>${data.start_date}</strong> to <strong>${data.end_date}</strong></li>
           <li><strong>Primary Trainer:</strong> ${data.trainer_name || "Not Mentioned"}</li>
-          <li><strong>Course reporting Time:</strong> 09:15 HRS at IST , UTC – TIMING
+          <li><strong>Course reporting Time:</strong> ${data.reporting_time || "09:15"} HRS at IST , UTC – TIMING
               <ul style="list-style: none; padding-left: 15px; margin-top: 4px;">
-                  <li><strong>Course start Time:</strong> 09:30 HRS at IST</li>
-                  <li><strong>Course end Time:</strong> 17:30 HRS at IST</li>
+                  <li><strong>Course start Time:</strong> ${data.start_time || "09:30"} HRS at IST</li>
+                  <li><strong>Course end Time:</strong> ${data.end_time || "17:30"} HRS at IST</li>
               </ul>
           </li>
           <li><strong>Location Type:</strong> ${data.location_type || ""}</li>
