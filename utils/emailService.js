@@ -12,14 +12,20 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const sendEmail = async (to, subject, html) => {
+const sendEmail = async (to, subject, html, cc = null) => {
   try {
-    const info = await transporter.sendMail({
+    const mailOptions = {
       from: process.env.SMTP_FROM,
       to,
       subject,
       html,
-    });
+    };
+    
+    if (cc) {
+      mailOptions.cc = cc;
+    }
+    
+    const info = await transporter.sendMail(mailOptions);
     console.log("Message sent: %s", info.messageId);
     return info;
   } catch (error) {

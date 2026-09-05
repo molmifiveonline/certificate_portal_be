@@ -492,7 +492,7 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
     });
   }
 
-  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html);
+  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html, candidateEnrollment.cc_email);
   await CourseEnrollmentDao.updateEmailStatus(course.id, candidateEnrollment.candidate_id, 1, type === "online" ? "Online" : "Offline");
 };
 
@@ -833,7 +833,7 @@ exports.sendAssessmentEmail = async (req, res) => {
     const { candidateId, assessmentId } = req.body;
     const pool = require("../config/db");
     const [candidateRows] = await pool.execute(
-      `SELECT u.first_name, u.last_name, u.email, ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool
+      `SELECT u.first_name, u.last_name, u.email, ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool, ce.cc_email
        FROM users u
        JOIN courses_enrollment ce ON u.id = ce.candidate_id AND ce.course_id = ?
        WHERE u.id = ?`,
@@ -856,7 +856,7 @@ exports.sendAssessmentEmail = async (req, res) => {
     const score = await pool.execute("SELECT score FROM assessment_results WHERE assessment_id = ? AND candidate_id = ? AND course_id = ? AND status = 'Completed' ORDER BY attempt_number DESC LIMIT 1", [assessmentId, candidateId, id]);
 
     const html = getAssessmentResultTemplate(`${candidate.first_name} ${candidate.last_name}`, course.course_name, assessmentRows[0]?.type_of_test, score[0][0]?.score || 0);
-    await emailService.sendEmail(candidate.email, `Assessment Results - ${course.course_name}`, html);
+    await emailService.sendEmail(candidate.email, `Assessment Results - ${course.course_name}`, html, candidate.cc_email);
     res.status(200).json({ message: "Email sent" });
   } catch (error) {
     console.error("Error sending assessment email:", error);
@@ -984,8 +984,11 @@ exports.generateCertificate = async (req, res) => {
     try {
       if (candidateId) {
         const [candidateRows] = await pool.execute(
-          "SELECT first_name, last_name, email FROM users WHERE id = ?",
-          [candidateId],
+          `SELECT u.first_name, u.last_name, u.email, ce.cc_email
+           FROM users u
+           LEFT JOIN courses_enrollment ce ON u.id = ce.candidate_id AND ce.course_id = ?
+           WHERE u.id = ?`,
+          [activeCourseId, candidateId],
         );
         const candidate = candidateRows[0];
 
@@ -999,6 +1002,7 @@ exports.generateCertificate = async (req, res) => {
             candidate.email,
             `Certificate Generated - ${course.course_name}`,
             html,
+            candidate.cc_email
           );
         }
       }
@@ -1067,7 +1071,8 @@ exports.sendFeedbackEmail = async (req, res) => {
         await emailService.sendEmail(
           candidate.email,
           `Course Feedback Request - ${course.course_name}`,
-          html
+          html,
+          candidate.cc_email
         );
         count++;
       }
