@@ -69,6 +69,7 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
     candidate.email,
     `Welcome Letter - ${course.course_name}`,
     html,
+    candidate.cc_email,
   );
 
   await CourseEnrollmentDao.updateEmailStatus(
