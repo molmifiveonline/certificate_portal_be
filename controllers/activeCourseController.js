@@ -30,6 +30,16 @@ const getCourseLocationDetails = async (course = {}) => {
         map_link: location.google_map_link || "",
       };
     }
+    
+    // Fallback: location_id might contain a location name (legacy data)
+    const locationByName = await LocationDao.getLocationByName(course.location_id);
+    if (locationByName) {
+      return {
+        name: locationByName.location_name || "",
+        address: locationByName.address || "",
+        map_link: locationByName.google_map_link || "",
+      };
+    }
   }
 
   return {
