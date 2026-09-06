@@ -73,6 +73,14 @@ class LocationDao {
     return rows[0];
   }
 
+  static async getLocationByName(name) {
+    const [rows] = await db.query(
+      "SELECT * FROM locations WHERE location_name = ? AND status = 1",
+      [name]
+    );
+    return rows[0];
+  }
+
   static async createLocation(data) {
     const id = uuidv4();
     const {
