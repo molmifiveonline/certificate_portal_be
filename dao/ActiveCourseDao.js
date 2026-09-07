@@ -120,6 +120,7 @@ class ActiveCourseDao {
       joinClause +=
         " JOIN courses_enrollment ce ON c.id = ce.course_id AND ce.candidate_id = ?";
       whereParams.push(filters.candidate_id);
+      whereClause += " AND (ce.status != 'Deleted' OR ce.status IS NULL)";
     }
 
     if (search) {
