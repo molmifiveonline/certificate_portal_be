@@ -19,6 +19,30 @@ const {
 const { generateTrainingReportPdf } = require("../utils/trainingReportPdf");
 const { getFrontendUrl } = require("../utils/urlUtils");
 
+const hasPassedPostAssessment = async (courseId, candidateId) => {
+  const [rows] = await pool.execute(
+    `SELECT ar.score, ar.attempt_number
+     FROM assessment_results ar
+     JOIN assessment a ON ar.assessment_id = a.id
+     WHERE ar.candidate_id = ?
+       AND ar.course_id = ?
+       AND a.course_id = ar.course_id
+       AND a.type_of_test IN ('Post', '2')
+       AND ar.status = 'Completed'
+     ORDER BY ar.attempt_number DESC, ar.created_at DESC
+     LIMIT 1`,
+    [candidateId, courseId],
+  );
+
+  if (rows.length === 0) return false;
+
+  const score = Number(rows[0].score);
+  const attempt = Number(rows[0].attempt_number) || 1;
+  const requiredScore = attempt > 1 ? 70 : 60;
+
+  return !Number.isNaN(score) && score >= requiredScore;
+};
+
 const getCourseLocationDetails = async (course = {}) => {
   if (course.location_id) {
     const LocationDao = require("../dao/LocationDao");
@@ -1072,6 +1096,12 @@ exports.sendFeedbackEmail = async (req, res) => {
         [candidate.candidate_id || candidate.id, id]
       );
       if (existing.length > 0) continue; // Skip if already submitted
+
+      const passedPostAssessment = await hasPassedPostAssessment(
+        id,
+        candidate.candidate_id || candidate.id,
+      );
+      if (!passedPostAssessment) continue;
 
       if (candidate.email) {
         const html = getFeedbackRequestTemplate(

@@ -27,18 +27,70 @@ const checkPostAssessmentStatus = async (courseId, candidateId) => {
   const postAssessmentExists = postAssessmentRows.length > 0;
 
   let postAssessmentCompleted = false;
+  let postAssessmentPassed = false;
+  let postAssessmentScore = null;
+  let postAssessmentAttempt = null;
+  let requiredScore = null;
+
   if (postAssessmentExists) {
-    const postAssessmentId = postAssessmentRows[0].id;
     const [resultRows] = await pool.execute(
-      `SELECT id FROM assessment_results 
-       WHERE assessment_id = ? AND candidate_id = ? AND course_id = ? AND status = 'Completed'
+      `SELECT ar.id, ar.score, ar.attempt_number
+       FROM assessment_results ar
+       JOIN assessment a ON ar.assessment_id = a.id
+       WHERE ar.candidate_id = ?
+         AND ar.course_id = ?
+         AND a.course_id = ar.course_id
+         AND a.type_of_test IN ('Post', '2')
+         AND ar.status = 'Completed'
+       ORDER BY ar.attempt_number DESC, ar.created_at DESC
        LIMIT 1`,
-      [postAssessmentId, candidateId, courseId]
+      [candidateId, courseId]
     );
     postAssessmentCompleted = resultRows.length > 0;
+    if (postAssessmentCompleted) {
+      const latestResult = resultRows[0];
+      postAssessmentScore = Number(latestResult.score);
+      postAssessmentAttempt = Number(latestResult.attempt_number) || 1;
+      requiredScore = postAssessmentAttempt > 1 ? 70 : 60;
+      postAssessmentPassed =
+        !Number.isNaN(postAssessmentScore) &&
+        postAssessmentScore >= requiredScore;
+    }
   }
 
-  return { postAssessmentExists, postAssessmentCompleted };
+  return {
+    postAssessmentExists,
+    postAssessmentCompleted,
+    postAssessmentPassed,
+    postAssessmentScore,
+    postAssessmentAttempt,
+    requiredScore,
+  };
+};
+
+const sendPostAssessmentError = (res, status) => {
+  if (!status.postAssessmentExists) {
+    return res.status(400).json({
+      message:
+        "Post-assessment has not been created for this course. Feedback cannot be submitted yet.",
+    });
+  }
+
+  if (!status.postAssessmentCompleted) {
+    return res.status(400).json({
+      message:
+        "You must complete the post-course assessment before submitting feedback.",
+    });
+  }
+
+  if (!status.postAssessmentPassed) {
+    return res.status(400).json({
+      message:
+        "You must pass the post-course assessment before submitting feedback. First attempt requires at least 60%; retest requires at least 70%.",
+    });
+  }
+
+  return null;
 };
 
 class FeedbackAnswerController {
@@ -55,22 +107,15 @@ class FeedbackAnswerController {
         return res.status(400).json({ message: "Invalid input data" });
       }
 
-      const { postAssessmentExists, postAssessmentCompleted } =
-        await checkPostAssessmentStatus(active_course_id, candidate_id);
-
-      if (!postAssessmentExists) {
-        return res.status(400).json({
-          message:
-            "Post-assessment has not been created for this course. Feedback cannot be submitted yet.",
-        });
-      }
-
-      if (!postAssessmentCompleted) {
-        return res.status(400).json({
-          message:
-            "You must complete the post-course assessment before submitting feedback.",
-        });
-      }
+      const postAssessmentStatus = await checkPostAssessmentStatus(
+        active_course_id,
+        candidate_id,
+      );
+      const postAssessmentError = sendPostAssessmentError(
+        res,
+        postAssessmentStatus,
+      );
+      if (postAssessmentError) return postAssessmentError;
 
       const results = [];
       for (const ans of answers) {
@@ -465,8 +510,10 @@ class FeedbackAnswerController {
         return res.status(404).json({ message: "Course not found" });
       }
 
-      const { postAssessmentExists, postAssessmentCompleted } =
-        await checkPostAssessmentStatus(courseId, candidateId);
+      const postAssessmentStatus = await checkPostAssessmentStatus(
+        courseId,
+        candidateId,
+      );
 
       const FeedbackFormDao = require("../dao/FeedbackFormDao");
       const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
@@ -478,8 +525,7 @@ class FeedbackAnswerController {
         answers: hasSubmitted ? existingAnswers : null,
         form,
         feedbackCourseType,
-        postAssessmentExists,
-        postAssessmentCompleted,
+        ...postAssessmentStatus,
         message: form
           ? undefined
           : `No active ${feedbackCourseType} feedback form configured`,
@@ -502,22 +548,15 @@ class FeedbackAnswerController {
         return res.status(400).json({ message: "Invalid input data" });
       }
 
-      const { postAssessmentExists, postAssessmentCompleted } =
-        await checkPostAssessmentStatus(active_course_id, candidate_id);
-
-      if (!postAssessmentExists) {
-        return res.status(400).json({
-          message:
-            "Post-assessment has not been created for this course. Feedback cannot be submitted yet.",
-        });
-      }
-
-      if (!postAssessmentCompleted) {
-        return res.status(400).json({
-          message:
-            "You must complete the post-course assessment before submitting feedback.",
-        });
-      }
+      const postAssessmentStatus = await checkPostAssessmentStatus(
+        active_course_id,
+        candidate_id,
+      );
+      const postAssessmentError = sendPostAssessmentError(
+        res,
+        postAssessmentStatus,
+      );
+      if (postAssessmentError) return postAssessmentError;
 
       const results = [];
       for (const ans of answers) {
