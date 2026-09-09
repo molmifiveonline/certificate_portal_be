@@ -424,7 +424,8 @@ class CourseEnrollmentDao {
         pre_res.total_questions as pre_total,
         post_res.assessment_id as post_assessment_id,
         post_res.score as post_score,
-        post_res.total_questions as post_total
+        post_res.total_questions as post_total,
+        post_res.attempt_number as post_score_attempt
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -435,10 +436,19 @@ class CourseEnrollmentDao {
         WHERE ar.course_id = ? AND a.type_of_test IN ('Pre', '1') AND ar.status = 'Completed'
       ) pre_res ON ce.candidate_id = pre_res.candidate_id
       LEFT JOIN (
-        SELECT ar.candidate_id, ar.assessment_id, ar.score, ar.total_questions
-        FROM assessment_results ar
-        JOIN assessment a ON ar.assessment_id = a.id
-        WHERE ar.course_id = ? AND a.type_of_test IN ('Post', '2') AND ar.status = 'Completed'
+        SELECT ar1.candidate_id, ar1.assessment_id, ar1.score, ar1.total_questions, ar1.attempt_number
+        FROM assessment_results ar1
+        JOIN assessment a1 ON ar1.assessment_id = a1.id
+        WHERE ar1.course_id = ? AND a1.type_of_test IN ('Post', '2') AND ar1.status = 'Completed'
+          AND ar1.attempt_number = (
+            SELECT MAX(ar2.attempt_number)
+            FROM assessment_results ar2
+            JOIN assessment a2 ON ar2.assessment_id = a2.id
+            WHERE ar2.candidate_id = ar1.candidate_id 
+              AND ar2.course_id = ar1.course_id 
+              AND a2.type_of_test IN ('Post', '2') 
+              AND ar2.status = 'Completed'
+          )
       ) post_res ON ce.candidate_id = post_res.candidate_id
       WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
     `;
