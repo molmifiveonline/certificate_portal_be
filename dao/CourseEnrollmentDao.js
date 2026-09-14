@@ -90,6 +90,7 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.*, ce.is_observer,
+        COALESCE(NULLIF(ce.status_pool, ''), cp.status_pool) as status_pool,
         u.first_name, u.middle_name, u.last_name, u.email, u.mobile, 
         CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
@@ -118,14 +119,33 @@ class CourseEnrollmentDao {
   }
 
   static async updateStatusPool(courseId, candidateId, statusPool) {
-    const query =
-      "UPDATE courses_enrollment SET status_pool = ? WHERE course_id = ? AND candidate_id = ?";
-    const [result] = await pool.execute(query, [
-      statusPool,
-      courseId,
-      candidateId,
-    ]);
-    return result.affectedRows > 0;
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const query1 =
+        "UPDATE courses_enrollment SET status_pool = ? WHERE course_id = ? AND candidate_id = ?";
+      const [result1] = await connection.execute(query1, [
+        statusPool,
+        courseId,
+        candidateId,
+      ]);
+
+      const query2 =
+        "UPDATE candidate_profiles SET status_pool = ? WHERE user_id = ?";
+      const [result2] = await connection.execute(query2, [
+        statusPool,
+        candidateId,
+      ]);
+
+      await connection.commit();
+      return result1.affectedRows > 0 || result2.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   static async updateLastVessel(courseId, candidateId, lastVessel) {
@@ -178,7 +198,7 @@ class CourseEnrollmentDao {
         CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         cp.dob, cp.nationality, cp.designation, cp.rank, cp.employee_id as empId,
         cp.passport_no as cdc_passport, cp.passport_no, cp.seaman_book_no,
-        cp.manning_company as manager, cp.manning_company, cp.vessel_type as status_pool,
+        cp.manning_company as manager, cp.manning_company, cp.vessel_type, cp.status_pool,
         cp.last_vessel_name as last_vessel, cp.indos_number, cp.registration_type,
         (
           SELECT MAX(cert.issue_date)

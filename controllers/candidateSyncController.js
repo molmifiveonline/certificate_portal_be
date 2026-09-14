@@ -41,6 +41,14 @@ const normalizeSyncDate = (value) => {
   return parsedDate.toISOString().split("T")[0];
 };
 
+const getCurrentSyncDate = () => {
+  const currentDate = new Date();
+  const year = currentDate.getFullYear();
+  const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+  const day = String(currentDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const mapPersonnelToCandidates = (personnel = []) =>
   personnel.map((item) => ({
     first_name: item["First Name"] || "",
@@ -126,7 +134,7 @@ const fetchExternalPreview = async (req, res) => {
       return res.json({
         data: [],
         message: "No data found for the selected date.",
-        lastSyncedDate: normalizedSyncDate,
+        sourceSyncDate: normalizedSyncDate,
       });
     }
 
@@ -136,7 +144,7 @@ const fetchExternalPreview = async (req, res) => {
     res.json({
       data: dataWithStatus,
       total: dataWithStatus.length,
-      lastSyncedDate: normalizedSyncDate,
+      sourceSyncDate: normalizedSyncDate,
     });
   } catch (error) {
     console.error("Fetch external preview error:", error.message);
@@ -170,6 +178,7 @@ const confirmBulkImport = async (req, res) => {
     const { changes = [], ...stats } = syncResult;
 
     await persistSyncHistory(changes, normalizedSyncDate);
+    const completedSyncDate = getCurrentSyncDate();
 
     await LogDao.createLog({
       user_id: userId,
@@ -183,7 +192,8 @@ const confirmBulkImport = async (req, res) => {
     res.json({
       message: "Import completed successfully",
       stats,
-      lastSyncedDate: normalizedSyncDate,
+      sourceSyncDate: normalizedSyncDate,
+      lastSyncedDate: completedSyncDate,
     });
   } catch (error) {
     console.error("Confirm bulk import error:", error.message);
@@ -230,7 +240,8 @@ const importFromApi = async (req, res) => {
       return res.json({
         message: "No data found to import.",
         stats: { inserted: 0, updated: 0 },
-        lastSyncedDate: normalizedSyncDate,
+        sourceSyncDate: normalizedSyncDate,
+        lastSyncedDate: getCurrentSyncDate(),
       });
     }
 
@@ -243,6 +254,7 @@ const importFromApi = async (req, res) => {
     const { changes = [], ...stats } = syncResult;
 
     await persistSyncHistory(changes, normalizedSyncDate);
+    const completedSyncDate = getCurrentSyncDate();
 
     await LogDao.createLog({
       user_id: req.user?.id || 1,
@@ -256,7 +268,8 @@ const importFromApi = async (req, res) => {
     res.json({
       message: "Direct import completed successfully",
       stats,
-      lastSyncedDate: normalizedSyncDate,
+      sourceSyncDate: normalizedSyncDate,
+      lastSyncedDate: completedSyncDate,
     });
   } catch (error) {
     console.error("Direct import error:", error.message);
