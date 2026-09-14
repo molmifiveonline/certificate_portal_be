@@ -782,7 +782,7 @@ const getAvailableOthersCandidates = async (courseId) => {
       cp.middle_name as profile_middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type,
       cp.nationality, cp.passport_no as cdc_passport, cp.passport_no, cp.employee_id as empId,
       cp.rank, cp.seaman_book_no, cp.designation, cp.manning_company as manager, cp.manning_company,
-      cp.vessel_type as status_pool, cp.last_vessel_name as last_vessel,
+      cp.vessel_type, cp.status_pool, cp.last_vessel_name as last_vessel,
       (
         SELECT MAX(cert.issue_date)
         FROM certificates cert
