@@ -1049,3 +1049,8 @@ SET @courses_enrollment_cc_email_sql := IF(
 PREPARE courses_enrollment_cc_email_stmt FROM @courses_enrollment_cc_email_sql;
 EXECUTE courses_enrollment_cc_email_stmt;
 DEALLOCATE PREPARE courses_enrollment_cc_email_stmt;
+
+-- Date: 2026-09-14 - Candidate Professional Info enhancements
+-- ---------------------------------------------------------
+ALTER TABLE candidate_profiles ADD COLUMN manning_agent VARCHAR(255) NULL;
+ALTER TABLE candidate_profiles ADD COLUMN fg_global VARCHAR(255) NULL;

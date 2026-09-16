@@ -565,11 +565,14 @@ class CourseEnrollmentDao {
     return rows;
   }
 
-  static async generateCertificate(courseId, candidateId, certificateId) {
-    const currentDate = new Date().toISOString().slice(0, 10);
+  static async generateCertificate(courseId, candidateId, certificateId, generationDate = null) {
+    const generatedDate = generationDate || new Date().toISOString().slice(0, 10);
     const [result] = await pool.execute(
-      "UPDATE courses_enrollment SET certficate_generated = ?, generated_date = ? WHERE course_id = ? AND candidate_id = ?",
-      [certificateId, currentDate, courseId, candidateId],
+      `UPDATE courses_enrollment
+       SET certficate_generated = ?,
+           generated_date = COALESCE(generated_date, ?)
+       WHERE course_id = ? AND candidate_id = ?`,
+      [certificateId, generatedDate, courseId, candidateId],
     );
     return result.affectedRows > 0;
   }
