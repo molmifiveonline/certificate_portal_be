@@ -953,7 +953,12 @@ exports.generateCertificate = async (req, res) => {
     const { candidateId, issueDate } = req.body;
     const existing = await CertificateDao.getByCandidateAndCourse(candidateId, activeCourseId);
     if (existing) {
-      await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, existing.id);
+      await CourseEnrollmentDao.generateCertificate(
+        activeCourseId,
+        candidateId,
+        existing.id,
+        existing.added_date || existing.issue_date,
+      );
       return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
     }
     // Check if candidate is an observer — observers cannot generate certificates
@@ -1012,7 +1017,7 @@ exports.generateCertificate = async (req, res) => {
       subid
     });
 
-    await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, newCert.id);
+    await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, newCert.id, generationDate);
 
     // Send email notification to candidate
     try {

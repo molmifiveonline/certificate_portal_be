@@ -165,6 +165,7 @@ exports.generateCertificate = async (req, res) => {
       activeCourseId,
       candidateId,
       newCertificate.id,
+      generationDate,
     );
 
     res.status(201).json({
