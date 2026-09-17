@@ -493,6 +493,8 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
       training_address: trainingLocation.address,
       training_map_link: trainingLocation.map_link,
       meeting_link: course.zoom_link,
+      zoom_username: course.zoom_username,
+      zoom_password: course.zoom_password,
       whatsapp_link: course.whatsapp_link,
       email: candidateEnrollment.email,
       approveLink,
