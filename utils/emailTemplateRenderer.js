@@ -277,6 +277,8 @@ const getWelcomeCandidateOnlineHtml = (data) => {
           <li><strong>LOCATION OF TRAINING:</strong> ${data.training_location_name || ""}</li>
           <li><strong>TRAINING MODE:</strong> Online (VIA ${data.training_platform || "ZOOM"} OR TEAMS)</li>
           <li><strong>ZOOM/TEAMS LINK:</strong> <a href="${data.meeting_link}">${data.meeting_link || ""}</a></li>
+          ${data.zoom_username ? `<li><strong>MEETING ID:</strong> ${data.zoom_username}</li>` : ""}
+          ${data.zoom_password ? `<li><strong>PASSCODE:</strong> ${data.zoom_password}</li>` : ""}
           <li><strong>WHATSAPP GROUP:</strong> <a href="${data.whatsapp_link}">Join here</a> to stay updated with day-to-day notifications.</li>
       </ul>
   </div>
