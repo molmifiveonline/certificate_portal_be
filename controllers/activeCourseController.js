@@ -468,8 +468,12 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
   }
 
   let venue = null;
+  let venueFiles = [];
   if (type === "offline") {
     venue = await CourseEnrollmentDao.getCandidateVenueDetails(course.id, candidateEnrollment.candidate_id);
+    if (venue) {
+      venueFiles = await HotelFilesDao.getFilesByEnrollmentId(venue.id);
+    }
   }
 
   const start_date = course.start_date ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '';
@@ -520,6 +524,7 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
       venue_address: venue ? venue.venue_address : '',
       venue_contact: venue ? venue.venue_contact : '',
       venue_map_link: venue ? venue.venue_map_link : '',
+      attachment_file_names: venueFiles.map(f => f.file_name),
       whatsapp_link: course.whatsapp_link,
       email: candidateEnrollment.email,
       approveLink,
@@ -528,7 +533,13 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
     });
   }
 
-  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html, candidateEnrollment.cc_email);
+  // Build email attachments from venue files
+  const emailAttachments = venueFiles.map(f => ({
+    filename: f.file_name,
+    path: path.join(__dirname, '..', 'uploads', 'venues', f.file_name),
+  }));
+
+  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html, candidateEnrollment.cc_email, emailAttachments);
   await CourseEnrollmentDao.updateEmailStatus(course.id, candidateEnrollment.candidate_id, 1, type === "online" ? "Online" : "Offline");
 };
 
