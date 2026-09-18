@@ -43,6 +43,7 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
     <p><strong>End Time:</strong> ${course.end_time || "17:30"} IST</p>
   `;
 
+  let venueFiles = [];
   if ((course.type_of_location || "").toLowerCase() === "online") {
     html += `
       <p><strong>Zoom Link:</strong> <a href="${course.zoom_link || "#"}">${course.zoom_link || "N/A"}</a></p>
@@ -50,6 +51,7 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
       <p><strong>Zoom Password:</strong> ${course.zoom_password || "-"}</p>
     `;
   } else if (venue) {
+    venueFiles = await HotelFilesDao.getFilesByEnrollmentId(venue.id);
     html += `
       <p><strong>Hotel / Venue:</strong> ${venue.venue_name || "-"}</p>
       <p><strong>Address:</strong> ${venue.venue_address || "-"}</p>
@@ -58,6 +60,14 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
       <p><strong>Offline Date:</strong> ${venue.offline_date || "-"}</p>
       <p><strong>Remarks:</strong> ${venue.remarks || "-"}</p>
     `;
+    if (venueFiles.length > 0) {
+      html += `
+      <p><strong>Documents Attached:</strong></p>
+      <ul>
+        ${venueFiles.map(f => `<li>${f.file_name}</li>`).join("")}
+      </ul>
+      `;
+    }
   }
 
   html += `
@@ -65,11 +75,18 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
     <p><a href="${approveLink}">Yes, I approve and I will be attending</a></p>
   `;
 
+  // Build email attachments from venue files
+  const emailAttachments = venueFiles.map(f => ({
+    filename: f.file_name,
+    path: path.join(__dirname, '..', 'uploads', 'venues', f.file_name),
+  }));
+
   await emailService.sendEmail(
     candidate.email,
     `Welcome Letter - ${course.course_name}`,
     html,
     candidate.cc_email,
+    emailAttachments
   );
 
   await CourseEnrollmentDao.updateEmailStatus(

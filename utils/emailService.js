@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const sendEmail = async (to, subject, html, cc = null) => {
+const sendEmail = async (to, subject, html, cc = null, attachments = []) => {
   try {
     const mailOptions = {
       from: process.env.SMTP_FROM,
@@ -23,6 +23,10 @@ const sendEmail = async (to, subject, html, cc = null) => {
     
     if (cc) {
       mailOptions.cc = cc;
+    }
+    
+    if (attachments && attachments.length > 0) {
+      mailOptions.attachments = attachments;
     }
     
     const info = await transporter.sendMail(mailOptions);

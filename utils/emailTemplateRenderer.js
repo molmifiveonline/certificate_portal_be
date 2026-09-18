@@ -138,20 +138,22 @@ const getWelcomeCandidateOfflineHtml = (data) => {
       </div>`;
   }
 
-  const docAttachedHtml =
-    data.type !== "online" &&
-    data.venue_name &&
-    data.venue_name.toLowerCase() !== "local"
-      ? `
+  let docAttachedHtml = "";
+  if (data.type !== "online" && data.venue_name && data.venue_name.toLowerCase() !== "local") {
+    const fileNames = data.attachment_file_names || [];
+    const fileListHtml = fileNames.length > 0
+      ? fileNames.map(name => `<li>${name}</li>`).join("")
+      : `<li>FLIGHT DETAILS</li>
+         <li>REIMBURSEMENT FORM</li>
+         <li>OTHER REQUIRED DOCUMENTS</li>`;
+    docAttachedHtml = `
   <div class="card">
-      <div class="card-title">DOCUMENTS ATTACHED (AS APPLICABLE)</div>
+      <div class="card-title">DOCUMENTS ATTACHED${fileNames.length > 0 ? ` (${fileNames.length})` : " (AS APPLICABLE)"}</div>
       <ul class="info-list" style="list-style: bullet; padding-left: 20px;">
-          <li>FLIGHT DETAILS</li>
-          <li>REIMBURSEMENT FORM</li>
-          <li>OTHER REQUIRED DOCUMENTS</li>
+          ${fileListHtml}
       </ul>
-  </div>`
-      : "";
+  </div>`;
+  }
 
   const medicalAssistanceHtml =
     data.type !== "online"
