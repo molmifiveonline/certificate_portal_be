@@ -110,10 +110,32 @@ const getCandidateLoginRequirementHtml = (email) => `
       </ul>
   </div>`;
 
+const getReportingTime = (startTime, defaultTime = "09:15") => {
+  if (!startTime) return defaultTime;
+  try {
+    const match = String(startTime).match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return defaultTime;
+    
+    let hours = parseInt(match[1], 10);
+    let minutes = parseInt(match[2], 10);
+    
+    minutes -= 15;
+    if (minutes < 0) {
+      minutes += 60;
+      hours -= 1;
+      if (hours < 0) hours += 24;
+    }
+    
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  } catch (e) {
+    return defaultTime;
+  }
+};
+
 const getWelcomeCandidateOfflineHtml = (data) => {
   const reportingTimeHtml =
     data.type !== "online"
-      ? `<li><strong>COURSE REPORTING TIME:</strong> ${data.reporting_time || "09:15"} IST</li>`
+      ? `<li><strong>COURSE REPORTING TIME:</strong> ${data.reporting_time || getReportingTime(data.start_time, "09:15")} IST</li>`
       : "";
 
   let venueHtml = "";
@@ -498,7 +520,7 @@ const getCourseCandidateHtml = (data) => {
           <li><strong>Course ID:</strong> ${data.course_id}</li>
           <li><strong>Duration:</strong> ${data.duration} days, from <strong>${data.start_date}</strong> to <strong>${data.end_date}</strong></li>
           <li><strong>Primary Trainer:</strong> ${data.trainer_name || "Not Mentioned"}</li>
-          <li><strong>Course reporting Time:</strong> ${data.reporting_time || "09:15"} HRS at IST , UTC – TIMING
+          <li><strong>Course reporting Time:</strong> ${data.reporting_time || getReportingTime(data.start_time, "09:15")} HRS at IST , UTC – TIMING
               <ul style="list-style: none; padding-left: 15px; margin-top: 4px;">
                   <li><strong>Course start Time:</strong> ${data.start_time || "09:30"} HRS at IST</li>
                   <li><strong>Course end Time:</strong> ${data.end_time || "17:30"} HRS at IST</li>
