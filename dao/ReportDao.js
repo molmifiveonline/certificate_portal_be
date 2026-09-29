@@ -112,13 +112,62 @@ class ReportDao {
     const coursePlaceholders = courseIds.map(() => "?").join(",");
 
     const query = `
-            SELECT candidate_id, active_course_id, feedback_question_id, answer, feedback_question_option_text 
-            FROM feedback_question_answer 
-            WHERE candidate_id IN (${candPlaceholders}) 
-            AND active_course_id IN (${coursePlaceholders})
+            SELECT
+                fqa.candidate_id,
+                fqa.active_course_id,
+                fqa.feedback_question_id,
+                fqa.feedback_category_id,
+                fqa.feedback_id,
+                fqa.answer,
+                fqa.feedback_question_option_text,
+                fqa.created_at,
+                fq.question,
+                fq.type as question_type,
+                COALESCE(fcq.name, fca.name) as category_name
+            FROM feedback_question_answer fqa
+            LEFT JOIN feedback_questions fq ON fqa.feedback_question_id = fq.id
+            LEFT JOIN feedback_categories fcq ON fq.category_id = fcq.id
+            LEFT JOIN feedback_categories fca ON fqa.feedback_category_id = fca.id
+            WHERE fqa.candidate_id IN (${candPlaceholders})
+            AND fqa.active_course_id IN (${coursePlaceholders})
+            ORDER BY fqa.created_at ASC, fqa.id ASC
         `;
 
     const params = [...candidateIds, ...courseIds];
+    const [rows] = await pool.execute(query, params);
+    return rows;
+  }
+
+  static async getFeedbackAnswersForPairs(pairs) {
+    if (!pairs || pairs.length === 0) return [];
+
+    const pairPlaceholders = pairs.map(() => "(?, ?)").join(",");
+    const params = pairs.flatMap((pair) => [
+      pair.candidate_id,
+      pair.active_course_id,
+    ]);
+
+    const query = `
+            SELECT
+                fqa.candidate_id,
+                fqa.active_course_id,
+                fqa.feedback_question_id,
+                fqa.feedback_category_id,
+                fqa.feedback_id,
+                fqa.answer,
+                fqa.feedback_question_option_text,
+                fqa.created_at,
+                fq.question,
+                fq.type as question_type,
+                COALESCE(fcq.name, fca.name) as category_name
+            FROM feedback_question_answer fqa
+            LEFT JOIN feedback_questions fq ON fqa.feedback_question_id = fq.id
+            LEFT JOIN feedback_categories fcq ON fq.category_id = fcq.id
+            LEFT JOIN feedback_categories fca ON fqa.feedback_category_id = fca.id
+            WHERE (fqa.candidate_id, fqa.active_course_id) IN (${pairPlaceholders})
+            ORDER BY fqa.created_at ASC, fqa.id ASC
+        `;
+
     const [rows] = await pool.execute(query, params);
     return rows;
   }

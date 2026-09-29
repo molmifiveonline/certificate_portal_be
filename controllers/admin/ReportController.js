@@ -36,11 +36,23 @@ const LEGACY_FEEDBACK_META_HEADERS = [
 ];
 
 const LEGACY_FEEDBACK_RATING_COLUMNS = [
-  { question: "Clarity of objectives.", category: "TRAINING COURSE OBJECTIVE" },
-  { question: "Need of participants based on objective", category: "TRAINING COURSE OBJECTIVE" },
+  {
+    question: "Clarity of objectives.",
+    category: "TRAINING COURSE OBJECTIVE",
+    aliases: ["Clarity of objectives"],
+  },
+  {
+    question: "Need of participants based on objective",
+    category: "TRAINING COURSE OBJECTIVE",
+    aliases: ["Need of participant based on objective"],
+  },
   { question: "Relevance to job at hand", category: "TRAINING COURSE OBJECTIVE" },
   { question: "Training objectives were clearly communicated and met", category: "TRAINING COURSE OBJECTIVE" },
-  { question: "Value / importance of content", category: "TRAINING COURSE DESIGN" },
+  {
+    question: "Value / importance of content",
+    category: "TRAINING COURSE DESIGN",
+    aliases: ["Value / Importance of content"],
+  },
   { question: "Depth and detail of coverage", category: "TRAINING COURSE DESIGN" },
   { question: "Time allocation", category: "TRAINING COURSE DESIGN" },
   { question: "Determine the level of engagement and interaction during the training", category: "TRAINING COURSE DESIGN" },
@@ -51,12 +63,17 @@ const LEGACY_FEEDBACK_RATING_COLUMNS = [
     question: "Effectiveness of presentation techniques",
     category: "TRAINING COURSE DELIVERY",
     header: "Effectiveness of presentation techniques  ( TRAINING COURSE DELIVERY )",
+    aliases: ["Effectiveness of presentation technique"],
   },
   { question: "Adherence to time schedule", category: "TRAINING COURSE DELIVERY" },
   { question: "Measure the extent to which participants feel they have learned new skills", category: "TRAINING COURSE DELIVERY" },
   { question: "Assess confidence levels in applying the learned skills", category: "TRAINING COURSE DELIVERY" },
   { question: "Training equipment exposure", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
-  { question: "Course materials easy to understand and follow", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  {
+    question: "Course materials easy to understand and follow",
+    category: "TRAINING EQUIPMENT & TRAINING MATERIALS",
+    aliases: ["Understandability of training materials"],
+  },
   { question: "Ease to reference", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
   { question: "Clarity of linkages between topics", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
   { question: "Usefulness of the content for practical application", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
@@ -82,21 +99,39 @@ const LEGACY_FEEDBACK_COMMENT_COLUMNS = [
   {
     question: "TRAINING ASPECTS THAT NEEDS IMPROVEMENT & SUGGESTIONS .(BE HONEST ).",
     category: "RECOMMENDATIONS / COMMENTS ON HOW TO IMPROVE.",
+    aliases: [
+      "Training aspect that needs improvement. Training you wish to take in future. (Be honest, we can take that)",
+      "Any Particular Comment?",
+    ],
   },
   {
     question: "BENEFITS EARNED FROM THIS TRAINING WHICH WILL CONTRIBUTE TO YOUR WORK/COMPANY.",
     category: "RECOMMENDATIONS / COMMENTS ON HOW TO IMPROVE.",
+    aliases: [
+      "Benefits earned from this training that will greatly contribute to your work/company",
+    ],
   },
 ];
 
 const normalizeFeedbackText = (value = "") =>
-  String(value).trim().replace(/\s+/g, " ").toLowerCase();
+  String(value)
+    .trim()
+    .replace(/&/g, " and ")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 
 const getFeedbackColumnHeader = ({ question, category, header }) =>
   header || `${question} ( ${category} )`;
 
 const getFeedbackColumnKey = ({ question, category }) =>
   `${normalizeFeedbackText(question)}|${normalizeFeedbackText(category)}`;
+
+const getFeedbackColumnKeys = ({ question, category, aliases = [] }) =>
+  [question, ...aliases].map((questionText) =>
+    getFeedbackColumnKey({ question: questionText, category }),
+  );
 
 const getFeedbackAnswerValue = (answerRow) => {
   if (!answerRow) return "--";
@@ -133,39 +168,7 @@ exports.exportFeedbackReport = async (req, res) => {
         .json({ message: "Please provide both start and end dates." });
     }
 
-    // 1. Get Questions
-    const feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds(
-      start_date,
-      end_date,
-    );
-
-    if (feedbackQuestionIds.length === 0) {
-      return res.status(404).json({
-        message: "No feedback data found for the specified date range.",
-      });
-    }
-
-    const questionsData =
-      await ReportDao.getQuestionsWithCategories(feedbackQuestionIds);
-
-    const legacyQuestionKeys = new Set(
-      [
-        ...LEGACY_FEEDBACK_RATING_COLUMNS,
-        ...LEGACY_FEEDBACK_COMMENT_COLUMNS,
-      ].map(getFeedbackColumnKey),
-    );
-    const questionIdsByLegacyKey = {};
-    questionsData.forEach((q) => {
-      const key = getFeedbackColumnKey({
-        question: q.question,
-        category: q.category_name,
-      });
-      if (!legacyQuestionKeys.has(key)) return;
-      if (!questionIdsByLegacyKey[key]) questionIdsByLegacyKey[key] = [];
-      questionIdsByLegacyKey[key].push(q.id);
-    });
-
-    // 2. Prepare Excel Header
+    // 1. Prepare Excel Header
     const headers = [
       ...LEGACY_FEEDBACK_META_HEADERS,
       ...LEGACY_FEEDBACK_RATING_COLUMNS.map(getFeedbackColumnHeader),
@@ -174,7 +177,8 @@ exports.exportFeedbackReport = async (req, res) => {
       ...LEGACY_FEEDBACK_COMMENT_COLUMNS.map(getFeedbackColumnHeader),
     ];
 
-    // 3. Fetch Data
+    // 2. Fetch filtered candidate/course submissions first so every later
+    // query is scoped to the requested topic/manager/date window.
     const allPairs = await ReportDao.getCandidateCoursePairs(
       start_date,
       end_date,
@@ -221,12 +225,43 @@ exports.exportFeedbackReport = async (req, res) => {
     const participantCounts =
       await ReportDao.getParticipantCounts(allCourseIds);
 
-    const chunkAnswers = await ReportDao.getAllFeedbackAnswersChunk(
-      allCandidateIds,
-      allCourseIds,
-    );
+    const chunkAnswers = await ReportDao.getFeedbackAnswersForPairs(allPairs);
 
-    // 4. Map Data
+    const feedbackQuestionIds = [
+      ...new Set(
+        chunkAnswers
+          .map((answer) => answer.feedback_question_id)
+          .filter(Boolean),
+      ),
+    ];
+
+    if (feedbackQuestionIds.length === 0) {
+      return res.status(404).json({
+        message: "No feedback answers found for the specified filters.",
+      });
+    }
+
+    const questionsData =
+      await ReportDao.getQuestionsWithCategories(feedbackQuestionIds);
+
+    const legacyQuestionKeys = new Set(
+      [
+        ...LEGACY_FEEDBACK_RATING_COLUMNS,
+        ...LEGACY_FEEDBACK_COMMENT_COLUMNS,
+      ].flatMap(getFeedbackColumnKeys),
+    );
+    const questionIdsByLegacyKey = {};
+    questionsData.forEach((q) => {
+      const key = getFeedbackColumnKey({
+        question: q.question,
+        category: q.category_name,
+      });
+      if (!legacyQuestionKeys.has(key)) return;
+      if (!questionIdsByLegacyKey[key]) questionIdsByLegacyKey[key] = [];
+      questionIdsByLegacyKey[key].push(q.id);
+    });
+
+    // 3. Map Data
     const coursesMap = {};
     courses.forEach((c) => (coursesMap[c.id] = c));
 
@@ -247,6 +282,7 @@ exports.exportFeedbackReport = async (req, res) => {
     );
 
     const answersMap = {};
+    const detailAnswersMap = {};
     chunkAnswers.forEach((ans) => {
       if (!answersMap[ans.candidate_id]) answersMap[ans.candidate_id] = {};
       if (!answersMap[ans.candidate_id][ans.active_course_id])
@@ -254,10 +290,20 @@ exports.exportFeedbackReport = async (req, res) => {
       answersMap[ans.candidate_id][ans.active_course_id][
         ans.feedback_question_id
       ] = ans;
+
+      if (!detailAnswersMap[ans.candidate_id]) {
+        detailAnswersMap[ans.candidate_id] = {};
+      }
+      if (!detailAnswersMap[ans.candidate_id][ans.active_course_id]) {
+        detailAnswersMap[ans.candidate_id][ans.active_course_id] = [];
+      }
+      detailAnswersMap[ans.candidate_id][ans.active_course_id].push(ans);
     });
 
     const getAnswerForLegacyColumn = (candidateId, courseId, column) => {
-      const questionIds = questionIdsByLegacyKey[getFeedbackColumnKey(column)] || [];
+      const questionIds = getFeedbackColumnKeys(column).flatMap(
+        (key) => questionIdsByLegacyKey[key] || [],
+      );
       const answerRows = answersMap[candidateId]?.[courseId] || {};
       for (const questionId of questionIds) {
         const value = getFeedbackAnswerValue(answerRows[questionId]);
@@ -268,9 +314,25 @@ exports.exportFeedbackReport = async (req, res) => {
 
     // 5. Build Rows
     const dataRows = [];
+    const detailHeaders = [
+      "Sr. No.",
+      "Date and time of Feedback submission",
+      "Name of the participant",
+      "Employee Number / Passport Number",
+      "Course No.",
+      "Course Name",
+      "Location of course conducted",
+      "Instructors Name(s)",
+      "Category",
+      "Question",
+      "Question Type",
+      "Answer",
+    ];
+    const detailRows = [];
     const courseAverages = {};
 
     let rowCount = 1;
+    let detailRowCount = 1;
 
     for (const pair of allPairs) {
       const course = coursesMap[pair.active_course_id];
@@ -375,6 +437,25 @@ exports.exportFeedbackReport = async (req, res) => {
       });
 
       dataRows.push(row);
+
+      const detailAnswers =
+        detailAnswersMap[pair.candidate_id]?.[pair.active_course_id] || [];
+      detailAnswers.forEach((answerRow) => {
+        detailRows.push([
+          detailRowCount++,
+          new Date(submissionDate).toLocaleDateString("en-GB"),
+          `${candidate.first_name} ${candidate.last_name}`,
+          candidate.employee_id || candidate.passport_no,
+          course.course_id,
+          masterCourseName,
+          course.type_of_location,
+          fullTrainerString,
+          answerRow.category_name || "--",
+          answerRow.question || "--",
+          answerRow.question_type || "--",
+          getFeedbackAnswerValue(answerRow),
+        ]);
+      });
     }
 
     // Fill Overall Averages
@@ -392,38 +473,56 @@ exports.exportFeedbackReport = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Feedback Report");
 
+    const styleHeaderRow = (row) => {
+      row.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "0060AA" },
+        };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFFFFFFF" } },
+          left: { style: "thin", color: { argb: "FFFFFFFF" } },
+          bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+          right: { style: "thin", color: { argb: "FFFFFFFF" } },
+        };
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+          wrapText: true,
+        };
+      });
+    };
+
+    const autoFitColumns = (sheet) => {
+      sheet.columns.forEach((column) => {
+        let maxColumnLength = 0;
+        column.eachCell({ includeEmpty: true }, (cell) => {
+          const columnLength = cell.value ? cell.value.toString().length : 10;
+          if (columnLength > maxColumnLength) {
+            maxColumnLength = columnLength;
+          }
+        });
+        column.width = Math.min(maxColumnLength < 10 ? 10 : maxColumnLength + 2, 80);
+      });
+    };
+
     const headerRow = worksheet.addRow(headers);
-    headerRow.eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "0060AA" },
-      };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFFFFFFF" } },
-        left: { style: "thin", color: { argb: "FFFFFFFF" } },
-        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
-        right: { style: "thin", color: { argb: "FFFFFFFF" } },
-      };
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-    });
+    styleHeaderRow(headerRow);
 
     dataRows.forEach((row) => {
       worksheet.addRow(row);
     });
 
-    // Auto-fit columns
-    worksheet.columns.forEach((column) => {
-      let maxColumnLength = 0;
-      column.eachCell({ includeEmpty: true }, (cell) => {
-        const columnLength = cell.value ? cell.value.toString().length : 10;
-        if (columnLength > maxColumnLength) {
-          maxColumnLength = columnLength;
-        }
-      });
-      column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+    autoFitColumns(worksheet);
+
+    const detailWorksheet = workbook.addWorksheet("Feedback Details");
+    styleHeaderRow(detailWorksheet.addRow(detailHeaders));
+    detailRows.forEach((row) => {
+      detailWorksheet.addRow(row);
     });
+    autoFitColumns(detailWorksheet);
 
     res.setHeader(
       "Content-Type",
