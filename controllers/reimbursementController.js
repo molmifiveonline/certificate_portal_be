@@ -443,3 +443,31 @@ exports.resendApprovedEmail = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+exports.downloadAttachment = async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    const attachment = await ReimbursementDao.getAttachmentById(attachmentId);
+    if (!attachment || (id && String(attachment.reimbursement_id) !== String(id))) {
+      return res.status(404).json({ message: "Attachment not found" });
+    }
+
+    if (req.user && req.user.role === "Candidate") {
+      const reimbursement = await ReimbursementDao.getById(attachment.reimbursement_id);
+      if (!reimbursement || String(reimbursement.candidate_id) !== String(req.user.id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const filePath = path.resolve(attachment.file_path);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: "File not found on server" });
+    }
+
+    return res.download(filePath, attachment.file_name);
+  } catch (error) {
+    console.error("Download Attachment Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+

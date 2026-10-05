@@ -45,6 +45,10 @@ router.get(
   "/:id",
   reimbursementController.getReimbursementById,
 );
+router.get(
+  "/:id/attachments/:attachmentId/download",
+  reimbursementController.downloadAttachment,
+);
 router.post(
   "/",
   reimbursementUpload.array("attachments"),
