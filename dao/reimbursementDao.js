@@ -142,6 +142,14 @@ class ReimbursementDao {
     return reimbursement;
   }
 
+  static async getAttachmentById(id) {
+    const [rows] = await db.query(
+      `SELECT * FROM reimbursement_attachments WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    return rows[0] || null;
+  }
+
   static async candidateIsEnrolled(candidateId, activeCourseId) {
     const [rows] = await db.query(
       `
