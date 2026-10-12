@@ -13,6 +13,59 @@ const getFeedbackCourseTypeForCourse = (course) => {
   return "Offline";
 };
 
+const isVenueCategory = (categoryName) => {
+  const normalized = String(categoryName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, " ");
+  return (
+    normalized.includes("training course venue") ||
+    normalized.includes("classroom venue")
+  );
+};
+
+const autoRecordVenueAnswers = async (candidateId, activeCourseId) => {
+  try {
+    const course = await ActiveCourseDao.getById(activeCourseId);
+    if (!course) return;
+
+    const FeedbackFormDao = require("../dao/FeedbackFormDao");
+    const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
+    const form = await FeedbackFormDao.getByCourseType(feedbackCourseType);
+    if (!form || !form.questions) return;
+
+    const existingDetails = await FeedbackAnswerDao.getSubmissionDetails(
+      candidateId,
+      activeCourseId,
+    );
+    const answeredQuestionIds = new Set(
+      (existingDetails || []).map((ans) => ans.feedback_question_id),
+    );
+
+    for (const [catId, catData] of Object.entries(form.questions)) {
+      if (isVenueCategory(catData.category_name)) {
+        for (const vq of catData.questions || []) {
+          if (!answeredQuestionIds.has(vq.id)) {
+            await FeedbackAnswerDao.create({
+              candidate_id: candidateId,
+              active_course_id: activeCourseId,
+              feedback_question_id: vq.id,
+              answer: "10",
+              feedback_category_id: catId,
+              feedback_id: form.id,
+              feedback_question_option_id: null,
+              feedback_question_option_text: "10",
+            });
+            answeredQuestionIds.add(vq.id);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Auto record venue answers error:", err);
+  }
+};
+
 const checkPostAssessmentStatus = async (courseId, candidateId) => {
   const [postAssessmentRows] = await pool.execute(
     `SELECT a.id, a.title 
@@ -153,6 +206,8 @@ class FeedbackAnswerController {
           results.push(id);
         }
       }
+
+      await autoRecordVenueAnswers(candidate_id, active_course_id);
 
       res
         .status(201)
@@ -519,10 +574,26 @@ class FeedbackAnswerController {
       const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
       const form = await FeedbackFormDao.getByCourseType(feedbackCourseType);
 
+      if (form && form.questions) {
+        const filteredQuestions = {};
+        for (const [catId, catData] of Object.entries(form.questions)) {
+          if (!isVenueCategory(catData.category_name)) {
+            filteredQuestions[catId] = catData;
+          }
+        }
+        form.questions = filteredQuestions;
+      }
+
+      const visibleAnswers = hasSubmitted
+        ? (existingAnswers || []).filter(
+            (ans) => !isVenueCategory(ans.category_name),
+          )
+        : null;
+
       res.json({
         hasSubmitted,
         submittedDate: hasSubmitted ? existingAnswers[0].created_at : null,
-        answers: hasSubmitted ? existingAnswers : null,
+        answers: visibleAnswers,
         form,
         feedbackCourseType,
         ...postAssessmentStatus,
@@ -594,6 +665,8 @@ class FeedbackAnswerController {
           results.push(id);
         }
       }
+
+      await autoRecordVenueAnswers(candidate_id, active_course_id);
 
       res
         .status(201)

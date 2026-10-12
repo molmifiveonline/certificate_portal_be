@@ -399,11 +399,20 @@ exports.exportFeedbackReport = async (req, res) => {
       let ratingCount = 0;
 
       LEGACY_FEEDBACK_RATING_COLUMNS.forEach((column) => {
-        const val = getAnswerForLegacyColumn(
-          pair.candidate_id,
-          pair.active_course_id,
-          column,
-        );
+        let val;
+        const isVenueCategory =
+          normalizeFeedbackText(column.category) ===
+          normalizeFeedbackText("TRAINING COURSE VENUE");
+
+        if (isVenueCategory) {
+          val = 10;
+        } else {
+          val = getAnswerForLegacyColumn(
+            pair.candidate_id,
+            pair.active_course_id,
+            column,
+          );
+        }
         row.push(val);
         if (!isNaN(parseFloat(val))) {
           ratingSum += parseFloat(val);
@@ -441,6 +450,13 @@ exports.exportFeedbackReport = async (req, res) => {
       const detailAnswers =
         detailAnswersMap[pair.candidate_id]?.[pair.active_course_id] || [];
       detailAnswers.forEach((answerRow) => {
+        const isVenueCategory =
+          normalizeFeedbackText(answerRow.category_name) ===
+          normalizeFeedbackText("TRAINING COURSE VENUE");
+        const answerVal = isVenueCategory
+          ? 10
+          : getFeedbackAnswerValue(answerRow);
+
         detailRows.push([
           detailRowCount++,
           new Date(submissionDate).toLocaleDateString("en-GB"),
@@ -453,7 +469,7 @@ exports.exportFeedbackReport = async (req, res) => {
           answerRow.category_name || "--",
           answerRow.question || "--",
           answerRow.question_type || "--",
-          getFeedbackAnswerValue(answerRow),
+          answerVal,
         ]);
       });
     }
