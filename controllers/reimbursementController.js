@@ -2,6 +2,7 @@ const ReimbursementDao = require("../dao/reimbursementDao");
 const LogDao = require("../dao/LogDao");
 const { generateReimbursementPdf } = require("../utils/reimbursementPdf");
 const path = require("path");
+const fs = require("fs");
 const emailService = require("../utils/emailService");
 const {
   getReimbursementApprovedTemplate,
@@ -50,6 +51,16 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath, ccEmails = 
     return;
   }
 
+  let finalPdfPath = pdfFilePath;
+  if (!finalPdfPath || !fs.existsSync(finalPdfPath)) {
+    try {
+      const generated = await generateReimbursementPdf(reimbursement);
+      finalPdfPath = generated.filePath;
+    } catch (genError) {
+      console.error("Failed to regenerate reimbursement PDF for accounts email:", genError);
+    }
+  }
+
   const subject = `Approved Reimbursement - ${reimbursement.claim_number}`;
   const html = `
     <p>Hello Accounts Team,</p>
@@ -72,17 +83,20 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath, ccEmails = 
     },
   });
 
+  const attachments = [];
+  if (finalPdfPath && fs.existsSync(finalPdfPath)) {
+    attachments.push({
+      filename: `${reimbursement.claim_number || "reimbursement"}.pdf`,
+      path: finalPdfPath,
+    });
+  }
+
   const mailOptions = {
     from: process.env.SMTP_FROM,
     to: recipients.join(","),
     subject,
     html,
-    attachments: [
-      {
-        filename: `${reimbursement.claim_number}.pdf`,
-        path: pdfFilePath,
-      },
-    ],
+    attachments,
   };
 
   const parsedCc = Array.isArray(ccEmails)
@@ -286,7 +300,7 @@ exports.approveReimbursement = async (req, res) => {
       return res.status(409).json({ message: "Invalid reimbursement status for approval" });
     }
 
-    const ccEmails = (req.body.cc_emails || "")
+    const ccEmails = (req.body?.cc_emails || "")
       .split(",")
       .map((e) => e.trim())
       .filter(Boolean);
@@ -430,18 +444,29 @@ exports.resendApprovedEmail = async (req, res) => {
       return res.status(404).json({ message: "Reimbursement not found" });
     }
 
-    if (reimbursement.status !== REIMBURSEMENT_STATUS.APPROVED || !reimbursement.approved_pdf_url) {
+    if (reimbursement.status !== REIMBURSEMENT_STATUS.APPROVED) {
       return res.status(409).json({ message: "Only approved reimbursements can be resent" });
     }
 
-    const pdfFilePath = reimbursement.approved_pdf_url.startsWith("/uploads/")
-      ? path.join(
-          __dirname,
-          "..",
-          reimbursement.approved_pdf_url.replace(/^\//, ""),
-        )
-      : reimbursement.approved_pdf_url;
-    const ccEmails = (req.body.cc_emails || "")
+    let pdfFilePath = reimbursement.approved_pdf_url
+      ? (reimbursement.approved_pdf_url.startsWith("/uploads/")
+          ? path.join(
+              __dirname,
+              "..",
+              reimbursement.approved_pdf_url.replace(/^\//, ""),
+            )
+          : reimbursement.approved_pdf_url)
+      : null;
+
+    if (!pdfFilePath || !fs.existsSync(pdfFilePath)) {
+      const { filePath, fileUrl } = await generateReimbursementPdf(reimbursement);
+      pdfFilePath = filePath;
+      if (fileUrl !== reimbursement.approved_pdf_url) {
+        await ReimbursementDao.markApproved(reimbursement.id, reimbursement.admin_remarks, fileUrl);
+      }
+    }
+
+    const ccEmails = (req.body?.cc_emails || "")
       .split(",")
       .map((e) => e.trim())
       .filter(Boolean);
@@ -478,9 +503,24 @@ exports.downloadAttachment = async (req, res) => {
       }
     }
 
-    const filePath = path.resolve(attachment.file_path);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "File not found on server" });
+    const candidatePaths = [
+      path.resolve(attachment.file_path),
+      path.join(__dirname, "..", attachment.file_path.replace(/^\//, "")),
+      path.join(__dirname, "..", "uploads", "reimbursements", "attachments", path.basename(attachment.file_path)),
+      attachment.file_url ? path.join(__dirname, "..", attachment.file_url.replace(/^\//, "")) : null,
+      attachment.file_url ? path.join(__dirname, "..", "uploads", attachment.file_url.replace(/^\/?(api\/)?uploads\/?/, "")) : null,
+    ].filter(Boolean);
+
+    let filePath = null;
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        filePath = p;
+        break;
+      }
+    }
+
+    if (!filePath) {
+      return res.status(404).json({ message: "Attachment file not found on server" });
     }
 
     return res.download(filePath, attachment.file_name);
