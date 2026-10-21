@@ -530,3 +530,61 @@ exports.downloadAttachment = async (req, res) => {
   }
 };
 
+exports.deleteAttachment = async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    const reimbursement = await ReimbursementDao.getById(id);
+    if (!reimbursement) {
+      return res.status(404).json({ message: "Reimbursement not found" });
+    }
+
+    if (String(reimbursement.candidate_id) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    if (!editableStatuses.includes(reimbursement.status)) {
+      return res.status(409).json({
+        message: "Cannot remove attachments from this reimbursement in current status",
+      });
+    }
+
+    const attachment = await ReimbursementDao.getAttachmentById(attachmentId);
+    if (!attachment || (id && String(attachment.reimbursement_id) !== String(id))) {
+      return res.status(404).json({ message: "Attachment not found" });
+    }
+
+    await ReimbursementDao.deleteAttachment(attachmentId);
+
+    // Try to remove physical file if it exists
+    try {
+      const candidatePaths = [
+        path.resolve(attachment.file_path),
+        path.join(__dirname, "..", attachment.file_path.replace(/^\//, "")),
+        path.join(__dirname, "..", "uploads", "reimbursements", "attachments", path.basename(attachment.file_path)),
+      ].filter(Boolean);
+
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          fs.unlinkSync(p);
+          break;
+        }
+      }
+    } catch (fileErr) {
+      console.warn("Could not delete attachment file on disk:", fileErr.message);
+    }
+
+    await ReimbursementDao.createActivityLog(
+      id,
+      "attachment_removed",
+      `Removed attachment: ${attachment.file_name}`,
+      req.user.id,
+      req.user.role,
+    );
+
+    res.status(200).json({ message: "Attachment removed successfully" });
+  } catch (error) {
+    console.error("Delete Attachment Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+

@@ -63,5 +63,9 @@ router.post(
   "/:id/submit",
   reimbursementController.submitReimbursement,
 );
+router.delete(
+  "/:id/attachments/:attachmentId",
+  reimbursementController.deleteAttachment,
+);
 
 module.exports = router;

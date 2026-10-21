@@ -247,6 +247,30 @@ class ReimbursementDao {
       ],
     );
 
+    if (payload.retained_attachment_ids !== undefined) {
+      try {
+        const retainedIds = typeof payload.retained_attachment_ids === "string"
+          ? JSON.parse(payload.retained_attachment_ids)
+          : payload.retained_attachment_ids;
+
+        if (Array.isArray(retainedIds)) {
+          if (retainedIds.length > 0) {
+            await db.query(
+              `DELETE FROM reimbursement_attachments WHERE reimbursement_id = ? AND id NOT IN (?)`,
+              [id, retainedIds],
+            );
+          } else {
+            await db.query(
+              `DELETE FROM reimbursement_attachments WHERE reimbursement_id = ?`,
+              [id],
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Error updating retained attachments in dao:", err);
+      }
+    }
+
     if (files.length) {
       await this.insertAttachments(id, files);
     }
@@ -340,6 +364,10 @@ class ReimbursementDao {
         ],
       );
     }
+  }
+
+  static async deleteAttachment(attachmentId) {
+    await db.query(`DELETE FROM reimbursement_attachments WHERE id = ?`, [attachmentId]);
   }
 
   static async generateClaimNumber() {
