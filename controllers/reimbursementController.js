@@ -44,16 +44,14 @@ const getAccountsRecipients = () =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath) => {
+const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath, ccEmails = []) => {
   const recipients = getAccountsRecipients();
   if (!recipients.length || !process.env.SMTP_USER) {
     return;
   }
 
-  const disclaimer = `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 12px 16px; margin-bottom: 16px; border-radius: 4px; font-family: Arial, sans-serif; color: #856404; font-size: 14px;"><strong>⚠️ PLEASE IGNORE:</strong> This email is generated for internal review purposes only. Please ignore this email; no action is required.</div>`;
-  const subject = `[PLEASE IGNORE] Approved Reimbursement - ${reimbursement.claim_number}`;
+  const subject = `Approved Reimbursement - ${reimbursement.claim_number}`;
   const html = `
-    ${disclaimer}
     <p>Hello Accounts Team,</p>
     <p>A reimbursement claim has been approved.</p>
     <p><strong>Claim No:</strong> ${reimbursement.claim_number}</p>
@@ -74,7 +72,7 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath) => {
     },
   });
 
-  await transporter.sendMail({
+  const mailOptions = {
     from: process.env.SMTP_FROM,
     to: recipients.join(","),
     subject,
@@ -85,7 +83,17 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath) => {
         path: pdfFilePath,
       },
     ],
-  });
+  };
+
+  const parsedCc = Array.isArray(ccEmails)
+    ? ccEmails.filter(Boolean)
+    : (ccEmails || "").split(",").map((e) => e.trim()).filter(Boolean);
+
+  if (parsedCc.length > 0) {
+    mailOptions.cc = parsedCc.join(",");
+  }
+
+  await transporter.sendMail(mailOptions);
 };
 
 const logAction = async (req, action, details) => {
@@ -278,9 +286,14 @@ exports.approveReimbursement = async (req, res) => {
       return res.status(409).json({ message: "Invalid reimbursement status for approval" });
     }
 
+    const ccEmails = (req.body.cc_emails || "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+
     reimbursement.admin_remarks = req.body.remarks || null;
     const { filePath, fileUrl } = await generateReimbursementPdf(reimbursement);
-    await sendAccountsApprovalEmail(reimbursement, filePath);
+    await sendAccountsApprovalEmail(reimbursement, filePath, ccEmails);
 
     // Send email to Candidate
     try {
@@ -294,6 +307,7 @@ exports.approveReimbursement = async (req, res) => {
           reimbursement.candidate_email,
           `Reimbursement Approved - ${reimbursement.claim_number}`,
           html,
+          ccEmails.length ? ccEmails.join(",") : null,
         );
       }
     } catch (emailError) {
@@ -427,7 +441,12 @@ exports.resendApprovedEmail = async (req, res) => {
           reimbursement.approved_pdf_url.replace(/^\//, ""),
         )
       : reimbursement.approved_pdf_url;
-    await sendAccountsApprovalEmail(reimbursement, pdfFilePath);
+    const ccEmails = (req.body.cc_emails || "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    await sendAccountsApprovalEmail(reimbursement, pdfFilePath, ccEmails);
     await ReimbursementDao.createActivityLog(
       reimbursement.id,
       "approved_email_resent",
