@@ -193,13 +193,55 @@ class ActiveCourseDao {
     return rows[0];
   }
 
-  static async getLastCourseId(topic) {
-    // Simple logic to get count for current year and topic to generate next ID
-    // This is a simplified version of PHP's findLastCourseId
-    const year = new Date().getFullYear();
-    const query = `SELECT COUNT(*) as count FROM courses WHERE topic = ? AND YEAR(created_at) = ?`;
-    const [rows] = await pool.execute(query, [topic, year]);
-    return rows[0].count;
+  static async getMaxSequenceNumber(topic, year, isOuthouse = false) {
+    const normalizedTopic = String(topic || "UNKNOWN").trim().toUpperCase();
+    const targetYear = parseInt(year, 10) || new Date().getFullYear();
+    const outhouseVal = isOuthouse ? 1 : 0;
+
+    const query = `
+      SELECT course_id 
+      FROM courses 
+      WHERE topic = ? 
+        AND course_id NOT LIKE 'PRE-%' 
+        AND status != 'Deleted'
+        AND COALESCE(is_outhouse, 0) = ?
+        AND (course_id LIKE ? OR course_id LIKE ?)
+    `;
+
+    const slashPattern = `${normalizedTopic}/${targetYear}/%`;
+    const dashPattern = `${normalizedTopic}-${targetYear}-%`;
+
+    const [rows] = await pool.execute(query, [
+      normalizedTopic,
+      outhouseVal,
+      slashPattern,
+      dashPattern,
+    ]);
+
+    let maxSeq = 0;
+    for (const row of rows) {
+      const match = String(row.course_id || "").match(/[\/-](\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!Number.isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    }
+
+    return maxSeq;
+  }
+
+  static async getLastCourseId(topic, year = new Date().getFullYear()) {
+    return this.getMaxSequenceNumber(topic, year, false);
+  }
+
+  static async generateNextCourseId({ topic, year, isOuthouse = false }) {
+    const normalizedTopic = String(topic || "UNKNOWN").trim().toUpperCase();
+    const targetYear = parseInt(year, 10) || new Date().getFullYear();
+    const maxSeq = await this.getMaxSequenceNumber(normalizedTopic, targetYear, isOuthouse);
+    const nextSeq = (maxSeq + 1).toString().padStart(3, "0");
+    return `${normalizedTopic}/${targetYear}/${nextSeq}`;
   }
 
   static async update(id, data) {

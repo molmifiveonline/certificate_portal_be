@@ -61,7 +61,20 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath, ccEmails = 
     }
   }
 
-  const subject = `Approved Reimbursement - ${reimbursement.claim_number}`;
+  const candidateName = (reimbursement.candidate_name || "").trim();
+  const courseDetails = (
+    reimbursement.active_course_name ||
+    reimbursement.course_name ||
+    reimbursement.course_id ||
+    ""
+  ).trim();
+  const subjectParts = [
+    "Approved Reimbursement",
+    reimbursement.claim_number,
+    candidateName,
+    courseDetails,
+  ].filter(Boolean);
+  const subject = subjectParts.join(" - ");
   const html = `
     <p>Hello Accounts Team,</p>
     <p>A reimbursement claim has been approved.</p>

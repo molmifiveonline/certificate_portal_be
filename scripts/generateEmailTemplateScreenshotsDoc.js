@@ -417,7 +417,7 @@ const templates = [
   },
   {
     title: "Accounts Team Approved Reimbursement",
-    subject: `Approved Reimbursement - ${sample.claimNumber}`,
+    subject: `Approved Reimbursement - ${sample.claimNumber} - ${sample.candidateName} - ${sample.courseName}`,
     notes: "Accounts team notification with approved reimbursement PDF attachment in live flow.",
     html: `
       <p>Hello Accounts Team,</p>

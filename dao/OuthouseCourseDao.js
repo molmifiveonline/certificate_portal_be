@@ -2,21 +2,15 @@ const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 const { hasColumn, hasTable } = require("../utils/schemaUtils");
 
+const ActiveCourseDao = require("./ActiveCourseDao");
+
 class OuthouseCourseDao {
   static async buildOuthousePredicate(alias = "c") {
     return `COALESCE(${alias}.is_outhouse, 0) = 1`;
   }
 
-  static async getLastCourseId(topic) {
-    const year = new Date().getFullYear();
-    const predicate = await this.buildOuthousePredicate("courses");
-    const [rows] = await pool.execute(
-      `SELECT COUNT(*) as count
-       FROM courses
-       WHERE topic = ? AND ${predicate} AND YEAR(created_at) = ?`,
-      [topic, year],
-    );
-    return rows[0].count;
+  static async getLastCourseId(topic, year = new Date().getFullYear()) {
+    return ActiveCourseDao.getMaxSequenceNumber(topic, year, true);
   }
 
   static async create(data) {

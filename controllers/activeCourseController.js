@@ -85,10 +85,14 @@ exports.createCourse = async (req, res) => {
     const topicName = masterCourse.topic;
 
     // Generate Course ID using Topic Name (format: Topic/Year/Number)
-    const year = new Date().getFullYear();
-    const count = await ActiveCourseDao.getLastCourseId(topicName);
-    const nextId = (count + 1).toString().padStart(3, "0");
-    const course_id = `${topicName}/${year}/${nextId}`;
+    const year = start_date
+      ? new Date(start_date).getFullYear()
+      : new Date().getFullYear();
+    const course_id = await ActiveCourseDao.generateNextCourseId({
+      topic: topicName,
+      year,
+      isOuthouse: false,
+    });
 
     req.body.course_id = course_id;
     req.body.topic = topicName; // Store Name in DB, not UUID

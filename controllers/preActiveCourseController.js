@@ -1,6 +1,8 @@
 const PreActiveCourseDao = require("../dao/PreActiveCourseDao");
 const NominatorDao = require("../dao/nominatorDao");
 const CourseEnrollmentDao = require("../dao/CourseEnrollmentDao");
+const ActiveCourseDao = require("../dao/ActiveCourseDao");
+const MasterCourseDao = require("../dao/MasterCourseDao");
 const emailService = require("../utils/emailService");
 const { getFrontendUrl } = require("../utils/urlUtils");
 
@@ -660,23 +662,43 @@ exports.convertToActiveCourse = async (req, res) => {
     }
 
     const courseType = course.course_type || course.type_of_course;
-    const targetType = PreActiveCourseDao.isOuthouseCourseType(courseType)
+    const isOuthouse = PreActiveCourseDao.isOuthouseCourseType(courseType);
+    const targetType = isOuthouse
       ? "Outhouse Course"
       : "Active Course";
+
+    let topic = course.topic;
+    if (!topic && course.master_course_id) {
+      const masterCourse = await MasterCourseDao.getById(course.master_course_id);
+      if (masterCourse) {
+        topic = masterCourse.topic;
+      }
+    }
+
+    const year = course.start_date
+      ? new Date(course.start_date).getFullYear()
+      : new Date().getFullYear();
+
+    const newCourseId = await ActiveCourseDao.generateNextCourseId({
+      topic,
+      year,
+      isOuthouse,
+    });
 
     const success = await PreActiveCourseDao.convertToActiveCourse(
       courseId,
       courseType,
+      newCourseId,
+      course.course_id,
     );
 
     if (success) {
-      res
-        .status(200)
-        .json({
-          message: `Course converted to ${targetType} successfully.`,
-          target_type: targetType,
-          target_id: courseId,
-        });
+      res.status(200).json({
+        message: `Course converted to ${targetType} successfully with Course ID ${newCourseId}.`,
+        target_type: targetType,
+        target_id: courseId,
+        course_id: newCourseId,
+      });
     } else {
       res.status(400).json({ message: "Failed to convert course." });
     }
