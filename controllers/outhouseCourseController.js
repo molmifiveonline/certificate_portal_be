@@ -118,12 +118,15 @@ exports.createCourse = async (req, res) => {
     const year = req.body.start_date
       ? new Date(req.body.start_date).getFullYear()
       : new Date().getFullYear();
-    const count = await OuthouseCourseDao.getLastCourseId(topicName);
-    const nextId = (count + 1).toString().padStart(3, "0");
+    const course_id = await ActiveCourseDao.generateNextCourseId({
+      topic: topicName,
+      year,
+      isOuthouse: true,
+    });
 
     const payload = {
       ...req.body,
-      course_id: `${topicName}/${year}/${nextId}`,
+      course_id,
       master_course_name: req.body.master_course_name || masterCourse.master_course_name,
       topic: topicName,
       days: req.body.days || buildDays(req.body.start_date, req.body.end_date),

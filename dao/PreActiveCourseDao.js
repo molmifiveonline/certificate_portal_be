@@ -717,9 +717,28 @@ const getRejectedCandidateApprovals = async (options = {}) => {
 // Convert and Reports
 // ==========================================
 
-const convertToActiveCourse = async (id, courseType) => {
+const convertToActiveCourse = async (
+  id,
+  courseType,
+  newCourseId = null,
+  oldCourseId = null,
+) => {
   const setParts = ["is_pre_active = 0", "status = 'Initiated'"];
   const params = [];
+
+  if (newCourseId) {
+    setParts.push("course_id = ?");
+    params.push(newCourseId);
+  }
+
+  if (await hasColumn("courses", "creation_mode")) {
+    setParts.push("creation_mode = 'conversion'");
+  }
+
+  if (oldCourseId && (await hasColumn("courses", "source_pre_active_id"))) {
+    setParts.push("source_pre_active_id = ?");
+    params.push(oldCourseId);
+  }
 
   if (await hasColumn("courses", "is_outhouse")) {
     setParts.push("is_outhouse = ?");
