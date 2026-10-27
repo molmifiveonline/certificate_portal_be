@@ -93,8 +93,8 @@ class CandidateDao {
         cp.middle_name, cp.prefix, cp.gender, cp.dob, cp.nationality,
         cp.passport_no, cp.employee_id, cp.manager, cp.rank, 
         cp.whatsapp_number, cp.alternate_mobile, cp.indos_number, cp.registration_type,
-        cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name, 
-        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image, u.created_at
+        cp.designation, cp.vessel_type, cp.status_pool, cp.last_vessel_name, cp.next_vessel_name, 
+        cp.manning_company, cp.manning_agent, cp.fg_global, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image, u.created_at
       ${baseQuery}
     `;
 
@@ -151,8 +151,8 @@ class CandidateDao {
         cp.middle_name, cp.prefix, cp.gender, cp.dob, cp.nationality,
         cp.passport_no, cp.employee_id, cp.manager, cp.rank, 
         cp.whatsapp_number, cp.alternate_mobile, cp.indos_number, cp.registration_type,
-        cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name, 
-        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image, u.created_at
+        cp.designation, cp.vessel_type, cp.status_pool, cp.last_vessel_name, cp.next_vessel_name, 
+        cp.manning_company, cp.manning_agent, cp.fg_global, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image, u.created_at
       FROM users u
       JOIN candidate_profiles cp ON u.id = cp.user_id
       WHERE u.id = ?
@@ -230,9 +230,12 @@ class CandidateDao {
         "registration_type",
         "designation",
         "vessel_type",
+        "status_pool",
         "last_vessel_name",
         "next_vessel_name",
         "manning_company",
+        "manning_agent",
+        "fg_global",
         "sign_on_date",
         "sign_off_date",
         "officer",
@@ -327,8 +330,8 @@ class CandidateDao {
         cp.middle_name, cp.prefix, cp.gender, cp.dob, cp.nationality,
         cp.passport_no, cp.employee_id, cp.manager, cp.rank, 
         cp.whatsapp_number, cp.alternate_mobile, cp.indos_number, cp.registration_type,
-        cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name, 
-        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image,
+        cp.designation, cp.vessel_type, cp.status_pool, cp.last_vessel_name, cp.next_vessel_name, 
+        cp.manning_company, cp.manning_agent, cp.fg_global, cp.sign_on_date, cp.sign_off_date, cp.officer, cp.seaman_book_no, cp.profile_image,
         u.created_at
       ${baseQuery}
       ORDER BY u.created_at DESC
@@ -599,8 +602,8 @@ class CandidateDao {
         cp.middle_name, cp.prefix, cp.gender, cp.dob, cp.nationality,
         cp.passport_no, cp.employee_id, cp.manager, cp.\`rank\`,
         cp.whatsapp_number, cp.alternate_mobile, cp.indos_number, cp.registration_type,
-        cp.designation, cp.vessel_type, cp.last_vessel_name, cp.next_vessel_name,
-        cp.manning_company, cp.sign_on_date, cp.sign_off_date, cp.officer,
+        cp.designation, cp.vessel_type, cp.status_pool, cp.last_vessel_name, cp.next_vessel_name,
+        cp.manning_company, cp.manning_agent, cp.fg_global, cp.sign_on_date, cp.sign_off_date, cp.officer,
         cp.seaman_book_no, cp.profile_image
       FROM users u
       JOIN roles r ON u.role_id = r.id

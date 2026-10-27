@@ -207,6 +207,7 @@ const exportCandidates = async (req, res) => {
       "registration_type",
       "designation",
       "vessel_type",
+      "status_pool",
       "last_vessel_name",
       "next_vessel_name",
       "manning_company",

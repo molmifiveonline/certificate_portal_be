@@ -16,6 +16,12 @@ router.get(
   checkPermission("view_reimbursements"),
   reimbursementController.getAdminReimbursementById,
 );
+router.get(
+  "/:id/attachments/:attachmentId/download",
+  protect,
+  checkPermission("view_reimbursements"),
+  reimbursementController.downloadAttachment,
+);
 router.post(
   "/:id/approve",
   protect,

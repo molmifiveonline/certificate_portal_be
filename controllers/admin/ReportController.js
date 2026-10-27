@@ -29,6 +29,7 @@ const LEGACY_FEEDBACK_META_HEADERS = [
   "Rank Last served on vessel before this course",
   "Name of the manager (last served)",
   "Course Name",
+  "INHOUSE/OUTHOUSE",
   "No. of Participants",
   "Course No. (This information will be provided in your welcome letter)",
   "Location of course conducted",
@@ -36,11 +37,23 @@ const LEGACY_FEEDBACK_META_HEADERS = [
 ];
 
 const LEGACY_FEEDBACK_RATING_COLUMNS = [
-  { question: "Clarity of objectives.", category: "TRAINING COURSE OBJECTIVE" },
-  { question: "Need of participants based on objective", category: "TRAINING COURSE OBJECTIVE" },
+  {
+    question: "Clarity of objectives.",
+    category: "TRAINING COURSE OBJECTIVE",
+    aliases: ["Clarity of objectives"],
+  },
+  {
+    question: "Need of participants based on objective",
+    category: "TRAINING COURSE OBJECTIVE",
+    aliases: ["Need of participant based on objective"],
+  },
   { question: "Relevance to job at hand", category: "TRAINING COURSE OBJECTIVE" },
   { question: "Training objectives were clearly communicated and met", category: "TRAINING COURSE OBJECTIVE" },
-  { question: "Value / importance of content", category: "TRAINING COURSE DESIGN" },
+  {
+    question: "Value / importance of content",
+    category: "TRAINING COURSE DESIGN",
+    aliases: ["Value / Importance of content"],
+  },
   { question: "Depth and detail of coverage", category: "TRAINING COURSE DESIGN" },
   { question: "Time allocation", category: "TRAINING COURSE DESIGN" },
   { question: "Determine the level of engagement and interaction during the training", category: "TRAINING COURSE DESIGN" },
@@ -51,12 +64,17 @@ const LEGACY_FEEDBACK_RATING_COLUMNS = [
     question: "Effectiveness of presentation techniques",
     category: "TRAINING COURSE DELIVERY",
     header: "Effectiveness of presentation techniques  ( TRAINING COURSE DELIVERY )",
+    aliases: ["Effectiveness of presentation technique"],
   },
   { question: "Adherence to time schedule", category: "TRAINING COURSE DELIVERY" },
   { question: "Measure the extent to which participants feel they have learned new skills", category: "TRAINING COURSE DELIVERY" },
   { question: "Assess confidence levels in applying the learned skills", category: "TRAINING COURSE DELIVERY" },
   { question: "Training equipment exposure", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
-  { question: "Course materials easy to understand and follow", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
+  {
+    question: "Course materials easy to understand and follow",
+    category: "TRAINING EQUIPMENT & TRAINING MATERIALS",
+    aliases: ["Understandability of training materials"],
+  },
   { question: "Ease to reference", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
   { question: "Clarity of linkages between topics", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
   { question: "Usefulness of the content for practical application", category: "TRAINING EQUIPMENT & TRAINING MATERIALS" },
@@ -82,10 +100,17 @@ const LEGACY_FEEDBACK_COMMENT_COLUMNS = [
   {
     question: "TRAINING ASPECTS THAT NEEDS IMPROVEMENT & SUGGESTIONS .(BE HONEST ).",
     category: "RECOMMENDATIONS / COMMENTS ON HOW TO IMPROVE.",
+    aliases: [
+      "Training aspect that needs improvement. Training you wish to take in future. (Be honest, we can take that)",
+      "Any Particular Comment?",
+    ],
   },
   {
     question: "BENEFITS EARNED FROM THIS TRAINING WHICH WILL CONTRIBUTE TO YOUR WORK/COMPANY.",
     category: "RECOMMENDATIONS / COMMENTS ON HOW TO IMPROVE.",
+    aliases: [
+      "Benefits earned from this training that will greatly contribute to your work/company",
+    ],
   },
 ];
 
@@ -101,13 +126,24 @@ const REPORT_AI_DEFAULT_MAX_ROWS = 250;
 const REPORT_AI_DEFAULT_MAX_OUTPUT_TOKENS = 8000;
 
 const normalizeFeedbackText = (value = "") =>
-  String(value).trim().replace(/\s+/g, " ").toLowerCase();
+  String(value)
+    .trim()
+    .replace(/&/g, " and ")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 
 const getFeedbackColumnHeader = ({ question, category, header }) =>
   header || `${question} ( ${category} )`;
 
 const getFeedbackColumnKey = ({ question, category }) =>
   `${normalizeFeedbackText(question)}|${normalizeFeedbackText(category)}`;
+
+const getFeedbackColumnKeys = ({ question, category, aliases = [] }) =>
+  [question, ...aliases].map((questionText) =>
+    getFeedbackColumnKey({ question: questionText, category }),
+  );
 
 const getFeedbackAnswerValue = (answerRow) => {
   if (!answerRow) return "--";
@@ -144,39 +180,7 @@ exports.exportFeedbackReport = async (req, res) => {
         .json({ message: "Please provide both start and end dates." });
     }
 
-    // 1. Get Questions
-    const feedbackQuestionIds = await ReportDao.getFeedbackQuestionIds(
-      start_date,
-      end_date,
-    );
-
-    if (feedbackQuestionIds.length === 0) {
-      return res.status(404).json({
-        message: "No feedback data found for the specified date range.",
-      });
-    }
-
-    const questionsData =
-      await ReportDao.getQuestionsWithCategories(feedbackQuestionIds);
-
-    const legacyQuestionKeys = new Set(
-      [
-        ...LEGACY_FEEDBACK_RATING_COLUMNS,
-        ...LEGACY_FEEDBACK_COMMENT_COLUMNS,
-      ].map(getFeedbackColumnKey),
-    );
-    const questionIdsByLegacyKey = {};
-    questionsData.forEach((q) => {
-      const key = getFeedbackColumnKey({
-        question: q.question,
-        category: q.category_name,
-      });
-      if (!legacyQuestionKeys.has(key)) return;
-      if (!questionIdsByLegacyKey[key]) questionIdsByLegacyKey[key] = [];
-      questionIdsByLegacyKey[key].push(q.id);
-    });
-
-    // 2. Prepare Excel Header
+    // 1. Prepare Excel Header
     const headers = [
       ...LEGACY_FEEDBACK_META_HEADERS,
       ...LEGACY_FEEDBACK_RATING_COLUMNS.map(getFeedbackColumnHeader),
@@ -185,7 +189,8 @@ exports.exportFeedbackReport = async (req, res) => {
       ...LEGACY_FEEDBACK_COMMENT_COLUMNS.map(getFeedbackColumnHeader),
     ];
 
-    // 3. Fetch Data
+    // 2. Fetch filtered candidate/course submissions first so every later
+    // query is scoped to the requested topic/manager/date window.
     const allPairs = await ReportDao.getCandidateCoursePairs(
       start_date,
       end_date,
@@ -220,7 +225,11 @@ exports.exportFeedbackReport = async (req, res) => {
     const trainers = await ReportDao.getTrainersByIds(trainerIds);
 
     const masterCourseIds = [
-      ...new Set(courses.map((c) => c.master_course_name)),
+      ...new Set(
+        courses
+          .map((c) => c.master_course_id || c.master_course_name)
+          .filter(Boolean),
+      ),
     ];
     const masterCourses =
       await ReportDao.getMasterCoursesByIds(masterCourseIds);
@@ -228,12 +237,43 @@ exports.exportFeedbackReport = async (req, res) => {
     const participantCounts =
       await ReportDao.getParticipantCounts(allCourseIds);
 
-    const chunkAnswers = await ReportDao.getAllFeedbackAnswersChunk(
-      allCandidateIds,
-      allCourseIds,
-    );
+    const chunkAnswers = await ReportDao.getFeedbackAnswersForPairs(allPairs);
 
-    // 4. Map Data
+    const feedbackQuestionIds = [
+      ...new Set(
+        chunkAnswers
+          .map((answer) => answer.feedback_question_id)
+          .filter(Boolean),
+      ),
+    ];
+
+    if (feedbackQuestionIds.length === 0) {
+      return res.status(404).json({
+        message: "No feedback answers found for the specified filters.",
+      });
+    }
+
+    const questionsData =
+      await ReportDao.getQuestionsWithCategories(feedbackQuestionIds);
+
+    const legacyQuestionKeys = new Set(
+      [
+        ...LEGACY_FEEDBACK_RATING_COLUMNS,
+        ...LEGACY_FEEDBACK_COMMENT_COLUMNS,
+      ].flatMap(getFeedbackColumnKeys),
+    );
+    const questionIdsByLegacyKey = {};
+    questionsData.forEach((q) => {
+      const key = getFeedbackColumnKey({
+        question: q.question,
+        category: q.category_name,
+      });
+      if (!legacyQuestionKeys.has(key)) return;
+      if (!questionIdsByLegacyKey[key]) questionIdsByLegacyKey[key] = [];
+      questionIdsByLegacyKey[key].push(q.id);
+    });
+
+    // 3. Map Data
     const coursesMap = {};
     courses.forEach((c) => (coursesMap[c.id] = c));
 
@@ -254,6 +294,7 @@ exports.exportFeedbackReport = async (req, res) => {
     );
 
     const answersMap = {};
+    const detailAnswersMap = {};
     chunkAnswers.forEach((ans) => {
       if (!answersMap[ans.candidate_id]) answersMap[ans.candidate_id] = {};
       if (!answersMap[ans.candidate_id][ans.active_course_id])
@@ -261,10 +302,20 @@ exports.exportFeedbackReport = async (req, res) => {
       answersMap[ans.candidate_id][ans.active_course_id][
         ans.feedback_question_id
       ] = ans;
+
+      if (!detailAnswersMap[ans.candidate_id]) {
+        detailAnswersMap[ans.candidate_id] = {};
+      }
+      if (!detailAnswersMap[ans.candidate_id][ans.active_course_id]) {
+        detailAnswersMap[ans.candidate_id][ans.active_course_id] = [];
+      }
+      detailAnswersMap[ans.candidate_id][ans.active_course_id].push(ans);
     });
 
     const getAnswerForLegacyColumn = (candidateId, courseId, column) => {
-      const questionIds = questionIdsByLegacyKey[getFeedbackColumnKey(column)] || [];
+      const questionIds = getFeedbackColumnKeys(column).flatMap(
+        (key) => questionIdsByLegacyKey[key] || [],
+      );
       const answerRows = answersMap[candidateId]?.[courseId] || {};
       for (const questionId of questionIds) {
         const value = getFeedbackAnswerValue(answerRows[questionId]);
@@ -275,9 +326,25 @@ exports.exportFeedbackReport = async (req, res) => {
 
     // 5. Build Rows
     const dataRows = [];
+    const detailHeaders = [
+      "Sr. No.",
+      "Date and time of Feedback submission",
+      "Name of the participant",
+      "Employee Number / Passport Number",
+      "Course No.",
+      "Course Name",
+      "Location of course conducted",
+      "Instructors Name(s)",
+      "Category",
+      "Question",
+      "Question Type",
+      "Answer",
+    ];
+    const detailRows = [];
     const courseAverages = {};
 
     let rowCount = 1;
+    let detailRowCount = 1;
 
     for (const pair of allPairs) {
       const course = coursesMap[pair.active_course_id];
@@ -292,7 +359,12 @@ exports.exportFeedbackReport = async (req, res) => {
         : "";
 
       const masterCourseName =
-        masterCoursesMap[course.master_course_name] || course.course_name;
+        masterCoursesMap[course.master_course_id] ||
+        masterCoursesMap[course.master_course_name] ||
+        course.master_course_name ||
+        course.course_name ||
+        course.course_id ||
+        "";
 
       // Secondary Trainers
       let secondaryTrainerNames = [];
@@ -325,9 +397,10 @@ exports.exportFeedbackReport = async (req, res) => {
       row.push(candidate.employee_id || candidate.passport_no);
       row.push(new Date(course.start_date).toLocaleDateString("en-GB"));
       row.push(new Date(course.end_date).toLocaleDateString("en-GB"));
-      row.push(candidate.rank);
+      row.push(getCandidatePositionLabel(candidate.rank));
       row.push(candidate.manager);
       row.push(masterCourseName);
+      row.push(getCourseHouseType(course));
       row.push(participantMap[course.id] || "--");
       row.push(course.course_id);
       row.push(course.type_of_location);
@@ -338,11 +411,20 @@ exports.exportFeedbackReport = async (req, res) => {
       let ratingCount = 0;
 
       LEGACY_FEEDBACK_RATING_COLUMNS.forEach((column) => {
-        const val = getAnswerForLegacyColumn(
-          pair.candidate_id,
-          pair.active_course_id,
-          column,
-        );
+        let val;
+        const isVenueCategory =
+          normalizeFeedbackText(column.category) ===
+          normalizeFeedbackText("TRAINING COURSE VENUE");
+
+        if (isVenueCategory) {
+          val = 10;
+        } else {
+          val = getAnswerForLegacyColumn(
+            pair.candidate_id,
+            pair.active_course_id,
+            column,
+          );
+        }
         row.push(val);
         if (!isNaN(parseFloat(val))) {
           ratingSum += parseFloat(val);
@@ -376,6 +458,32 @@ exports.exportFeedbackReport = async (req, res) => {
       });
 
       dataRows.push(row);
+
+      const detailAnswers =
+        detailAnswersMap[pair.candidate_id]?.[pair.active_course_id] || [];
+      detailAnswers.forEach((answerRow) => {
+        const isVenueCategory =
+          normalizeFeedbackText(answerRow.category_name) ===
+          normalizeFeedbackText("TRAINING COURSE VENUE");
+        const answerVal = isVenueCategory
+          ? 10
+          : getFeedbackAnswerValue(answerRow);
+
+        detailRows.push([
+          detailRowCount++,
+          new Date(submissionDate).toLocaleDateString("en-GB"),
+          `${candidate.first_name} ${candidate.last_name}`,
+          candidate.employee_id || candidate.passport_no,
+          course.course_id,
+          masterCourseName,
+          course.type_of_location,
+          fullTrainerString,
+          answerRow.category_name || "--",
+          answerRow.question || "--",
+          answerRow.question_type || "--",
+          answerVal,
+        ]);
+      });
     }
 
     // Fill Overall Averages
@@ -393,38 +501,56 @@ exports.exportFeedbackReport = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Feedback Report");
 
+    const styleHeaderRow = (row) => {
+      row.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "0060AA" },
+        };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFFFFFFF" } },
+          left: { style: "thin", color: { argb: "FFFFFFFF" } },
+          bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+          right: { style: "thin", color: { argb: "FFFFFFFF" } },
+        };
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+          wrapText: true,
+        };
+      });
+    };
+
+    const autoFitColumns = (sheet) => {
+      sheet.columns.forEach((column) => {
+        let maxColumnLength = 0;
+        column.eachCell({ includeEmpty: true }, (cell) => {
+          const columnLength = cell.value ? cell.value.toString().length : 10;
+          if (columnLength > maxColumnLength) {
+            maxColumnLength = columnLength;
+          }
+        });
+        column.width = Math.min(maxColumnLength < 10 ? 10 : maxColumnLength + 2, 80);
+      });
+    };
+
     const headerRow = worksheet.addRow(headers);
-    headerRow.eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "0060AA" },
-      };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFFFFFFF" } },
-        left: { style: "thin", color: { argb: "FFFFFFFF" } },
-        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
-        right: { style: "thin", color: { argb: "FFFFFFFF" } },
-      };
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-    });
+    styleHeaderRow(headerRow);
 
     dataRows.forEach((row) => {
       worksheet.addRow(row);
     });
 
-    // Auto-fit columns
-    worksheet.columns.forEach((column) => {
-      let maxColumnLength = 0;
-      column.eachCell({ includeEmpty: true }, (cell) => {
-        const columnLength = cell.value ? cell.value.toString().length : 10;
-        if (columnLength > maxColumnLength) {
-          maxColumnLength = columnLength;
-        }
-      });
-      column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+    autoFitColumns(worksheet);
+
+    const detailWorksheet = workbook.addWorksheet("Feedback Details");
+    styleHeaderRow(detailWorksheet.addRow(detailHeaders));
+    detailRows.forEach((row) => {
+      detailWorksheet.addRow(row);
     });
+    autoFitColumns(detailWorksheet);
 
     res.setHeader(
       "Content-Type",
@@ -490,6 +616,8 @@ exports.exportCertificateReport = async (req, res) => {
       "Name as per Shipmate/platform/registry",
       "Rank",
       "Last manager",
+      "Last vessel",
+      "Status Pool",
       "Topic",
       "Master Course Name",
       "INHOUSE/OUTHOUSE",
@@ -500,6 +628,7 @@ exports.exportCertificateReport = async (req, res) => {
       "No. of Days",
       "Trainers",
       "Certificate No.",
+      "Certificate Status",
       "Course Name from Active Courses",
     ];
 
@@ -522,27 +651,25 @@ exports.exportCertificateReport = async (req, res) => {
         }
       }
 
-      // Extract last part of course id
-      const courseIdParts = (item.active_course_code || "").split("-");
-      const lastPart =
-        courseIdParts.length > 0 ? courseIdParts[courseIdParts.length - 1] : "";
-
       return [
         index + 1,
-        item.empId,
-        `${item.cand_first_name} ${item.cand_last_name}`,
-        item.rank,
-        item.manager,
+        getCertificateReportCandidateIdentifier(item),
+        getCertificateReportCandidateName(item),
+        getCandidatePositionLabel(item.rank),
+        getCertificateReportManager(item),
+        item.last_vessel_name || "",
+        item.status_pool || "",
         item.topic,
         item.master_course_name,
-        item.type_of_course,
+        getCourseHouseType(item),
         item.location,
-        lastPart,
+        getCertificateReportCourseSequence(item.active_course_code),
         new Date(item.from_date).toLocaleDateString("en-GB").replace(/\//g, "-"),
         new Date(item.to_date).toLocaleDateString("en-GB").replace(/\//g, "-"),
         item.days,
         trainerStr,
         item.certificate_no,
+        Number(item.status) === 0 ? "Valid" : "Invalid",
         item.course_name,
       ];
     });
@@ -604,6 +731,110 @@ exports.exportCertificateReport = async (req, res) => {
       .json({ message: "Internal Server Error", error: error.message });
   }
 };
+
+function getCertificateReportCandidateIdentifier(item) {
+  return [item.empId, item.passport_no]
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
+}
+
+function getCertificateReportCandidateName(item) {
+  return [
+    item.cand_first_name,
+    item.cand_middle_name,
+    item.cand_last_name,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getCertificateReportManager(item) {
+  const manager = String(item.manager || "").trim();
+  const hasManagerValue = manager.replace(/[()\s]/g, "").length > 0;
+
+  return hasManagerValue ? manager : "New Candidate";
+}
+
+function getCourseHouseType(item = {}) {
+  const value = String(
+    item.type_of_course || item.course_type || "",
+  ).trim();
+  const normalized = value.toLowerCase().replace(/[\s_-]+/g, "");
+
+  if (normalized.includes("outhouse") || Number(item.is_outhouse) === 1) {
+    return "OUTHOUSE";
+  }
+
+  if (!value || normalized.includes("inhouse")) {
+    return "INHOUSE";
+  }
+
+  return value;
+}
+
+function getCertificateReportCourseSequence(courseCode) {
+  return String(courseCode || "")
+    .trim()
+    .split(/[/-]/)
+    .filter(Boolean)
+    .pop() || "";
+}
+
+function getCandidatePositionLabel(rank) {
+  const value = String(rank || "").trim();
+  if (!value) return "";
+
+  const compactValue = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const directRankMap = {
+    MASTER: "Master",
+    MSTR: "Master",
+    CAPT: "Captain",
+    COFF: "Chief Officer",
+    COF: "Chief Officer",
+    CHOFF: "Chief Officer",
+    CHIEFOFFICER: "Chief Officer",
+    ACOFF: "Addl Chief Officer",
+    ACOF: "Addl Chief Officer",
+    ADDLCHIEFOFFICER: "Addl Chief Officer",
+    "2OFF": "2nd Officer",
+    "2NDOFFICER": "2nd Officer",
+    "3OFF": "3rd Officer",
+    "3RDOFFICER": "3rd Officer",
+    "4MTE": "4th Mate",
+    "4THMATE": "4th Mate",
+    CENG: "Chief Engineer",
+    CHIEFENGINEER: "Chief Engineer",
+    "1AEN": "1st Asst Engineer",
+    "1STASSTENGINEER": "1st Asst Engineer",
+    A1AEN: "Addl 1st Asst Engineer",
+    ADDL1STASSTENGINEER: "Addl 1st Asst Engineer",
+    "2AEN": "2nd Asst Engineer",
+    "2NDASSTENGINEER": "2nd Asst Engineer",
+    "3AEN": "3rd Asst Engineer",
+    "3RDASSTENGINEER": "3rd Asst Engineer",
+    TUIE: "Asst. Engineer (TUIE)",
+    ASSTENGINEERTUIE: "Asst. Engineer (TUIE)",
+    ASSTENGINEERENGCADET: "Asst. Engineer (TUIE)",
+    OFFICERINTRAININGENGINE: "Asst. Engineer (TUIE)",
+    TUID: "Deck Cadet (TUID)",
+    DECKCADETTUID: "Deck Cadet (TUID)",
+    OFFICERINTRAININGDECK: "Deck Cadet (TUID)",
+    ETO: "Electro Technical Officer",
+    ELTOF: "Electro Technical Officer",
+    ELECTROTECHNICALOFFICER: "Electro Technical Officer",
+    OSMN: "Ordinary Seaman",
+    ORDINARYSEAMAN: "Ordinary Seaman",
+    ABSM: "Able Body Seaman",
+    ABLEBODYSEAMAN: "Able Body Seaman",
+    MSMN: "Messman",
+    OILR: "Oiler",
+    ENGTR: "Engine Trainee",
+    DKTR: "Deck Trainee",
+  };
+
+  return directRankMap[compactValue] || value;
+}
 
 exports.exportTrainingRecordReport = async (req, res) => {
   try {
@@ -824,8 +1055,21 @@ exports.bulkDownloadFeedbackPDFs = async (req, res) => {
               ? masterCourse.master_course_name
               : "N/A";
           }
-          masterCourseName = masterCoursesMap[courseDetails.master_course_id];
         }
+
+        const resolvedMasterCourseName =
+          courseDetails.master_course_id &&
+          masterCoursesMap[courseDetails.master_course_id]
+            ? masterCoursesMap[courseDetails.master_course_id]
+            : "N/A";
+
+        masterCourseName =
+          (resolvedMasterCourseName !== "N/A"
+            ? resolvedMasterCourseName
+            : "") ||
+          courseDetails.master_course_name ||
+          courseDetails.course_name ||
+          "N/A";
       }
 
       const feedbackRows = [
@@ -1009,6 +1253,7 @@ exports.getHotelReport = async (req, res) => {
       message: "Hotel report fetched successfully",
       data: data.data,
       total: data.total,
+      totalCount: data.totalCount || data.total,
       page: data.page,
       limit: data.limit,
       totalPages: data.totalPages,
@@ -2120,30 +2365,134 @@ function httpError(statusCode, message) {
   return error;
 }
 
+exports.exportHotelReport = async (req, res) => {
+  try {
+    const { hotel_name, employee, course_name } = req.body;
+    const filters = {
+      hotel_name,
+      employee,
+      course_name,
+    };
+
+    const data = await ReportDao.getHotelReport(filters);
+    const reportData = data.data;
+
+    if (!reportData || reportData.length === 0) {
+      return res.status(404).json({
+        message: "No hotel allocations found for the selected filters.",
+      });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Hotel Report");
+
+    const headers = [
+      "Sr. No.",
+      "Hotel Name",
+      "Employee ID",
+      "Employee Name",
+      "Course Name",
+      "Course Start Date",
+      "Course End Date",
+      "Hotel Start Date",
+      "Hotel End Date",
+      "Cost"
+    ];
+
+    const headerRow = worksheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "0060AA" },
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
+
+    reportData.forEach((row, index) => {
+      const dataRow = worksheet.addRow([
+        index + 1,
+        row.hotel_name || "-",
+        row.employee_id || "-",
+        `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+        row.course_name || "-",
+        row.start_date ? new Date(row.start_date).toLocaleDateString("en-GB") : "-",
+        row.end_date ? new Date(row.end_date).toLocaleDateString("en-GB") : "-",
+        row.hotel_from_date ? new Date(row.hotel_from_date).toLocaleDateString("en-GB") : "-",
+        row.hotel_to_date ? new Date(row.hotel_to_date).toLocaleDateString("en-GB") : "-",
+        row.cost !== null && row.cost !== undefined ? row.cost : "-"
+      ]);
+      dataRow.eachCell(cell => {
+          cell.alignment = { vertical: "middle" };
+      });
+    });
+
+    worksheet.columns.forEach((column) => {
+      let maxColumnLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxColumnLength) {
+          maxColumnLength = columnLength;
+        }
+      });
+      column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="Hotel_Report.xlsx"',
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export Hotel Report Error:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
 function normalizeTrainingRecordRows(courseInstances) {
   const grouped = new Map();
 
   courseInstances.forEach((item) => {
-    const courseName = item.course_name || "Untitled Course";
+    const courseName = normalizeTrainingRecordCourseName(item.course_name);
     const trainingPeriodDays = Number(item.training_period_days) || 0;
     const monthIndex = Math.max(0, (Number(item.end_month) || 1) - 1);
     const traineeCount = Number(item.trainee_count) || 0;
     const section = getTrainingRecordSection(item);
-    const key = `${section}__${courseName}__${trainingPeriodDays}`;
+    const key = `${section}__${courseName.toLowerCase()}`;
 
     if (!grouped.has(key)) {
       grouped.set(key, {
         section,
         courseName,
-        trainingPeriodDays,
+        trainingPeriodDays: new Set(),
         monthlyTime: Array(12).fill(0),
         monthlyTrainees: Array(12).fill(0),
+        monthlyMandays: Array(12).fill(0),
       });
     }
 
     const current = grouped.get(key);
+    if (trainingPeriodDays) {
+      current.trainingPeriodDays.add(trainingPeriodDays);
+    }
     current.monthlyTime[monthIndex] += 1;
     current.monthlyTrainees[monthIndex] += traineeCount;
+    current.monthlyMandays[monthIndex] += traineeCount * trainingPeriodDays;
   });
 
   return Array.from(grouped.values())
@@ -2158,12 +2507,13 @@ function normalizeTrainingRecordRows(courseInstances) {
         serialNo: index + 1,
         section: item.section,
         courseName: item.courseName,
-        trainingPeriodDays: item.trainingPeriodDays,
+        trainingPeriodDays: formatTrainingPeriodDays(item.trainingPeriodDays),
         monthlyTime: item.monthlyTime,
         monthlyTrainees: item.monthlyTrainees,
+        monthlyMandays: item.monthlyMandays,
         totalTime,
         totalTrainees,
-        totalMandays: totalTrainees * item.trainingPeriodDays,
+        totalMandays: item.monthlyMandays.reduce((sum, value) => sum + value, 0),
       };
     })
     .sort((a, b) => {
@@ -2176,12 +2526,27 @@ function normalizeTrainingRecordRows(courseInstances) {
       if (a.courseName !== b.courseName) {
         return a.courseName.localeCompare(b.courseName);
       }
-      return a.trainingPeriodDays - b.trainingPeriodDays;
+      return 0;
     })
     .map((item, index) => ({
       ...item,
       serialNo: index + 1,
     }));
+}
+
+function normalizeTrainingRecordCourseName(value) {
+  return String(value || "Untitled Course").trim().replace(/\s+/g, " ");
+}
+
+function formatTrainingPeriodDays(values) {
+  const days = Array.from(values)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+
+  if (days.length === 0) return "";
+  if (days.length === 1) return days[0];
+  return days.join(" / ");
 }
 
 function buildTrainingRecordWorkbook(year, rows) {
@@ -2214,9 +2579,9 @@ function buildTrainingRecordWorkbook(year, rows) {
   ];
 
   addTrainingRecordHeader(worksheet, year);
-  addTrainingRecordRows(worksheet, rows);
+  const subTotalRowNumbers = addTrainingRecordRows(worksheet, rows);
   const totalRowNumbers = addTrainingRecordTotals(worksheet, rows);
-  styleTrainingRecordSheet(worksheet, totalRowNumbers);
+  styleTrainingRecordSheet(worksheet, [...subTotalRowNumbers, totalRowNumbers]);
 
   return workbook;
 }
@@ -2256,14 +2621,27 @@ function addTrainingRecordTableHeader(worksheet) {
 }
 
 function addTrainingRecordRows(worksheet, rows) {
+  const subTotalRowNumbers = [];
   let currentSection = "";
+  let currentSectionRows = [];
+
+  const addSubTotalsIfAny = () => {
+    if (currentSectionRows.length > 0) {
+      const subtotals = addTrainingRecordSectionTotals(worksheet, currentSectionRows, currentSection);
+      subTotalRowNumbers.push(subtotals);
+    }
+  };
 
   rows.forEach((item) => {
     if (item.section !== currentSection) {
+      addSubTotalsIfAny();
       currentSection = item.section;
+      currentSectionRows = [];
       addTrainingRecordSectionHeader(worksheet, currentSection);
       addTrainingRecordTableHeader(worksheet);
     }
+
+    currentSectionRows.push(item);
 
     const timeRowNumber = worksheet.rowCount + 1;
     const traineeRowNumber = timeRowNumber + 1;
@@ -2303,6 +2681,10 @@ function addTrainingRecordRows(worksheet, rows) {
       wrapText: true,
     };
   });
+
+  addSubTotalsIfAny();
+
+  return subTotalRowNumbers;
 }
 
 function addTrainingRecordSectionHeader(worksheet, section) {
@@ -2322,6 +2704,80 @@ function addTrainingRecordSectionHeader(worksheet, section) {
     left: { style: "thin" },
     bottom: { style: "thin" },
     right: { style: "thin" },
+  };
+}
+
+function addTrainingRecordSectionTotals(worksheet, rows, section) {
+  const monthlyTimeTotals = Array(12).fill(0);
+  const monthlyTraineeTotals = Array(12).fill(0);
+  const monthlyMandaysTotals = Array(12).fill(0);
+
+  let totalTime = 0;
+  let totalTrainees = 0;
+  let totalMandays = 0;
+
+  rows.forEach((item) => {
+    totalTime += item.totalTime;
+    totalTrainees += item.totalTrainees;
+    totalMandays += item.totalMandays;
+
+    item.monthlyTime.forEach((value, index) => {
+      monthlyTimeTotals[index] += value;
+    });
+
+    item.monthlyTrainees.forEach((value, index) => {
+      monthlyTraineeTotals[index] += value;
+      monthlyMandaysTotals[index] += item.monthlyMandays[index] || 0;
+    });
+  });
+
+  const totalTimeRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "TOTAL TIME",
+    "",
+    "",
+    "",
+    ...monthlyTimeTotals.map(toDisplayValue),
+    toDisplayValue(totalTime),
+    "",
+    "",
+    "",
+  ]);
+
+  const totalTraineesRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "Total \r\nTrainees",
+    "",
+    "",
+    "",
+    ...monthlyTraineeTotals.map(toDisplayValue),
+    toDisplayValue(totalTime),
+    toDisplayValue(totalTrainees),
+    toDisplayValue(totalMandays),
+    "",
+  ]);
+
+  const spacerRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([]);
+
+  const totalMandaysRowNumber = worksheet.rowCount + 1;
+  worksheet.addRow([
+    "",
+    "TOTAL MAN DAYS",
+    "",
+    "", // Leaving label empty for section totals
+    ...monthlyMandaysTotals.map(toDisplayValue),
+    "",
+    "",
+    toDisplayValue(totalMandays),
+    "",
+  ]);
+
+  return {
+    totalTimeRowNumber,
+    totalTraineesRowNumber,
+    spacerRowNumber,
+    totalMandaysRowNumber,
   };
 }
 
@@ -2345,7 +2801,7 @@ function addTrainingRecordTotals(worksheet, rows) {
 
     item.monthlyTrainees.forEach((value, index) => {
       monthlyTraineeTotals[index] += value;
-      monthlyMandaysTotals[index] += value * item.trainingPeriodDays;
+      monthlyMandaysTotals[index] += item.monthlyMandays[index] || 0;
     });
   });
 
@@ -2399,7 +2855,7 @@ function addTrainingRecordTotals(worksheet, rows) {
   };
 }
 
-function styleTrainingRecordSheet(worksheet, totalRowNumbers) {
+function styleTrainingRecordSheet(worksheet, allTotalRowNumbers) {
   [1, 2, 3, 4, 5, 6, 7].forEach((rowNumber) => {
     worksheet.getRow(rowNumber).font = { name: "Arial", bold: rowNumber <= 7 };
   });
@@ -2447,27 +2903,29 @@ function styleTrainingRecordSheet(worksheet, totalRowNumbers) {
     }
   }
 
-  worksheet.getRow(totalRowNumbers.totalTimeRowNumber).font = {
-    name: "Arial",
-    bold: true,
-    size: 10,
-  };
-  worksheet.getRow(totalRowNumbers.totalTraineesRowNumber).font = {
-    name: "Arial",
-    bold: true,
-    size: 10,
-  };
-  worksheet.getRow(totalRowNumbers.totalMandaysRowNumber).font = {
-    name: "Arial",
-    bold: true,
-    size: 10,
-  };
-  worksheet.getRow(totalRowNumbers.spacerRowNumber).eachCell(
-    { includeEmpty: true },
-    (cell) => {
-      cell.border = {};
-    },
-  );
+  allTotalRowNumbers.forEach((totalRowNumbers) => {
+    worksheet.getRow(totalRowNumbers.totalTimeRowNumber).font = {
+      name: "Arial",
+      bold: true,
+      size: 10,
+    };
+    worksheet.getRow(totalRowNumbers.totalTraineesRowNumber).font = {
+      name: "Arial",
+      bold: true,
+      size: 10,
+    };
+    worksheet.getRow(totalRowNumbers.totalMandaysRowNumber).font = {
+      name: "Arial",
+      bold: true,
+      size: 10,
+    };
+    worksheet.getRow(totalRowNumbers.spacerRowNumber).eachCell(
+      { includeEmpty: true },
+      (cell) => {
+        cell.border = {};
+      },
+    );
+  });
 
   for (let rowNumber = 9; rowNumber <= worksheet.rowCount; rowNumber += 2) {
     const row = worksheet.getRow(rowNumber);
@@ -2563,12 +3021,22 @@ function normalizeTrainingActivitiesRows(courseInstances, weeks) {
         item.start_date,
         item.end_date,
       );
+    const isCancelled = item.status === "Cancelled";
+    const isPreActive =
+      Number(item.is_pre_active) === 1 || item.status === "Pre-Active";
+    const statusCategory = isCancelled
+      ? "Cancelled"
+      : isPreActive
+        ? "Pre-Active"
+        : "Active";
+
     const rowKey = [
       sectionKey,
       normalizedCode,
       (item.master_course_name || item.course_name || "Untitled Course").trim(),
       normalizeTrainingActivitiesMode(item.type_of_location),
       durationDays,
+      statusCategory,
     ].join("__");
 
     if (!grouped.has(rowKey)) {
@@ -2578,24 +3046,29 @@ function normalizeTrainingActivitiesRows(courseInstances, weeks) {
         courseName: (item.master_course_name || item.course_name || "Untitled Course").trim(),
         mode: normalizeTrainingActivitiesMode(item.type_of_location),
         durationDays,
+        status: item.status,
+        isCancelled,
+        isPreActive,
         weeklyEntries: weeks.map(() => []),
       });
     }
 
     const current = grouped.get(rowKey);
-    weeks.forEach((week, index) => {
-      const overlap = getDateRangeOverlap(
-        item.start_date,
-        item.end_date,
-        week.start,
-        week.end,
-      );
-      if (overlap) {
-        current.weeklyEntries[index].push(
-          `${padDate(overlap.start.getUTCDate())}-${padDate(overlap.end.getUTCDate())}`,
+    if (item.start_date && item.end_date) {
+      weeks.forEach((week, index) => {
+        const overlap = getDateRangeOverlap(
+          item.start_date,
+          item.end_date,
+          week.start,
+          week.end,
         );
-      }
-    });
+        if (overlap) {
+          current.weeklyEntries[index].push(
+            `${padDate(overlap.start.getUTCDate())}-${padDate(overlap.end.getUTCDate())}`,
+          );
+        }
+      });
+    }
   });
 
   const rows = Array.from(grouped.values())
@@ -2676,7 +3149,7 @@ function addTrainingActivitiesHeaderRows(worksheet, weeks) {
     sanitizeExcelText("Course Name"),
     sanitizeExcelText("Mode"),
     sanitizeExcelText("Duration Days"),
-    "",
+    sanitizeExcelText("Status"),
     sanitizeExcelText("Month"),
     ...weeks.map((week) => sanitizeExcelText(formatMonthHeaderLabel(week.start))),
   ]);
@@ -2710,16 +3183,29 @@ function addTrainingActivitiesDataRows(worksheet, rows, weekCount) {
       );
     }
 
-    worksheet.addRow([
+    let statusLabel = "Active";
+    if (item.isCancelled) {
+      statusLabel = "Cancelled";
+    } else if (item.isPreActive) {
+      statusLabel = "Pre-Active";
+    }
+
+    const dataRow = worksheet.addRow([
       item.serialNo,
       sanitizeExcelText(item.courseCode),
       sanitizeExcelText(item.courseName),
       sanitizeExcelText(item.mode),
       item.durationDays,
-      "",
+      sanitizeExcelText(statusLabel),
       "",
       ...item.weeklyEntries.map((entry) => sanitizeExcelText(entry)),
     ]);
+    if (item.isCancelled) {
+      dataRow.isCancelled = true;
+    }
+    if (item.isPreActive) {
+      dataRow.isPreActive = true;
+    }
   });
 }
 
@@ -2767,9 +3253,27 @@ function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
       TRG219_SECTION_DEFINITIONS.some(
         (section) => section.title === firstCellValue,
       );
+    const isCancelled = Boolean(row.isCancelled);
+    const isPreActive = Boolean(row.isPreActive);
 
     row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-      cell.font = cell.font || { name: "Arial", size: 10 };
+      let fontColor = undefined;
+      if (isCancelled) {
+        fontColor = { argb: "FFFF0000" };
+      } else if (columnNumber === 6) {
+        if (isPreActive) {
+          fontColor = { argb: "FFED7D31" }; // Orange for Pre-Active
+        } else {
+          fontColor = { argb: "FF00B050" }; // Green for Active
+        }
+      }
+
+      cell.font = {
+        name: "Arial",
+        size: 10,
+        bold: columnNumber === 6 && !isSectionHeader,
+        ...(fontColor ? { color: fontColor } : {}),
+      };
       cell.alignment = {
         horizontal: columnNumber === 3 ? "left" : "center",
         vertical: "middle",
@@ -2786,6 +3290,10 @@ function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
     if (isSectionHeader) {
       row.font = { name: "Arial", bold: true, size: 11 };
       row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = {
+          horizontal: "left",
+          vertical: "middle",
+        };
         cell.fill = {
           type: "pattern",
           pattern: "solid",
@@ -2796,14 +3304,6 @@ function styleTrainingActivitiesSheet(worksheet, totalColumns, weekCount) {
     } else {
       row.height = 32;
     }
-  }
-
-  for (let columnNumber = 8; columnNumber <= 7 + weekCount; columnNumber++) {
-    worksheet.getColumn(columnNumber).alignment = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: true,
-    };
   }
 }
 

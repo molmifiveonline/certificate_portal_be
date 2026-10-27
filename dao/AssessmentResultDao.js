@@ -162,10 +162,16 @@ class AssessmentResultDao {
 
     const result = resultRows[0];
 
+    const [answerOrderColumns] = await pool.execute(
+      "SHOW COLUMNS FROM assessment_answers LIKE 'answer_order'",
+    );
+    const hasAnswerOrder = answerOrderColumns.length > 0;
+
     // Get answers with question details
     const answersQuery = `
       SELECT 
         aa.id,
+        ${hasAnswerOrder ? "aa.answer_order" : "NULL AS answer_order"},
         aa.question_id,
         aa.selected_option,
         aa.is_correct,
@@ -182,8 +188,19 @@ class AssessmentResultDao {
         qb.opt_img_d
       FROM assessment_answers aa
       LEFT JOIN question_bank qb ON aa.question_id = qb.id
+      LEFT JOIN legacy_id_map lim_question
+        ON lim_question.entity_type = 'question_bank' AND lim_question.new_id = qb.id
+      LEFT JOIN legacy_id_map lim_answer
+        ON lim_answer.entity_type = 'assessment_answer' AND lim_answer.new_id = aa.id
       WHERE aa.assessment_result_id = ?
-      ORDER BY aa.created_at ASC
+      ORDER BY
+        CASE WHEN lim_question.legacy_id REGEXP '^[0-9]+$' THEN 0 ELSE 1 END,
+        CAST(lim_question.legacy_id AS UNSIGNED) ASC,
+        ${hasAnswerOrder ? "CASE WHEN aa.answer_order IS NULL THEN 1 ELSE 0 END, aa.answer_order ASC," : ""}
+        CASE WHEN lim_answer.legacy_id REGEXP '^[0-9]+$' THEN 0 ELSE 1 END,
+        CAST(lim_answer.legacy_id AS UNSIGNED) ASC,
+        aa.created_at ASC,
+        aa.id ASC
     `;
     const [answerRows] = await pool.execute(answersQuery, [resultId]);
 
@@ -451,20 +468,32 @@ class AssessmentResultDao {
 
       // Save individual answers
       if (answers && answers.length > 0) {
-        const answerQuery = `
-          INSERT INTO assessment_answers (
-            id, assessment_result_id, question_id, selected_option, is_correct
-          ) VALUES (?, ?, ?, ?, ?)
-        `;
+        const [answerOrderColumns] = await connection.execute(
+          "SHOW COLUMNS FROM assessment_answers LIKE 'answer_order'",
+        );
+        const hasAnswerOrder = answerOrderColumns.length > 0;
+        const answerQuery = hasAnswerOrder
+          ? `
+            INSERT INTO assessment_answers (
+              id, assessment_result_id, question_id, selected_option, is_correct, answer_order
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `
+          : `
+            INSERT INTO assessment_answers (
+              id, assessment_result_id, question_id, selected_option, is_correct
+            ) VALUES (?, ?, ?, ?, ?)
+          `;
 
-        for (const ans of answers) {
-          await connection.execute(answerQuery, [
+        for (const [index, ans] of answers.entries()) {
+          const values = [
             uuidv4(),
             resultId,
             ans.question_id,
             ans.selected_option,
             ans.is_correct ? 1 : 0,
-          ]);
+          ];
+          if (hasAnswerOrder) values.push(index + 1);
+          await connection.execute(answerQuery, values);
         }
       }
 

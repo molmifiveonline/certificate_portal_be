@@ -12,6 +12,12 @@ router.get(
   dashboardController.getStats,
 );
 router.get(
+  "/candidate-stats",
+  protect,
+  authorize("Candidate"),
+  dashboardController.getCandidateStats,
+);
+router.get(
   "/courses",
   protect,
   checkPermission("view_active_courses", ["Trainer", "Candidate"]),

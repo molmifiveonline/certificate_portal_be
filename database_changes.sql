@@ -739,6 +739,22 @@ ALTER TABLE courses_enrollment
   ADD COLUMN IF NOT EXISTS to_date DATE NULL,
   ADD COLUMN IF NOT EXISTS remarks TEXT NULL;
 
+SET @courses_enrollment_cost_column_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'courses_enrollment'
+    AND COLUMN_NAME = 'cost'
+);
+SET @courses_enrollment_cost_column_sql := IF(
+  @courses_enrollment_cost_column_exists = 0,
+  'ALTER TABLE courses_enrollment ADD COLUMN cost DECIMAL(10,2) NULL',
+  'SELECT 1'
+);
+PREPARE courses_enrollment_cost_column_stmt FROM @courses_enrollment_cost_column_sql;
+EXECUTE courses_enrollment_cost_column_stmt;
+DEALLOCATE PREPARE courses_enrollment_cost_column_stmt;
+
 UPDATE courses_enrollment ce
 JOIN courses c ON c.id = ce.course_id
 SET
@@ -979,3 +995,62 @@ CREATE TABLE IF NOT EXISTS `study_material_files` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
+-- Date: 2026-08-24 - Certificate Status Pool
+-- ---------------------------------------------------------
+SET @has_cert_status_pool := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'certificates'
+    AND COLUMN_NAME = 'status_pool'
+);
+SET @cert_status_pool_sql := IF(
+  @has_cert_status_pool = 0,
+  'ALTER TABLE `certificates` ADD COLUMN `status_pool` VARCHAR(50) DEFAULT NULL AFTER `status`',
+  'SELECT "certificates.status_pool already exists"'
+);
+PREPARE cert_status_pool_stmt FROM @cert_status_pool_sql;
+EXECUTE cert_status_pool_stmt;
+DEALLOCATE PREPARE cert_status_pool_stmt;
+
+
+-- Date: 2026-08-27 - Assessment Submitted Answer Sequence
+-- ---------------------------------------------------------
+SET @has_assessment_answer_order := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'assessment_answers'
+    AND COLUMN_NAME = 'answer_order'
+);
+SET @assessment_answer_order_sql := IF(
+  @has_assessment_answer_order = 0,
+  'ALTER TABLE `assessment_answers` ADD COLUMN `answer_order` INT NULL AFTER `is_correct`',
+  'SELECT "assessment_answers.answer_order already exists"'
+);
+PREPARE assessment_answer_order_stmt FROM @assessment_answer_order_sql;
+EXECUTE assessment_answer_order_stmt;
+DEALLOCATE PREPARE assessment_answer_order_stmt;
+
+-- Date: 2026-08-31 - Enrolled Candidates CC Email
+-- ---------------------------------------------------------
+SET @has_courses_enrollment_cc_email := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'courses_enrollment'
+    AND COLUMN_NAME = 'cc_email'
+);
+SET @courses_enrollment_cc_email_sql := IF(
+  @has_courses_enrollment_cc_email = 0,
+  'ALTER TABLE `courses_enrollment` ADD COLUMN `cc_email` VARCHAR(255) NULL AFTER `cost`',
+  'SELECT "courses_enrollment.cc_email already exists"'
+);
+PREPARE courses_enrollment_cc_email_stmt FROM @courses_enrollment_cc_email_sql;
+EXECUTE courses_enrollment_cc_email_stmt;
+DEALLOCATE PREPARE courses_enrollment_cc_email_stmt;
+
+-- Date: 2026-09-14 - Candidate Professional Info enhancements
+-- ---------------------------------------------------------
+ALTER TABLE candidate_profiles ADD COLUMN manning_agent VARCHAR(255) NULL;
+ALTER TABLE candidate_profiles ADD COLUMN fg_global VARCHAR(255) NULL;

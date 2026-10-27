@@ -2,6 +2,14 @@ const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 const { hasColumn } = require("../utils/schemaUtils");
 
+const normalizeCourseType = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const isOuthouseCourseType = (value) =>
+  normalizeCourseType(value) === "outhouse";
+
 // ==========================================
 // Pre-Active Course Operations
 // ==========================================
@@ -470,6 +478,72 @@ const updateCandidateApproval = async (
   return result.affectedRows > 0;
 };
 
+const updateCandidateApprovalByEnrollment = async (
+  enrollmentId,
+  candidate_id,
+  status,
+  remark,
+  rejection_reason,
+  available_date,
+) => {
+  const [result] = await pool.execute(
+    "UPDATE courses_enrollment SET candidate_approval_status = ?, candidate_remark = ?, candidate_rejection_reason = ?, candidate_available_date = ? WHERE id = ? AND candidate_id = ?",
+    [status, remark || null, rejection_reason || null, available_date || null, enrollmentId, candidate_id],
+  );
+  return result.affectedRows > 0;
+};
+
+const getCandidateNominations = async (candidateId, options = {}) => {
+  const { status, search } = options;
+  let query = `
+    SELECT 
+      ce.id as enrollment_id,
+      ce.course_id,
+      ce.candidate_id,
+      ce.candidate_approval_status,
+      ce.candidate_remark,
+      ce.candidate_rejection_reason,
+      ce.candidate_available_date,
+      ce.created_at as nominated_at,
+      c.course_id as course_code,
+      c.course_name,
+      c.topic,
+      c.start_date,
+      c.end_date,
+      c.days,
+      c.type_of_course,
+      c.type_of_location,
+      c.other_location,
+      c.description,
+      c.is_pre_active,
+      l.name as location_name,
+      COALESCE(NULLIF(CONCAT_WS(' ', n.first_name, n.last_name), ''), n.name, n.email, 'Admin') as nominated_by
+    FROM courses_enrollment ce
+    JOIN courses c ON ce.course_id = c.id
+    LEFT JOIN locations l ON c.location_id = l.id
+    LEFT JOIN nominators n ON ce.nominator_id = n.id
+    WHERE ce.candidate_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
+  `;
+  const params = [candidateId];
+
+  if (status && status !== "All") {
+    query += ` AND ce.candidate_approval_status = ?`;
+    params.push(status);
+  }
+
+  if (search) {
+    query += ` AND (c.course_name LIKE ? OR c.course_id LIKE ? OR c.topic LIKE ?)`;
+    const searchVal = `%${search}%`;
+    params.push(searchVal, searchVal, searchVal);
+  }
+
+  query += ` ORDER BY ce.created_at DESC, c.start_date DESC`;
+
+  const [rows] = await pool.execute(query, params);
+  return rows;
+};
+
+
 const updateAdminApproval = async (enrollmentId, status, remark) => {
   const [result] = await pool.execute(
     "UPDATE courses_enrollment SET admin_approval_status = ?, admin_remark = ?, admin_action_date = NOW() WHERE id = ?",
@@ -529,8 +603,7 @@ const getRejectedCandidateApprovals = async (options = {}) => {
     String(sort_order).toLowerCase() === "asc" ? "ASC" : "DESC";
 
   let whereClause = `
-    WHERE c.is_pre_active = 1
-      AND ce.candidate_approval_status = 'Rejected'
+    WHERE ce.candidate_approval_status = 'Rejected'
       AND (ce.status != 'Deleted' OR ce.status IS NULL)
   `;
   const params = [];
@@ -644,10 +717,39 @@ const getRejectedCandidateApprovals = async (options = {}) => {
 // Convert and Reports
 // ==========================================
 
-const convertToActiveCourse = async (id) => {
+const convertToActiveCourse = async (
+  id,
+  courseType,
+  newCourseId = null,
+  oldCourseId = null,
+) => {
+  const setParts = ["is_pre_active = 0", "status = 'Initiated'"];
+  const params = [];
+
+  if (newCourseId) {
+    setParts.push("course_id = ?");
+    params.push(newCourseId);
+  }
+
+  if (await hasColumn("courses", "creation_mode")) {
+    setParts.push("creation_mode = 'conversion'");
+  }
+
+  if (oldCourseId && (await hasColumn("courses", "source_pre_active_id"))) {
+    setParts.push("source_pre_active_id = ?");
+    params.push(oldCourseId);
+  }
+
+  if (await hasColumn("courses", "is_outhouse")) {
+    setParts.push("is_outhouse = ?");
+    params.push(isOuthouseCourseType(courseType) ? 1 : 0);
+  }
+
+  params.push(id);
+
   const [result] = await pool.execute(
-    "UPDATE courses SET is_pre_active = 0, status = 'Initiated' WHERE id = ? AND is_pre_active = 1",
-    [id],
+    `UPDATE courses SET ${setParts.join(", ")} WHERE id = ? AND is_pre_active = 1`,
+    params,
   );
   return result.affectedRows > 0;
 };
@@ -696,7 +798,16 @@ const getAvailableOthersCandidates = async (courseId) => {
     SELECT 
       u.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile,
       CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
-      cp.middle_name as profile_middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type
+      cp.middle_name as profile_middle_name, cp.gender, cp.dob, cp.indos_number, cp.registration_type,
+      cp.nationality, cp.passport_no as cdc_passport, cp.passport_no, cp.employee_id as empId,
+      cp.rank, cp.seaman_book_no, cp.designation, cp.manning_company as manager, cp.manning_company,
+      cp.vessel_type, cp.status_pool, cp.last_vessel_name as last_vessel,
+      (
+        SELECT MAX(cert.issue_date)
+        FROM certificates cert
+        WHERE cert.candidate_id = u.id
+          AND cert.issue_date IS NOT NULL
+      ) as previous_certificate_date
     FROM users u
     JOIN candidate_profiles cp ON u.id = cp.user_id
     JOIN roles r ON u.role_id = r.id
@@ -869,10 +980,13 @@ module.exports = {
   enrollCandidateByAdmin,
   getCandidateEnrollmentById,
   updateCandidateApproval,
+  updateCandidateApprovalByEnrollment,
+  getCandidateNominations,
   updateAdminApproval,
   getPendingAdminApprovals,
   getRejectedCandidateApprovals,
   convertToActiveCourse,
+  isOuthouseCourseType,
   getAdminRemarksReport,
   getNominatorNotifiedCourses,
   getNominatorEnrollments,

@@ -39,8 +39,11 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
     <p>You have been enrolled in the outhouse course <strong>${course.course_name}</strong>.</p>
     <p><strong>Start Date:</strong> ${course.start_date}</p>
     <p><strong>End Date:</strong> ${course.end_date}</p>
+    <p><strong>Start Time:</strong> ${course.start_time || "09:30"} IST</p>
+    <p><strong>End Time:</strong> ${course.end_time || "17:30"} IST</p>
   `;
 
+  let venueFiles = [];
   if ((course.type_of_location || "").toLowerCase() === "online") {
     html += `
       <p><strong>Zoom Link:</strong> <a href="${course.zoom_link || "#"}">${course.zoom_link || "N/A"}</a></p>
@@ -48,6 +51,7 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
       <p><strong>Zoom Password:</strong> ${course.zoom_password || "-"}</p>
     `;
   } else if (venue) {
+    venueFiles = await HotelFilesDao.getFilesByEnrollmentId(venue.id);
     html += `
       <p><strong>Hotel / Venue:</strong> ${venue.venue_name || "-"}</p>
       <p><strong>Address:</strong> ${venue.venue_address || "-"}</p>
@@ -56,6 +60,14 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
       <p><strong>Offline Date:</strong> ${venue.offline_date || "-"}</p>
       <p><strong>Remarks:</strong> ${venue.remarks || "-"}</p>
     `;
+    if (venueFiles.length > 0) {
+      html += `
+      <p><strong>Documents Attached:</strong></p>
+      <ul>
+        ${venueFiles.map(f => `<li>${f.file_name}</li>`).join("")}
+      </ul>
+      `;
+    }
   }
 
   html += `
@@ -63,10 +75,18 @@ const sendWelcomeEmail = async (course, candidate, venue) => {
     <p><a href="${approveLink}">Yes, I approve and I will be attending</a></p>
   `;
 
+  // Build email attachments from venue files
+  const emailAttachments = venueFiles.map(f => ({
+    filename: f.file_name,
+    path: path.join(__dirname, '..', 'uploads', 'venues', f.file_name),
+  }));
+
   await emailService.sendEmail(
     candidate.email,
     `Welcome Letter - ${course.course_name}`,
     html,
+    candidate.cc_email,
+    emailAttachments
   );
 
   await CourseEnrollmentDao.updateEmailStatus(
@@ -98,12 +118,15 @@ exports.createCourse = async (req, res) => {
     const year = req.body.start_date
       ? new Date(req.body.start_date).getFullYear()
       : new Date().getFullYear();
-    const count = await OuthouseCourseDao.getLastCourseId(topicName);
-    const nextId = (count + 1).toString().padStart(3, "0");
+    const course_id = await ActiveCourseDao.generateNextCourseId({
+      topic: topicName,
+      year,
+      isOuthouse: true,
+    });
 
     const payload = {
       ...req.body,
-      course_id: `${topicName}/${year}/${nextId}`,
+      course_id,
       master_course_name: req.body.master_course_name || masterCourse.master_course_name,
       topic: topicName,
       days: req.body.days || buildDays(req.body.start_date, req.body.end_date),
@@ -319,6 +342,9 @@ exports.updateVenueDetails = async (req, res) => {
       venue_email: req.body.hotel_email || req.body.venue_email,
       venue_map_link: req.body.venue_map_link || null,
       offline_date: req.body.offline_date || null,
+      from_date: req.body.from_date || null,
+      to_date: req.body.to_date || null,
+      cost: req.body.cost || null,
       remarks: req.body.remarks || null,
     };
     await CourseEnrollmentDao.updateVenueDetails(req.params.id, req.params.candidateId, details);

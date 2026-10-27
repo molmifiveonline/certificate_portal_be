@@ -5,10 +5,145 @@ const MasterCourseDao = require("../dao/MasterCourseDao");
 const TrainerDao = require("../dao/trainerDao");
 const FeedbackQuestionDao = require("../dao/feedbackQuestionDao");
 
+const pool = require("../config/db");
+
 const getFeedbackCourseTypeForCourse = (course) => {
   const locationType = (course?.type_of_location || "").toLowerCase().trim();
   if (locationType === "online") return "Online";
   return "Offline";
+};
+
+const isVenueCategory = (categoryName) => {
+  const normalized = String(categoryName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, " ");
+  return (
+    normalized.includes("training course venue") ||
+    normalized.includes("classroom venue")
+  );
+};
+
+const autoRecordVenueAnswers = async (candidateId, activeCourseId) => {
+  try {
+    const course = await ActiveCourseDao.getById(activeCourseId);
+    if (!course) return;
+
+    const FeedbackFormDao = require("../dao/FeedbackFormDao");
+    const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
+    const form = await FeedbackFormDao.getByCourseType(feedbackCourseType);
+    if (!form || !form.questions) return;
+
+    const existingDetails = await FeedbackAnswerDao.getSubmissionDetails(
+      candidateId,
+      activeCourseId,
+    );
+    const answeredQuestionIds = new Set(
+      (existingDetails || []).map((ans) => ans.feedback_question_id),
+    );
+
+    for (const [catId, catData] of Object.entries(form.questions)) {
+      if (isVenueCategory(catData.category_name)) {
+        for (const vq of catData.questions || []) {
+          if (!answeredQuestionIds.has(vq.id)) {
+            await FeedbackAnswerDao.create({
+              candidate_id: candidateId,
+              active_course_id: activeCourseId,
+              feedback_question_id: vq.id,
+              answer: "10",
+              feedback_category_id: catId,
+              feedback_id: form.id,
+              feedback_question_option_id: null,
+              feedback_question_option_text: "10",
+            });
+            answeredQuestionIds.add(vq.id);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Auto record venue answers error:", err);
+  }
+};
+
+const checkPostAssessmentStatus = async (courseId, candidateId) => {
+  const [postAssessmentRows] = await pool.execute(
+    `SELECT a.id, a.title 
+     FROM assessment a 
+     WHERE a.course_id = ? 
+       AND a.type_of_test IN ('Post', '2') 
+       AND a.status = 1 
+       AND (a.candidate_ids IS NULL OR a.candidate_ids = '' OR FIND_IN_SET(?, a.candidate_ids) > 0 OR a.type_of_test IN ('1', '2'))
+     LIMIT 1`,
+    [courseId, candidateId]
+  );
+  const postAssessmentExists = postAssessmentRows.length > 0;
+
+  let postAssessmentCompleted = false;
+  let postAssessmentPassed = false;
+  let postAssessmentScore = null;
+  let postAssessmentAttempt = null;
+  let requiredScore = null;
+
+  if (postAssessmentExists) {
+    const [resultRows] = await pool.execute(
+      `SELECT ar.id, ar.score, ar.attempt_number
+       FROM assessment_results ar
+       JOIN assessment a ON ar.assessment_id = a.id
+       WHERE ar.candidate_id = ?
+         AND ar.course_id = ?
+         AND a.course_id = ar.course_id
+         AND a.type_of_test IN ('Post', '2')
+         AND ar.status = 'Completed'
+       ORDER BY ar.attempt_number DESC, ar.created_at DESC
+       LIMIT 1`,
+      [candidateId, courseId]
+    );
+    postAssessmentCompleted = resultRows.length > 0;
+    if (postAssessmentCompleted) {
+      const latestResult = resultRows[0];
+      postAssessmentScore = Number(latestResult.score);
+      postAssessmentAttempt = Number(latestResult.attempt_number) || 1;
+      requiredScore = postAssessmentAttempt > 1 ? 70 : 60;
+      postAssessmentPassed =
+        !Number.isNaN(postAssessmentScore) &&
+        postAssessmentScore >= requiredScore;
+    }
+  }
+
+  return {
+    postAssessmentExists,
+    postAssessmentCompleted,
+    postAssessmentPassed,
+    postAssessmentScore,
+    postAssessmentAttempt,
+    requiredScore,
+  };
+};
+
+const sendPostAssessmentError = (res, status) => {
+  if (!status.postAssessmentExists) {
+    return res.status(400).json({
+      message:
+        "Post-assessment has not been created for this course. Feedback cannot be submitted yet.",
+    });
+  }
+
+  if (!status.postAssessmentCompleted) {
+    return res.status(400).json({
+      message:
+        "You must complete the post-course assessment before submitting feedback.",
+    });
+  }
+
+  if (!status.postAssessmentPassed) {
+    return res.status(400).json({
+      message:
+        "You must pass the post-course assessment before submitting feedback. First attempt requires at least 60%; retest requires at least 70%.",
+    });
+  }
+
+  return null;
 };
 
 class FeedbackAnswerController {
@@ -24,6 +159,16 @@ class FeedbackAnswerController {
       ) {
         return res.status(400).json({ message: "Invalid input data" });
       }
+
+      const postAssessmentStatus = await checkPostAssessmentStatus(
+        active_course_id,
+        candidate_id,
+      );
+      const postAssessmentError = sendPostAssessmentError(
+        res,
+        postAssessmentStatus,
+      );
+      if (postAssessmentError) return postAssessmentError;
 
       const results = [];
       for (const ans of answers) {
@@ -61,6 +206,8 @@ class FeedbackAnswerController {
           results.push(id);
         }
       }
+
+      await autoRecordVenueAnswers(candidate_id, active_course_id);
 
       res
         .status(201)
@@ -418,16 +565,38 @@ class FeedbackAnswerController {
         return res.status(404).json({ message: "Course not found" });
       }
 
+      const postAssessmentStatus = await checkPostAssessmentStatus(
+        courseId,
+        candidateId,
+      );
+
       const FeedbackFormDao = require("../dao/FeedbackFormDao");
       const feedbackCourseType = getFeedbackCourseTypeForCourse(course);
       const form = await FeedbackFormDao.getByCourseType(feedbackCourseType);
 
+      if (form && form.questions) {
+        const filteredQuestions = {};
+        for (const [catId, catData] of Object.entries(form.questions)) {
+          if (!isVenueCategory(catData.category_name)) {
+            filteredQuestions[catId] = catData;
+          }
+        }
+        form.questions = filteredQuestions;
+      }
+
+      const visibleAnswers = hasSubmitted
+        ? (existingAnswers || []).filter(
+            (ans) => !isVenueCategory(ans.category_name),
+          )
+        : null;
+
       res.json({
         hasSubmitted,
         submittedDate: hasSubmitted ? existingAnswers[0].created_at : null,
-        answers: hasSubmitted ? existingAnswers : null,
+        answers: visibleAnswers,
         form,
         feedbackCourseType,
+        ...postAssessmentStatus,
         message: form
           ? undefined
           : `No active ${feedbackCourseType} feedback form configured`,
@@ -449,6 +618,16 @@ class FeedbackAnswerController {
       if (!active_course_id || !answers || !Array.isArray(answers)) {
         return res.status(400).json({ message: "Invalid input data" });
       }
+
+      const postAssessmentStatus = await checkPostAssessmentStatus(
+        active_course_id,
+        candidate_id,
+      );
+      const postAssessmentError = sendPostAssessmentError(
+        res,
+        postAssessmentStatus,
+      );
+      if (postAssessmentError) return postAssessmentError;
 
       const results = [];
       for (const ans of answers) {
@@ -486,6 +665,8 @@ class FeedbackAnswerController {
           results.push(id);
         }
       }
+
+      await autoRecordVenueAnswers(candidate_id, active_course_id);
 
       res
         .status(201)

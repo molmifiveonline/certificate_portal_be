@@ -66,6 +66,17 @@ router.get(
   controller.getAdminRemarksReport,
 ); // Make sure this is above /:id
 router.get(
+  "/candidate/nominations",
+  checkPermission([], ["Candidate"]),
+  controller.getCandidateNominations,
+);
+router.post(
+  "/candidate/nomination/:enrollmentId/decision",
+  checkPermission([], ["Candidate"]),
+  controller.candidateApprovalByEnrollment,
+);
+
+router.get(
   "/rejected-approvals",
   checkPermission("view_pre_active_approvals"),
   controller.getRejectedCandidateApprovals,
@@ -73,6 +84,7 @@ router.get(
 
 router.get(
   "/:id",
+
   checkPermission("view_pre_active_courses"),
   controller.getCourseById,
 );
@@ -118,6 +130,11 @@ router.post(
 );
 router.post(
   "/:id/convert",
+  checkPermission("edit_pre_active_course"),
+  controller.convertToActiveCourse,
+);
+router.post(
+  "/:id/close",
   checkPermission("edit_pre_active_course"),
   controller.convertToActiveCourse,
 );

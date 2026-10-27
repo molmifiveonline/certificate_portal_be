@@ -90,10 +90,11 @@ class CourseEnrollmentDao {
     const query = `
       SELECT 
         ce.*, ce.is_observer,
+        COALESCE(NULLIF(ce.status_pool, ''), cp.status_pool) as status_pool,
         u.first_name, u.middle_name, u.last_name, u.email, u.mobile, 
         CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
         cp.employee_id as empId, cp.passport_no as cdc_passport, cp.rank, cp.seaman_book_no, cp.manning_company as manager,
-        cp.dob, cp.nationality, cp.designation, ce.trainer_comment,
+        cp.dob, cp.nationality, cp.designation, cp.last_vessel_name as last_vessel, ce.trainer_comment,
         (
           SELECT MAX(cert.issue_date)
           FROM certificates cert
@@ -118,10 +119,50 @@ class CourseEnrollmentDao {
   }
 
   static async updateStatusPool(courseId, candidateId, statusPool) {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const query1 =
+        "UPDATE courses_enrollment SET status_pool = ? WHERE course_id = ? AND candidate_id = ?";
+      const [result1] = await connection.execute(query1, [
+        statusPool,
+        courseId,
+        candidateId,
+      ]);
+
+      const query2 =
+        "UPDATE candidate_profiles SET status_pool = ? WHERE user_id = ?";
+      const [result2] = await connection.execute(query2, [
+        statusPool,
+        candidateId,
+      ]);
+
+      await connection.commit();
+      return result1.affectedRows > 0 || result2.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  static async updateLastVessel(courseId, candidateId, lastVessel) {
     const query =
-      "UPDATE courses_enrollment SET status_pool = ? WHERE course_id = ? AND candidate_id = ?";
+      "UPDATE candidate_profiles SET last_vessel_name = ? WHERE user_id = ?";
     const [result] = await pool.execute(query, [
-      statusPool,
+      lastVessel,
+      candidateId,
+    ]);
+    return result.affectedRows > 0;
+  }
+
+  static async updateCcEmail(courseId, candidateId, ccEmail) {
+    const query =
+      "UPDATE courses_enrollment SET cc_email = ? WHERE course_id = ? AND candidate_id = ?";
+    const [result] = await pool.execute(query, [
+      ccEmail,
       courseId,
       candidateId,
     ]);
@@ -153,7 +194,12 @@ class CourseEnrollmentDao {
     // Note: The previous query used role name which is safer if IDs change, but standardizing.
     // Reverting to role name join for safety as per previous snippet.
     const safeQuery = `
-        SELECT u.id, u.first_name, u.middle_name, u.last_name, cp.rank, cp.employee_id as empId, cp.passport_no as cdc_passport, cp.seaman_book_no, cp.manning_company as manager,
+        SELECT u.id, u.first_name, u.middle_name, u.last_name, u.email, u.mobile,
+        CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) as candidate_name,
+        cp.dob, cp.nationality, cp.designation, cp.rank, cp.employee_id as empId,
+        cp.passport_no as cdc_passport, cp.passport_no, cp.seaman_book_no,
+        cp.manning_company as manager, cp.manning_company, cp.vessel_type, cp.status_pool,
+        cp.last_vessel_name as last_vessel, cp.indos_number, cp.registration_type,
         (
           SELECT MAX(cert.issue_date)
           FROM certificates cert
@@ -184,9 +230,11 @@ class CourseEnrollmentDao {
   }
 
   static async getCandidateVenueDetails(courseId, candidateId) {
+    const hasCost = await hasColumn("courses_enrollment", "cost");
     const query = `
       SELECT 
         id, venue_name, venue_address, venue_contact, venue_map_link, venue_email, offline_date, from_date, to_date, remarks
+        ${hasCost ? ", cost" : ""}
       FROM courses_enrollment
       WHERE course_id = ? AND candidate_id = ?
     `;
@@ -204,6 +252,7 @@ class CourseEnrollmentDao {
       "from_date",
     );
     const hasToDate = Object.prototype.hasOwnProperty.call(details, "to_date");
+    const hasCost = await hasColumn("courses_enrollment", "cost");
     const {
       venue_name,
       venue_address,
@@ -213,6 +262,7 @@ class CourseEnrollmentDao {
       offline_date,
       from_date,
       to_date,
+      cost,
       remarks,
     } = details;
     const query = `
@@ -221,25 +271,32 @@ class CourseEnrollmentDao {
           offline_date = CASE WHEN ? THEN ? ELSE offline_date END,
           from_date = CASE WHEN ? THEN ? ELSE from_date END,
           to_date = CASE WHEN ? THEN ? ELSE to_date END,
+          ${hasCost ? "cost = ?," : ""}
           remarks = ?
       WHERE course_id = ? AND candidate_id = ?
     `;
-    const [result] = await pool.execute(query, [
-      venue_name,
-      venue_address,
-      venue_contact,
-      venue_map_link,
-      venue_email,
+    const values = [
+      venue_name === undefined ? null : venue_name,
+      venue_address === undefined ? null : venue_address,
+      venue_contact === undefined ? null : venue_contact,
+      venue_map_link === undefined ? null : venue_map_link,
+      venue_email === undefined ? null : venue_email,
       hasOfflineDate,
       offline_date || null,
       hasFromDate,
       from_date || null,
       hasToDate,
       to_date || null,
-      remarks,
+    ];
+    if (hasCost) {
+      values.push(cost === undefined || cost === "" ? null : cost);
+    }
+    values.push(
+      remarks === undefined ? null : remarks,
       courseId,
       candidateId,
-    ]);
+    );
+    const [result] = await pool.execute(query, values);
     return result.affectedRows > 0;
   }
 
@@ -387,7 +444,8 @@ class CourseEnrollmentDao {
         pre_res.total_questions as pre_total,
         post_res.assessment_id as post_assessment_id,
         post_res.score as post_score,
-        post_res.total_questions as post_total
+        post_res.total_questions as post_total,
+        post_res.attempt_number as post_score_attempt
       FROM courses_enrollment ce
       JOIN users u ON ce.candidate_id = u.id
       JOIN candidate_profiles cp ON u.id = cp.user_id
@@ -398,10 +456,19 @@ class CourseEnrollmentDao {
         WHERE ar.course_id = ? AND a.type_of_test IN ('Pre', '1') AND ar.status = 'Completed'
       ) pre_res ON ce.candidate_id = pre_res.candidate_id
       LEFT JOIN (
-        SELECT ar.candidate_id, ar.assessment_id, ar.score, ar.total_questions
-        FROM assessment_results ar
-        JOIN assessment a ON ar.assessment_id = a.id
-        WHERE ar.course_id = ? AND a.type_of_test IN ('Post', '2') AND ar.status = 'Completed'
+        SELECT ar1.candidate_id, ar1.assessment_id, ar1.score, ar1.total_questions, ar1.attempt_number
+        FROM assessment_results ar1
+        JOIN assessment a1 ON ar1.assessment_id = a1.id
+        WHERE ar1.course_id = ? AND a1.type_of_test IN ('Post', '2') AND ar1.status = 'Completed'
+          AND ar1.attempt_number = (
+            SELECT MAX(ar2.attempt_number)
+            FROM assessment_results ar2
+            JOIN assessment a2 ON ar2.assessment_id = a2.id
+            WHERE ar2.candidate_id = ar1.candidate_id 
+              AND ar2.course_id = ar1.course_id 
+              AND a2.type_of_test IN ('Post', '2') 
+              AND ar2.status = 'Completed'
+          )
       ) post_res ON ce.candidate_id = post_res.candidate_id
       WHERE ce.course_id = ? AND (ce.status != 'Deleted' OR ce.status IS NULL)
     `;
@@ -498,11 +565,14 @@ class CourseEnrollmentDao {
     return rows;
   }
 
-  static async generateCertificate(courseId, candidateId, certificateId) {
-    const currentDate = new Date().toISOString().slice(0, 10);
+  static async generateCertificate(courseId, candidateId, certificateId, generationDate = null) {
+    const generatedDate = generationDate || new Date().toISOString().slice(0, 10);
     const [result] = await pool.execute(
-      "UPDATE courses_enrollment SET certficate_generated = ?, generated_date = ? WHERE course_id = ? AND candidate_id = ?",
-      [certificateId, currentDate, courseId, candidateId],
+      `UPDATE courses_enrollment
+       SET certficate_generated = ?,
+           generated_date = COALESCE(generated_date, ?)
+       WHERE course_id = ? AND candidate_id = ?`,
+      [certificateId, generatedDate, courseId, candidateId],
     );
     return result.affectedRows > 0;
   }

@@ -19,6 +19,60 @@ const {
 const { generateTrainingReportPdf } = require("../utils/trainingReportPdf");
 const { getFrontendUrl } = require("../utils/urlUtils");
 
+const hasPassedPostAssessment = async (courseId, candidateId) => {
+  const [rows] = await pool.execute(
+    `SELECT ar.score, ar.attempt_number
+     FROM assessment_results ar
+     JOIN assessment a ON ar.assessment_id = a.id
+     WHERE ar.candidate_id = ?
+       AND ar.course_id = ?
+       AND a.course_id = ar.course_id
+       AND a.type_of_test IN ('Post', '2')
+       AND ar.status = 'Completed'
+     ORDER BY ar.attempt_number DESC, ar.created_at DESC
+     LIMIT 1`,
+    [candidateId, courseId],
+  );
+
+  if (rows.length === 0) return false;
+
+  const score = Number(rows[0].score);
+  const attempt = Number(rows[0].attempt_number) || 1;
+  const requiredScore = attempt > 1 ? 70 : 60;
+
+  return !Number.isNaN(score) && score >= requiredScore;
+};
+
+const getCourseLocationDetails = async (course = {}) => {
+  if (course.location_id) {
+    const LocationDao = require("../dao/LocationDao");
+    const location = await LocationDao.getLocationById(course.location_id);
+    if (location) {
+      return {
+        name: location.location_name || "",
+        address: location.address || "",
+        map_link: location.google_map_link || "",
+      };
+    }
+    
+    // Fallback: location_id might contain a location name (legacy data)
+    const locationByName = await LocationDao.getLocationByName(course.location_id);
+    if (locationByName) {
+      return {
+        name: locationByName.location_name || "",
+        address: locationByName.address || "",
+        map_link: locationByName.google_map_link || "",
+      };
+    }
+  }
+
+  return {
+    name: course.other_location || course.location || course.location_id || "",
+    address: "",
+    map_link: "",
+  };
+};
+
 exports.createCourse = async (req, res) => {
   try {
     const { topic: topicId, start_date, end_date, type_of_course } = req.body;
@@ -31,10 +85,14 @@ exports.createCourse = async (req, res) => {
     const topicName = masterCourse.topic;
 
     // Generate Course ID using Topic Name (format: Topic/Year/Number)
-    const year = new Date().getFullYear();
-    const count = await ActiveCourseDao.getLastCourseId(topicName);
-    const nextId = (count + 1).toString().padStart(3, "0");
-    const course_id = `${topicName}/${year}/${nextId}`;
+    const year = start_date
+      ? new Date(start_date).getFullYear()
+      : new Date().getFullYear();
+    const course_id = await ActiveCourseDao.generateNextCourseId({
+      topic: topicName,
+      year,
+      isOuthouse: false,
+    });
 
     req.body.course_id = course_id;
     req.body.topic = topicName; // Store Name in DB, not UUID
@@ -265,63 +323,88 @@ exports.emailPrimaryTrainer = async (req, res) => {
     const trainerIds = [];
     if (course.primary_trainer_id) trainerIds.push(course.primary_trainer_id);
     if (course.secondary_trainer_ids) {
-      const secondaries = course.secondary_trainer_ids.split(",").map(id => id.trim()).filter(Boolean);
+      const secondaries = course.secondary_trainer_ids
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
       trainerIds.push(...secondaries);
     }
 
     if (trainerIds.length === 0) {
-      return res.status(400).json({ message: "No trainers assigned to this course" });
+      return res
+        .status(400)
+        .json({ message: "No trainers assigned to this course" });
     }
 
     // Fetch Candidates List
     const candidates = await CourseEnrollmentDao.getEnrolledCandidates(courseId);
-    let candidatesHtml = `<p style="color: #64748b; font-style: italic;">No candidates enrolled yet.</p>`;
 
-    if (candidates && candidates.length > 0) {
-      candidatesHtml = `
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid #e2e8f0; font-family: sans-serif; font-size: 14px;">
-          <thead>
-            <tr style="background-color: #f8fafc; text-align: left; color: #1e293b;">
-              <th>Name</th>
-              <th>Email</th>
-              <th>Rank</th>
-              <th>Manager</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${candidates.map(c => `
-              <tr style="border-bottom: 1px solid #e2e8f0; color: #334155;">
-                <td>${c.first_name || ''} ${c.last_name || ''}</td>
-                <td>${c.email || '-'}</td>
-                <td>${c.rank || '-'}</td>
-                <td>${c.manager || '-'}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
+    // Fetch Trainer details for primary and secondary names
+    let primaryTrainerName = "";
+    if (course.primary_trainer_id) {
+      const pTrainer = await trainerDao.getTrainerById(course.primary_trainer_id);
+      if (pTrainer) {
+        primaryTrainerName = `${pTrainer.first_name || ""} ${pTrainer.last_name || ""}`.trim();
+      }
+    }
+
+    const secondaryTrainerNames = [];
+    if (course.secondary_trainer_ids) {
+      const secIds = course.secondary_trainer_ids
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      for (const sId of secIds) {
+        const sTrainer = await trainerDao.getTrainerById(sId);
+        if (sTrainer) {
+          secondaryTrainerNames.push(
+            `${sTrainer.first_name || ""} ${sTrainer.last_name || ""}`.trim()
+          );
+        }
+      }
     }
 
     const subject = `Course Assignment Notification - ${course.course_name}`;
+    const trainingLocation = await getCourseLocationDetails(course);
 
-    const portalUrl = getFrontendUrl();
+    const startDateFormatted = course.start_date
+      ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+      : "-";
+    const endDateFormatted = course.end_date
+      ? new Date(course.end_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+      : "-";
+
+    const { getCourseTrainerHtml } = require("../utils/emailTemplateRenderer");
     let successfullySent = 0;
+
     for (const trainerId of trainerIds) {
       const trainer = await trainerDao.getTrainerById(trainerId);
       if (trainer && trainer.email) {
-        const { getCourseTrainerHtml } = require("../utils/emailTemplateRenderer");
-        const startDateFormatted = course.start_date ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '-';
-        const endDateFormatted = course.end_date ? new Date(course.end_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '-';
         const html = getCourseTrainerHtml({
-          trainer_name: `${trainer.first_name || ''} ${trainer.last_name || ''}`,
+          trainer_name: `${trainer.first_name || ""} ${trainer.last_name || ""}`.trim(),
           course_name: course.course_name,
-          course_id: course.course_id || course.id || '',
+          course_id: course.course_id || course.id || "",
+          topic: course.topic || course.master_course_name || "",
+          course_type: course.course_type || course.type_of_course || "",
+          course_level: course.course_level || "",
           start_date: startDateFormatted,
           end_date: endDateFormatted,
-          duration: course.duration || course.no_of_days || '',
-          training_location: course.type_of_location === "Online" ? "Online" : (course.other_location || course.type_of_location || ''),
-          whatsapp_group_link: course.whatsapp_link || '',
-          description: course.description || ''
+          start_time: course.start_time || "09:30",
+          end_time: course.end_time || "17:30",
+          duration: course.duration || course.no_of_days || "",
+          location_type: course.type_of_location || "",
+          training_location: trainingLocation.name,
+          training_address: trainingLocation.address,
+          training_map_link: trainingLocation.map_link,
+          zoom_link: course.zoom_link || "",
+          zoom_username: course.zoom_username || "",
+          zoom_password: course.zoom_password || "",
+          whatsapp_group_link: course.whatsapp_link || "",
+          primary_trainer_name: primaryTrainerName,
+          secondary_trainer_names: secondaryTrainerNames.join(", "),
+          remarks: course.remarks || "",
+          description: course.description || "",
+          candidates: candidates || [],
         });
         await emailService.sendEmail(trainer.email, subject, html);
         successfullySent++;
@@ -330,10 +413,14 @@ exports.emailPrimaryTrainer = async (req, res) => {
 
     await ActiveCourseDao.update(courseId, { primary_trainer_email_status: 1 });
 
-    res.status(200).json({ message: `Email sent to ${successfullySent} trainer(s)` });
+    res
+      .status(200)
+      .json({ message: `Email sent to ${successfullySent} trainer(s)` });
   } catch (error) {
     console.error("Error emailing trainers:", error);
-    res.status(500).json({ message: "Error sending email", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error sending email", error: error.message });
   }
 };
 const isOnlineCourse = (course) => course?.type_of_location === "Online";
@@ -373,18 +460,7 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
     </p>
   `;
 
-  let training_location_name = "";
-  let training_address = "";
-  let training_map_link = "";
-  if (course.location_id) {
-    const LocationDao = require("../dao/LocationDao");
-    const location = await LocationDao.getLocationById(course.location_id);
-    if (location) {
-      training_location_name = location.location_name;
-      training_address = location.address;
-      training_map_link = location.google_map_link;
-    }
-  }
+  const trainingLocation = await getCourseLocationDetails(course);
 
   let trainer_name = "";
   if (course.primary_trainer_id) {
@@ -396,8 +472,12 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
   }
 
   let venue = null;
+  let venueFiles = [];
   if (type === "offline") {
     venue = await CourseEnrollmentDao.getCandidateVenueDetails(course.id, candidateEnrollment.candidate_id);
+    if (venue) {
+      venueFiles = await HotelFilesDao.getFilesByEnrollmentId(venue.id);
+    }
   }
 
   const start_date = course.start_date ? new Date(course.start_date).toLocaleDateString("en-GB").replace(/\//g, '-') : '';
@@ -416,7 +496,13 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
       trainer_name,
       start_time: course.start_time,
       end_time: course.end_time,
+      location_type: course.type_of_location || '',
+      training_location_name: trainingLocation.name,
+      training_address: trainingLocation.address,
+      training_map_link: trainingLocation.map_link,
       meeting_link: course.zoom_link,
+      zoom_username: course.zoom_username,
+      zoom_password: course.zoom_password,
       whatsapp_link: course.whatsapp_link,
       email: candidateEnrollment.email,
       approveLink,
@@ -434,13 +520,15 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
       reporting_time: course.reporting_time,
       start_time: course.start_time,
       end_time: course.end_time,
-      training_location_name,
-      training_address,
-      training_map_link,
+      location_type: course.type_of_location || '',
+      training_location_name: trainingLocation.name,
+      training_address: trainingLocation.address,
+      training_map_link: trainingLocation.map_link,
       venue_name: venue ? venue.venue_name : '',
       venue_address: venue ? venue.venue_address : '',
       venue_contact: venue ? venue.venue_contact : '',
       venue_map_link: venue ? venue.venue_map_link : '',
+      attachment_file_names: venueFiles.map(f => f.file_name),
       whatsapp_link: course.whatsapp_link,
       email: candidateEnrollment.email,
       approveLink,
@@ -449,7 +537,13 @@ const sendCandidateEmailNotification = async (course, candidateEnrollment, type)
     });
   }
 
-  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html);
+  // Build email attachments from venue files
+  const emailAttachments = venueFiles.map(f => ({
+    filename: f.file_name,
+    path: path.join(__dirname, '..', 'uploads', 'venues', f.file_name),
+  }));
+
+  await emailService.sendEmail(candidateEnrollment.email, `Course Enrollment - ${course.course_name}`, html, candidateEnrollment.cc_email, emailAttachments);
   await CourseEnrollmentDao.updateEmailStatus(course.id, candidateEnrollment.candidate_id, 1, type === "online" ? "Online" : "Offline");
 };
 
@@ -469,7 +563,14 @@ exports.emailCandidate = async (req, res) => {
     // Enforce strict check for Offline Course Welcome Letter
     if (type === "offline") {
       const venue = await CourseEnrollmentDao.getCandidateVenueDetails(courseId, candidateId);
-      if (!venue || !venue.venue_name || !venue.venue_address || !venue.venue_contact || !venue.from_date || !venue.to_date) {
+      const venueName = String(venue?.venue_name || "").trim();
+      const isLocalVenue = venueName.toLowerCase() === "local";
+      const missingVenueDates = !venue?.from_date || !venue?.to_date;
+      const missingHotelDetails =
+        !isLocalVenue &&
+        (!venueName || !venue?.venue_address || !venue?.venue_contact);
+
+      if (!venue || missingVenueDates || missingHotelDetails) {
         return res.status(400).json({ 
           message: "Hotel details and venue date range must be entered for candidate before sending offline welcome letter." 
         });
@@ -708,6 +809,28 @@ exports.updateStatusPool = async (req, res) => {
   }
 };
 
+exports.updateLastVessel = async (req, res) => {
+  try {
+    const { lastVessel } = req.body;
+    await CourseEnrollmentDao.updateLastVessel(req.params.id, req.params.candidateId, lastVessel);
+    res.status(200).json({ message: "Last vessel updated" });
+  } catch (error) {
+    console.error("Error updating last vessel:", error);
+    res.status(500).json({ message: "Error updating last vessel", error: error.message });
+  }
+};
+
+exports.updateCcEmail = async (req, res) => {
+  try {
+    const { ccEmail } = req.body;
+    await CourseEnrollmentDao.updateCcEmail(req.params.id, req.params.candidateId, ccEmail);
+    res.status(200).json({ message: "CC email updated" });
+  } catch (error) {
+    console.error("Error updating CC email:", error);
+    res.status(500).json({ message: "Error updating CC email", error: error.message });
+  }
+};
+
 exports.updateObserverStatus = async (req, res) => {
   try {
     const { isObserver } = req.body;
@@ -761,7 +884,7 @@ exports.sendAssessmentEmail = async (req, res) => {
     const { candidateId, assessmentId } = req.body;
     const pool = require("../config/db");
     const [candidateRows] = await pool.execute(
-      `SELECT u.first_name, u.last_name, u.email, ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool
+      `SELECT u.first_name, u.last_name, u.email, ce.is_present, ce.absent_reasons, ce.is_observer, ce.status, ce.status_pool, ce.cc_email
        FROM users u
        JOIN courses_enrollment ce ON u.id = ce.candidate_id AND ce.course_id = ?
        WHERE u.id = ?`,
@@ -784,7 +907,7 @@ exports.sendAssessmentEmail = async (req, res) => {
     const score = await pool.execute("SELECT score FROM assessment_results WHERE assessment_id = ? AND candidate_id = ? AND course_id = ? AND status = 'Completed' ORDER BY attempt_number DESC LIMIT 1", [assessmentId, candidateId, id]);
 
     const html = getAssessmentResultTemplate(`${candidate.first_name} ${candidate.last_name}`, course.course_name, assessmentRows[0]?.type_of_test, score[0][0]?.score || 0);
-    await emailService.sendEmail(candidate.email, `Assessment Results - ${course.course_name}`, html);
+    await emailService.sendEmail(candidate.email, `Assessment Results - ${course.course_name}`, html, candidate.cc_email);
     res.status(200).json({ message: "Email sent" });
   } catch (error) {
     console.error("Error sending assessment email:", error);
@@ -847,7 +970,12 @@ exports.generateCertificate = async (req, res) => {
     const { candidateId, issueDate } = req.body;
     const existing = await CertificateDao.getByCandidateAndCourse(candidateId, activeCourseId);
     if (existing) {
-      await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, existing.id);
+      await CourseEnrollmentDao.generateCertificate(
+        activeCourseId,
+        candidateId,
+        existing.id,
+        existing.added_date || existing.issue_date,
+      );
       return res.status(200).json({ success: true, message: "Already exists", certificate_id: existing.id });
     }
     // Check if candidate is an observer — observers cannot generate certificates
@@ -866,6 +994,10 @@ exports.generateCertificate = async (req, res) => {
     const [candidateRows] = await pool.execute(
       "SELECT cp.nationality FROM users u LEFT JOIN candidate_profiles cp ON u.id = cp.user_id WHERE u.id = ?",
       [candidateId],
+    );
+    const [enrollmentRows] = await pool.execute(
+      "SELECT status_pool FROM courses_enrollment WHERE course_id = ? AND candidate_id = ? LIMIT 1",
+      [activeCourseId, candidateId],
     );
     const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);
     const { certificate_no, subid } = await generateCertificateNumber({
@@ -890,6 +1022,7 @@ exports.generateCertificate = async (req, res) => {
           ? course.other_location
           : course.type_of_location,
       course_conduct: course.type_of_location === "Online" ? "ONL" : "ONS",
+      status_pool: enrollmentRows[0]?.status_pool || null,
       from_date: course.start_date,
       to_date: course.end_date,
       issue_date: generationDate,
@@ -901,14 +1034,17 @@ exports.generateCertificate = async (req, res) => {
       subid
     });
 
-    await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, newCert.id);
+    await CourseEnrollmentDao.generateCertificate(activeCourseId, candidateId, newCert.id, generationDate);
 
     // Send email notification to candidate
     try {
       if (candidateId) {
         const [candidateRows] = await pool.execute(
-          "SELECT first_name, last_name, email FROM users WHERE id = ?",
-          [candidateId],
+          `SELECT u.first_name, u.last_name, u.email, ce.cc_email
+           FROM users u
+           LEFT JOIN courses_enrollment ce ON u.id = ce.candidate_id AND ce.course_id = ?
+           WHERE u.id = ?`,
+          [activeCourseId, candidateId],
         );
         const candidate = candidateRows[0];
 
@@ -922,6 +1058,7 @@ exports.generateCertificate = async (req, res) => {
             candidate.email,
             `Certificate Generated - ${course.course_name}`,
             html,
+            candidate.cc_email
           );
         }
       }
@@ -982,6 +1119,12 @@ exports.sendFeedbackEmail = async (req, res) => {
       );
       if (existing.length > 0) continue; // Skip if already submitted
 
+      const passedPostAssessment = await hasPassedPostAssessment(
+        id,
+        candidate.candidate_id || candidate.id,
+      );
+      if (!passedPostAssessment) continue;
+
       if (candidate.email) {
         const html = getFeedbackRequestTemplate(
           `${candidate.first_name || ""} ${candidate.last_name || ""}`.trim() || candidate.candidate_name,
@@ -990,7 +1133,8 @@ exports.sendFeedbackEmail = async (req, res) => {
         await emailService.sendEmail(
           candidate.email,
           `Course Feedback Request - ${course.course_name}`,
-          html
+          html,
+          candidate.cc_email
         );
         count++;
       }

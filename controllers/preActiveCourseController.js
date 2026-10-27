@@ -1,6 +1,8 @@
 const PreActiveCourseDao = require("../dao/PreActiveCourseDao");
 const NominatorDao = require("../dao/nominatorDao");
 const CourseEnrollmentDao = require("../dao/CourseEnrollmentDao");
+const ActiveCourseDao = require("../dao/ActiveCourseDao");
+const MasterCourseDao = require("../dao/MasterCourseDao");
 const emailService = require("../utils/emailService");
 const { getFrontendUrl } = require("../utils/urlUtils");
 
@@ -180,6 +182,19 @@ const sendCourseNotificationsToNominators = async (courseId) => {
   const nominators = nominatorsResult.data || []; // Fix iteration bug
   let sentCount = 0;
 
+  const locationOfTraining =
+    course.location_name ||
+    course.other_location ||
+    course.type_of_location ||
+    course.location ||
+    "-";
+  const typeOfCourse =
+    course.course_type || course.type_of_course || "-";
+  const courseDescription = course.description || "-";
+  const remarks = course.remarks || "-";
+
+  const { getNominationRequestHtml } = require("../utils/emailTemplateRenderer");
+
   for (const nominator of nominators) {
     if (nominator.email) {
       const token = await PreActiveCourseDao.createToken(
@@ -191,18 +206,18 @@ const sendCourseNotificationsToNominators = async (courseId) => {
       const frontendUrl = getFrontendUrl();
       const portalLink = `${frontendUrl}/nominate/${token}`;
 
-      const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
       const subject = `Nomination Request for Course: ${course.course_name}`;
-      const html = getBaseEmailHtml(`
-                  <h3>Dear ${getNominatorDisplayName(nominator)},</h3>
-                  <p>We invite you to nominate candidates for the upcoming course: <strong>${course.course_name}</strong>.</p>
-                  <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                  <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                  <p>Please click the link below to access the nomination portal. This link is secure and unique to you.</p>
-                  <a href="${portalLink}" style="padding: 10px 15px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Nominate Candidates</a>
-                  <br><br>
-                  <p>Link expires in 7 days.</p>
-              `);
+      const html = getNominationRequestHtml({
+        nominator_name: getNominatorDisplayName(nominator),
+        course_name: course.course_name,
+        start_date: formatEmailDateTime(course.start_date, "start"),
+        end_date: formatEmailDateTime(course.end_date, "end"),
+        location_of_training: locationOfTraining,
+        type_of_course: typeOfCourse,
+        description: courseDescription,
+        remarks: remarks,
+        portal_link: portalLink,
+      });
 
       await emailService.sendEmail(nominator.email, subject, html);
       sentCount++;
@@ -296,6 +311,19 @@ exports.nominatorAddCandidate = async (req, res) => {
     const frontendUrl = getFrontendUrl();
     const enrollmentIds = [];
 
+    const locationOfTraining =
+      course.location_name ||
+      course.other_location ||
+      course.type_of_location ||
+      course.location ||
+      "-";
+    const typeOfCourse =
+      course.course_type || course.type_of_course || "-";
+    const courseDescription = course.description || "-";
+    const remarks = course.remarks || "-";
+
+    const { getCourseNominationApprovalHtml } = require("../utils/emailTemplateRenderer");
+
     for (const candidateData of candidates) {
       const enrollmentId = await PreActiveCourseDao.enrollCandidateByNominator(
         courseId,
@@ -317,18 +345,18 @@ exports.nominatorAddCandidate = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
 
-        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = getBaseEmailHtml(`
-                    <h3>Dear ${enrollment.first_name},</h3>
-                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `);
+        const html = getCourseNominationApprovalHtml({
+          candidate_name: enrollment.first_name || enrollment.candidate_name,
+          course_name: course.course_name,
+          start_date: formatEmailDateTime(course.start_date, "start"),
+          end_date: formatEmailDateTime(course.end_date, "end"),
+          location_of_training: locationOfTraining,
+          type_of_course: typeOfCourse,
+          description: courseDescription,
+          remarks: remarks,
+          portal_link: portalLink,
+        });
 
         await emailService.sendEmail(enrollment.email, subject, html);
       }
@@ -372,6 +400,19 @@ exports.adminAddCandidate = async (req, res) => {
       ? [req.user.first_name, req.user.last_name].filter(Boolean).join(" ") || req.user.email
       : "Admin";
 
+    const locationOfTraining =
+      course.location_name ||
+      course.other_location ||
+      course.type_of_location ||
+      course.location ||
+      "-";
+    const typeOfCourse =
+      course.course_type || course.type_of_course || "-";
+    const courseDescription = course.description || "-";
+    const remarks = course.remarks || "-";
+
+    const { getCourseNominationApprovalHtml } = require("../utils/emailTemplateRenderer");
+
     for (const candidateData of candidates) {
       const enrollmentId = await PreActiveCourseDao.enrollCandidateByAdmin(
         courseId,
@@ -391,18 +432,18 @@ exports.adminAddCandidate = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${candidateToken}`;
 
-        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = getBaseEmailHtml(`
-                    <h3>Dear ${enrollment.first_name},</h3>
-                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `);
+        const html = getCourseNominationApprovalHtml({
+          candidate_name: enrollment.first_name || enrollment.candidate_name,
+          course_name: course.course_name,
+          start_date: formatEmailDateTime(course.start_date, "start"),
+          end_date: formatEmailDateTime(course.end_date, "end"),
+          location_of_training: locationOfTraining,
+          type_of_course: typeOfCourse,
+          description: courseDescription,
+          remarks: remarks,
+          portal_link: portalLink,
+        });
 
         await emailService.sendEmail(enrollment.email, subject, html);
       }
@@ -448,6 +489,19 @@ exports.notifyCandidates = async (req, res) => {
 
     const frontendUrl = getFrontendUrl();
 
+    const locationOfTraining =
+      course.location_name ||
+      course.other_location ||
+      course.type_of_location ||
+      course.location ||
+      "-";
+    const typeOfCourse =
+      course.course_type || course.type_of_course || "-";
+    const courseDescription = course.description || "-";
+    const remarks = course.remarks || "-";
+
+    const { getCourseNominationApprovalHtml } = require("../utils/emailTemplateRenderer");
+
     for (const candidate of enrollments) {
       // Only send to pending candidates
       if (
@@ -461,18 +515,18 @@ exports.notifyCandidates = async (req, res) => {
         );
         const portalLink = `${frontendUrl}/candidate-approval/${token}`;
 
-        const { getBaseEmailHtml } = require("../utils/emailTemplateRenderer");
         const subject = `Course Nomination Approval - ${course.course_name}`;
-        const html = getBaseEmailHtml(`
-                    <h3>Dear ${candidate.candidate_name},</h3>
-                    <p>You have been nominated to attend the course <strong>${course.course_name}</strong>.</p>
-                    <p><strong>Start Date:</strong> ${formatEmailDateTime(course.start_date, "start")}</p>
-                    <p><strong>End Date:</strong> ${formatEmailDateTime(course.end_date, "end")}</p>
-                    <p>Please review your nomination and provide your approval or rejection along with any remarks by clicking the link below:</p>
-                    <a href="${portalLink}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none; border-radius: 5px; display: inline-block;">Review Nomination</a>
-                    <br><br>
-                    <p>Link expires in 7 days.</p>
-                `);
+        const html = getCourseNominationApprovalHtml({
+          candidate_name: candidate.candidate_name || candidate.first_name,
+          course_name: course.course_name,
+          start_date: formatEmailDateTime(course.start_date, "start"),
+          end_date: formatEmailDateTime(course.end_date, "end"),
+          location_of_training: locationOfTraining,
+          type_of_course: typeOfCourse,
+          description: courseDescription,
+          remarks: remarks,
+          portal_link: portalLink,
+        });
 
         await emailService.sendEmail(candidate.email, subject, html);
         sentCount++;
@@ -607,12 +661,44 @@ exports.convertToActiveCourse = async (req, res) => {
       });
     }
 
-    const success = await PreActiveCourseDao.convertToActiveCourse(courseId);
+    const courseType = course.course_type || course.type_of_course;
+    const isOuthouse = PreActiveCourseDao.isOuthouseCourseType(courseType);
+    const targetType = isOuthouse
+      ? "Outhouse Course"
+      : "Active Course";
+
+    let topic = course.topic;
+    if (!topic && course.master_course_id) {
+      const masterCourse = await MasterCourseDao.getById(course.master_course_id);
+      if (masterCourse) {
+        topic = masterCourse.topic;
+      }
+    }
+
+    const year = course.start_date
+      ? new Date(course.start_date).getFullYear()
+      : new Date().getFullYear();
+
+    const newCourseId = await ActiveCourseDao.generateNextCourseId({
+      topic,
+      year,
+      isOuthouse,
+    });
+
+    const success = await PreActiveCourseDao.convertToActiveCourse(
+      courseId,
+      courseType,
+      newCourseId,
+      course.course_id,
+    );
 
     if (success) {
-      res
-        .status(200)
-        .json({ message: "Course converted to Active Course successfully." });
+      res.status(200).json({
+        message: `Course converted to ${targetType} successfully with Course ID ${newCourseId}.`,
+        target_type: targetType,
+        target_id: courseId,
+        course_id: newCourseId,
+      });
     } else {
       res.status(400).json({ message: "Failed to convert course." });
     }
@@ -659,6 +745,63 @@ exports.getNominatorToken = async (req, res) => {
     res.status(200).json({ token });
   } catch (error) {
     console.error("Error getting nominator token:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.getCandidateNominations = async (req, res) => {
+  try {
+    const candidateId = req.user?.id;
+    if (!candidateId) {
+      return res.status(401).json({ message: "Candidate user not found." });
+    }
+
+    const { status, search } = req.query;
+    const rows = await PreActiveCourseDao.getCandidateNominations(candidateId, {
+      status,
+      search,
+    });
+    res.status(200).json({ data: rows });
+  } catch (error) {
+    console.error("Error fetching candidate nominations:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+exports.candidateApprovalByEnrollment = async (req, res) => {
+  try {
+    const candidateId = req.user?.id;
+    const { enrollmentId } = req.params;
+    const { status, remark, rejection_reason, available_date } = req.body;
+
+    if (!candidateId) {
+      return res.status(401).json({ message: "Candidate user not found." });
+    }
+
+    if (!["Approved", "Rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status provided." });
+    }
+
+    const success = await PreActiveCourseDao.updateCandidateApprovalByEnrollment(
+      enrollmentId,
+      candidateId,
+      status,
+      remark,
+      rejection_reason,
+      available_date,
+    );
+
+    if (success) {
+      res.status(200).json({ message: `Nomination ${status.toLowerCase()} successfully.` });
+    } else {
+      res.status(400).json({ message: "Failed to update nomination status or enrollment not found." });
+    }
+  } catch (error) {
+    console.error("Error updating candidate nomination:", error);
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });

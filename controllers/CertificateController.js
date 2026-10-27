@@ -12,13 +12,28 @@ const {
 
 exports.listCertificates = async (req, res) => {
   try {
-    const { search, status, active_course_id, trainer_id, page, limit } =
+    const { search, status, active_course_id, trainer_id, candidate_id, is_hidden, page, limit, sortBy, sortOrder } =
       req.query;
+    const filters = { status, active_course_id, trainer_id, candidate_id, is_hidden };
+
+    // Role-based filtering
+    if (req.user?.role) {
+      const role = req.user.role.toLowerCase();
+      if (role === "trainer") {
+        filters.trainer_id = req.user.id;
+      } else if (role === "candidate") {
+        filters.candidate_id = req.user.id;
+        filters.is_hidden = 0;
+      }
+    }
+
     const certificates = await CertificateDao.getAll(
       search,
-      { status, active_course_id, trainer_id },
+      filters,
       page,
       limit,
+      sortBy,
+      sortOrder
     );
     res.status(200).json(certificates);
   } catch (error) {
@@ -101,6 +116,11 @@ exports.generateCertificate = async (req, res) => {
     const trainer = await trainerDao.getTrainerById(course.primary_trainer_id);
     if (!trainer) return res.status(404).json({ message: "Trainer not found" });
 
+    const [enrollmentRows] = await pool.execute(
+      "SELECT status_pool FROM courses_enrollment WHERE course_id = ? AND candidate_id = ? LIMIT 1",
+      [activeCourseId, candidateId],
+    );
+
     const type = masterCourse.certificate_type || "Others";
     const topic = normalizeTopic(course.topic);
     const generationDate = issueDate || new Date().toISOString().slice(0, 10);
@@ -126,6 +146,7 @@ exports.generateCertificate = async (req, res) => {
           ? course.other_location
           : course.type_of_location,
       course_conduct: course.type_of_location === "Online" ? "ONL" : "ONS",
+      status_pool: enrollmentRows[0]?.status_pool || null,
       from_date: course.start_date,
       to_date: course.end_date,
       days: course.no_of_days,
@@ -144,6 +165,7 @@ exports.generateCertificate = async (req, res) => {
       activeCourseId,
       candidateId,
       newCertificate.id,
+      generationDate,
     );
 
     res.status(201).json({

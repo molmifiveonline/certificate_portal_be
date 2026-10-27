@@ -241,7 +241,7 @@ class TrainerDao {
   static async getDashboardStats(trainerId) {
     // 1. Total Active Courses (where trainer is primary)
     const [coursesCount] = await db.query(
-      "SELECT COUNT(*) as count FROM courses WHERE primary_trainer_id = ? AND status != 'Deleted' AND status != 'Course Completed' AND status != 'Cancelled'",
+      "SELECT COUNT(*) as count FROM courses WHERE primary_trainer_id = ? AND status != 'Deleted'",
       [trainerId],
     );
 

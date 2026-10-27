@@ -2,6 +2,7 @@ const ReimbursementDao = require("../dao/reimbursementDao");
 const LogDao = require("../dao/LogDao");
 const { generateReimbursementPdf } = require("../utils/reimbursementPdf");
 const path = require("path");
+const fs = require("fs");
 const emailService = require("../utils/emailService");
 const {
   getReimbursementApprovedTemplate,
@@ -44,16 +45,37 @@ const getAccountsRecipients = () =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath) => {
+const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath, ccEmails = []) => {
   const recipients = getAccountsRecipients();
   if (!recipients.length || !process.env.SMTP_USER) {
     return;
   }
 
-  const disclaimer = `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 12px 16px; margin-bottom: 16px; border-radius: 4px; font-family: Arial, sans-serif; color: #856404; font-size: 14px;"><strong>⚠️ PLEASE IGNORE:</strong> This email is generated for internal review purposes only. Please ignore this email; no action is required.</div>`;
-  const subject = `[PLEASE IGNORE] Approved Reimbursement - ${reimbursement.claim_number}`;
+  let finalPdfPath = pdfFilePath;
+  if (!finalPdfPath || !fs.existsSync(finalPdfPath)) {
+    try {
+      const generated = await generateReimbursementPdf(reimbursement);
+      finalPdfPath = generated.filePath;
+    } catch (genError) {
+      console.error("Failed to regenerate reimbursement PDF for accounts email:", genError);
+    }
+  }
+
+  const candidateName = (reimbursement.candidate_name || "").trim();
+  const courseDetails = (
+    reimbursement.active_course_name ||
+    reimbursement.course_name ||
+    reimbursement.course_id ||
+    ""
+  ).trim();
+  const subjectParts = [
+    "Approved Reimbursement",
+    reimbursement.claim_number,
+    candidateName,
+    courseDetails,
+  ].filter(Boolean);
+  const subject = subjectParts.join(" - ");
   const html = `
-    ${disclaimer}
     <p>Hello Accounts Team,</p>
     <p>A reimbursement claim has been approved.</p>
     <p><strong>Claim No:</strong> ${reimbursement.claim_number}</p>
@@ -74,18 +96,31 @@ const sendAccountsApprovalEmail = async (reimbursement, pdfFilePath) => {
     },
   });
 
-  await transporter.sendMail({
+  const attachments = [];
+  if (finalPdfPath && fs.existsSync(finalPdfPath)) {
+    attachments.push({
+      filename: `${reimbursement.claim_number || "reimbursement"}.pdf`,
+      path: finalPdfPath,
+    });
+  }
+
+  const mailOptions = {
     from: process.env.SMTP_FROM,
     to: recipients.join(","),
     subject,
     html,
-    attachments: [
-      {
-        filename: `${reimbursement.claim_number}.pdf`,
-        path: pdfFilePath,
-      },
-    ],
-  });
+    attachments,
+  };
+
+  const parsedCc = Array.isArray(ccEmails)
+    ? ccEmails.filter(Boolean)
+    : (ccEmails || "").split(",").map((e) => e.trim()).filter(Boolean);
+
+  if (parsedCc.length > 0) {
+    mailOptions.cc = parsedCc.join(",");
+  }
+
+  await transporter.sendMail(mailOptions);
 };
 
 const logAction = async (req, action, details) => {
@@ -278,9 +313,14 @@ exports.approveReimbursement = async (req, res) => {
       return res.status(409).json({ message: "Invalid reimbursement status for approval" });
     }
 
+    const ccEmails = (req.body?.cc_emails || "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+
     reimbursement.admin_remarks = req.body.remarks || null;
     const { filePath, fileUrl } = await generateReimbursementPdf(reimbursement);
-    await sendAccountsApprovalEmail(reimbursement, filePath);
+    await sendAccountsApprovalEmail(reimbursement, filePath, ccEmails);
 
     // Send email to Candidate
     try {
@@ -294,6 +334,7 @@ exports.approveReimbursement = async (req, res) => {
           reimbursement.candidate_email,
           `Reimbursement Approved - ${reimbursement.claim_number}`,
           html,
+          ccEmails.length ? ccEmails.join(",") : null,
         );
       }
     } catch (emailError) {
@@ -416,18 +457,34 @@ exports.resendApprovedEmail = async (req, res) => {
       return res.status(404).json({ message: "Reimbursement not found" });
     }
 
-    if (reimbursement.status !== REIMBURSEMENT_STATUS.APPROVED || !reimbursement.approved_pdf_url) {
+    if (reimbursement.status !== REIMBURSEMENT_STATUS.APPROVED) {
       return res.status(409).json({ message: "Only approved reimbursements can be resent" });
     }
 
-    const pdfFilePath = reimbursement.approved_pdf_url.startsWith("/uploads/")
-      ? path.join(
-          __dirname,
-          "..",
-          reimbursement.approved_pdf_url.replace(/^\//, ""),
-        )
-      : reimbursement.approved_pdf_url;
-    await sendAccountsApprovalEmail(reimbursement, pdfFilePath);
+    let pdfFilePath = reimbursement.approved_pdf_url
+      ? (reimbursement.approved_pdf_url.startsWith("/uploads/")
+          ? path.join(
+              __dirname,
+              "..",
+              reimbursement.approved_pdf_url.replace(/^\//, ""),
+            )
+          : reimbursement.approved_pdf_url)
+      : null;
+
+    if (!pdfFilePath || !fs.existsSync(pdfFilePath)) {
+      const { filePath, fileUrl } = await generateReimbursementPdf(reimbursement);
+      pdfFilePath = filePath;
+      if (fileUrl !== reimbursement.approved_pdf_url) {
+        await ReimbursementDao.markApproved(reimbursement.id, reimbursement.admin_remarks, fileUrl);
+      }
+    }
+
+    const ccEmails = (req.body?.cc_emails || "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    await sendAccountsApprovalEmail(reimbursement, pdfFilePath, ccEmails);
     await ReimbursementDao.createActivityLog(
       reimbursement.id,
       "approved_email_resent",
@@ -443,3 +500,104 @@ exports.resendApprovedEmail = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+exports.downloadAttachment = async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    const attachment = await ReimbursementDao.getAttachmentById(attachmentId);
+    if (!attachment || (id && String(attachment.reimbursement_id) !== String(id))) {
+      return res.status(404).json({ message: "Attachment not found" });
+    }
+
+    if (req.user && req.user.role === "Candidate") {
+      const reimbursement = await ReimbursementDao.getById(attachment.reimbursement_id);
+      if (!reimbursement || String(reimbursement.candidate_id) !== String(req.user.id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const candidatePaths = [
+      path.resolve(attachment.file_path),
+      path.join(__dirname, "..", attachment.file_path.replace(/^\//, "")),
+      path.join(__dirname, "..", "uploads", "reimbursements", "attachments", path.basename(attachment.file_path)),
+      attachment.file_url ? path.join(__dirname, "..", attachment.file_url.replace(/^\//, "")) : null,
+      attachment.file_url ? path.join(__dirname, "..", "uploads", attachment.file_url.replace(/^\/?(api\/)?uploads\/?/, "")) : null,
+    ].filter(Boolean);
+
+    let filePath = null;
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        filePath = p;
+        break;
+      }
+    }
+
+    if (!filePath) {
+      return res.status(404).json({ message: "Attachment file not found on server" });
+    }
+
+    return res.download(filePath, attachment.file_name);
+  } catch (error) {
+    console.error("Download Attachment Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+exports.deleteAttachment = async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    const reimbursement = await ReimbursementDao.getById(id);
+    if (!reimbursement) {
+      return res.status(404).json({ message: "Reimbursement not found" });
+    }
+
+    if (String(reimbursement.candidate_id) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    if (!editableStatuses.includes(reimbursement.status)) {
+      return res.status(409).json({
+        message: "Cannot remove attachments from this reimbursement in current status",
+      });
+    }
+
+    const attachment = await ReimbursementDao.getAttachmentById(attachmentId);
+    if (!attachment || (id && String(attachment.reimbursement_id) !== String(id))) {
+      return res.status(404).json({ message: "Attachment not found" });
+    }
+
+    await ReimbursementDao.deleteAttachment(attachmentId);
+
+    // Try to remove physical file if it exists
+    try {
+      const candidatePaths = [
+        path.resolve(attachment.file_path),
+        path.join(__dirname, "..", attachment.file_path.replace(/^\//, "")),
+        path.join(__dirname, "..", "uploads", "reimbursements", "attachments", path.basename(attachment.file_path)),
+      ].filter(Boolean);
+
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          fs.unlinkSync(p);
+          break;
+        }
+      }
+    } catch (fileErr) {
+      console.warn("Could not delete attachment file on disk:", fileErr.message);
+    }
+
+    await ReimbursementDao.createActivityLog(
+      id,
+      "attachment_removed",
+      `Removed attachment: ${attachment.file_name}`,
+      req.user.id,
+      req.user.role,
+    );
+
+    res.status(200).json({ message: "Attachment removed successfully" });
+  } catch (error) {
+    console.error("Delete Attachment Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+

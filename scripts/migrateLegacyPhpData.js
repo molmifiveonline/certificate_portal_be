@@ -49,6 +49,9 @@ function parseArgs() {
   else if (args.includes("--repair-all")) mode = "repair-all";
   else if (args.includes("--repair-passwords")) mode = "repair-passwords";
   else if (args.includes("--repair-trainer-permissions")) mode = "repair-trainer-permissions";
+  else if (args.includes("--repair-certificate-links")) mode = "repair-certificate-links";
+  else if (args.includes("--repair-certificate-active")) mode = "repair-certificate-active";
+  else if (args.includes("--repair-assessment-answer-order")) mode = "repair-assessment-answer-order";
   else if (args.includes("--repair-attendance")) mode = "repair-attendance";
   else if (args.includes("--repair-course-dates")) mode = "repair-course-dates";
   else if (args.includes("--repair-locations")) mode = "repair-locations";
@@ -67,6 +70,9 @@ function parseArgs() {
       mode === "repair-attendance" ||
       mode === "repair-passwords" ||
       mode === "repair-trainer-permissions" ||
+      mode === "repair-certificate-links" ||
+      mode === "repair-certificate-active" ||
+      mode === "repair-assessment-answer-order" ||
       mode === "repair-all" ||
       mode === "incremental" ||
       mode === "audit"
@@ -110,6 +116,14 @@ function assertConfig(config, label) {
 
 function legacyUuid(entityType, legacyId) {
   return uuidv5(`${entityType}:${legacyId}`, UUID_NAMESPACE);
+}
+
+function legacyUuidOrNull(entityType, legacyId) {
+  const normalized = normalizeText(legacyId);
+  if (!normalized) return null;
+  const numericId = Number(normalized);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+  return legacyUuid(entityType, normalized);
 }
 
 function normalizeText(value) {
@@ -176,6 +190,16 @@ function normalizeNamePart(value) {
   return text ? text.replace(/\s+/g, " ") : null;
 }
 
+function limitText(value, maxLength) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+function phoneOrNull(value) {
+  return limitText(value, 20);
+}
+
 function normalizeStatus(value, activeWords = ["active", "1"]) {
   if (value === undefined || value === null) return 1;
   const normalized = String(value).trim().toLowerCase();
@@ -184,7 +208,15 @@ function normalizeStatus(value, activeWords = ["active", "1"]) {
 
 function dateOrNull(value) {
   const text = normalizeText(value);
-  if (!text || text === "0000-00-00" || text.startsWith("0000-00-00")) return null;
+  if (
+    !text ||
+    text === "0000-00-00" ||
+    text.startsWith("0000-00-00") ||
+    text === "1970-01-01" ||
+    text.startsWith("1970-01-01")
+  ) {
+    return null;
+  }
   return text.slice(0, 10);
 }
 
@@ -262,8 +294,25 @@ function registrationType(value) {
   return "Others";
 }
 
-function candidateUserType(value) {
-  return registrationType(value) === "MOLMI Employee" ? "" : "others";
+function hasCandidateEmployeeId(row = {}) {
+  const text = normalizeText(row.employee_id || row.empId || row.employee_id_api);
+  if (!text) return false;
+  return !["0", "NA", "N/A", "NULL", "NONE", "-", "--"].includes(text.toUpperCase());
+}
+
+function candidateRegistrationType(row = {}) {
+  return hasCandidateEmployeeId(row) ? "MOLMI Employee" : registrationType(row.registration_type);
+}
+
+function candidateUserType(row = {}) {
+  return candidateRegistrationType(row) === "MOLMI Employee"
+    ? "molmi_employee"
+    : "others";
+}
+
+function legacyCertificateActiveValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  return Number(value) ? 0 : 1;
 }
 
 function normalizeLocationKey(value) {
@@ -757,6 +806,16 @@ async function ensureSupportTables(ctx) {
       PRIMARY KEY (scope_type, scope_key, sequence_year)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
   `);
+
+  if (
+    (await ctx.targetHasTable("assessment_answers")) &&
+    !(await ctx.targetHasColumn("assessment_answers", "answer_order"))
+  ) {
+    await ctx.target.execute(
+      "ALTER TABLE assessment_answers ADD COLUMN answer_order INT NULL AFTER is_correct",
+    );
+    ctx.columnCache.delete("assessment_answers");
+  }
 }
 
 async function resetImported(ctx) {
@@ -922,7 +981,7 @@ async function importCandidates(ctx) {
         id: userId,
         prefix: row.prefix || null,
         role_id: candidateRoleId,
-        user_type: candidateUserType(row.registration_type),
+        user_type: candidateUserType(row),
         first_name: firstName,
         middle_name: middleName,
         last_name: lastName,
@@ -933,8 +992,8 @@ async function importCandidates(ctx) {
           passwordCache,
           fallbackPassword,
         ),
-        mobile: row.mobile || null,
-        alternate_mobile: row.mobile_1 || null,
+        mobile: phoneOrNull(row.mobile),
+        alternate_mobile: phoneOrNull(row.mobile_1),
         status: normalizeStatus(row.is_active),
         created_at: dateTimeOrNull(row.created_at),
         updated_at: dateTimeOrNull(row.updated_at),
@@ -961,9 +1020,9 @@ async function importCandidates(ctx) {
       employee_id: row.empId || row.employee_id_api || null,
       manager: row.manager || null,
       rank: row.rank || row.position || null,
-      whatsapp_number: row.whatsapp || null,
-      alternate_mobile: row.alternate_mobile || row.mobile_1 || null,
-      registration_type: registrationType(row.registration_type),
+      whatsapp_number: phoneOrNull(row.whatsapp),
+      alternate_mobile: phoneOrNull(row.alternate_mobile || row.mobile_1),
+      registration_type: candidateRegistrationType(row),
       vessel_type: row.vessel_type || null,
       last_vessel_name: row.vessel_name || null,
       manning_company: row.manning_company || null,
@@ -1030,7 +1089,7 @@ async function repairCandidateNames(ctx) {
     }
 
     const desired = parseCandidateName(legacyRow);
-    const desiredRegistrationType = registrationType(legacyRow.registration_type);
+    const desiredRegistrationType = candidateRegistrationType(legacyRow);
     const desiredStatus = normalizeStatus(legacyRow.is_active);
     const userId = mapped.new_id;
     const desiredEmail = await resolveLegacyUserEmail(
@@ -1101,7 +1160,7 @@ async function repairCandidateNames(ctx) {
           id: userId,
           prefix: legacyRow.prefix || null,
           role_id: candidateRoleId,
-          user_type: candidateUserType(legacyRow.registration_type),
+          user_type: candidateUserType(legacyRow),
           first_name: desired.firstName,
           middle_name: desired.middleName,
           last_name: desired.lastName,
@@ -1112,8 +1171,8 @@ async function repairCandidateNames(ctx) {
             passwordCache,
             fallbackPassword,
           ),
-          mobile: legacyRow.mobile || null,
-          alternate_mobile: legacyRow.mobile_1 || null,
+          mobile: phoneOrNull(legacyRow.mobile),
+          alternate_mobile: phoneOrNull(legacyRow.mobile_1),
           status: desiredStatus,
           created_at: dateTimeOrNull(legacyRow.created_at),
           updated_at: dateTimeOrNull(legacyRow.updated_at),
@@ -1134,8 +1193,8 @@ async function repairCandidateNames(ctx) {
           legacyRow.gender || null,
           desiredEmail,
           await legacyPasswordHash(legacyRow.password, passwordCache, fallbackPassword),
-          legacyRow.mobile || null,
-          legacyRow.mobile_1 || null,
+          phoneOrNull(legacyRow.mobile),
+          phoneOrNull(legacyRow.mobile_1),
           desiredStatus,
           mapped.user_id,
         ],
@@ -1164,8 +1223,8 @@ async function repairCandidateNames(ctx) {
         employee_id: legacyRow.empId || legacyRow.employee_id_api || null,
         manager: legacyRow.manager || null,
         rank: legacyRow.rank || legacyRow.position || null,
-        whatsapp_number: legacyRow.whatsapp || null,
-        alternate_mobile: legacyRow.alternate_mobile || legacyRow.mobile_1 || null,
+        whatsapp_number: phoneOrNull(legacyRow.whatsapp),
+        alternate_mobile: phoneOrNull(legacyRow.alternate_mobile || legacyRow.mobile_1),
         registration_type: desiredRegistrationType,
         vessel_type: legacyRow.vessel_type || null,
         last_vessel_name: legacyRow.vessel_name || null,
@@ -1327,11 +1386,9 @@ async function repairLegacyPasswordsForEntity(ctx, entityType, tableName, option
       continue;
     }
 
-    const alreadyMatches = ctx.dryRun
-      ? looksLikeBcryptHash(legacyPassword)
-        ? mapped.password === legacyPassword
-        : await bcrypt.compare(legacyPassword, mapped.password || "")
-      : false;
+    const alreadyMatches = looksLikeBcryptHash(legacyPassword)
+      ? mapped.password === legacyPassword
+      : await bcrypt.compare(legacyPassword, mapped.password || "");
 
     if (alreadyMatches) {
       summary.unchanged += 1;
@@ -1717,6 +1774,7 @@ async function importCourseAttendance(ctx) {
     const generatedDate = legacyAttendanceDateOrNull(row.generated_date);
     const certificateExpiryDate = legacyAttendanceDateOrNull(row.certificate_expiry_date);
     const markAsRead = Number(row.mark_as_read || 0) ? 1 : 0;
+    const activeValue = legacyCertificateActiveValue(row.active);
     const attendanceByDate = new Map();
 
     for (const date of presentDates) {
@@ -1735,7 +1793,7 @@ async function importCourseAttendance(ctx) {
          SET is_present = ?, holidays = ?, absent_reasons = ?,
              generated_date = COALESCE(generated_date, ?),
              certificate_issue_date = COALESCE(certificate_issue_date, ?),
-             active = COALESCE(active, ?)
+             active = COALESCE(?, active)
          WHERE course_id = ? AND candidate_id = ?`,
         [
           presentDates.join(","),
@@ -1743,7 +1801,7 @@ async function importCourseAttendance(ctx) {
           JSON.stringify(absentReasons),
           generatedDate,
           generatedDate,
-          row.active === null || row.active === undefined ? null : Number(row.active || 0),
+          activeValue,
           courseId,
           candidateId,
         ],
@@ -1802,6 +1860,102 @@ async function importCourseAttendance(ctx) {
   ctx.increment("course_attendance_rows", summary.attendance_rows);
   ctx.increment("course_attendance_enrollment_updates", summary.enrollment_updates);
   ctx.increment("course_attendance_missing_enrollment", summary.missing_enrollment);
+}
+
+async function repairCertificateActiveFlags(ctx) {
+  const rows = (await ctx.selectLegacy("course_attendance"))
+    .map((row) => ({
+      course_id: legacyUuid(ENTITY.course, row.course_id),
+      candidate_id: legacyUuid(ENTITY.candidate, row.candidate_id),
+      active: legacyCertificateActiveValue(row.active),
+    }))
+    .filter((row) => row.active !== null);
+
+  const summary = {
+    checked: rows.length,
+    mismatched: 0,
+    updated: 0,
+    missing_enrollment: 0,
+    samples: [],
+  };
+
+  if (rows.length === 0) {
+    ctx.summary.certificate_active_repair = summary;
+    return;
+  }
+
+  await ctx.target.execute(
+    `CREATE TEMPORARY TABLE tmp_legacy_certificate_active (
+       course_id VARCHAR(36) NOT NULL,
+       candidate_id VARCHAR(36) NOT NULL,
+       active TINYINT NOT NULL,
+       PRIMARY KEY (course_id, candidate_id)
+     ) ENGINE=MEMORY DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
+  );
+
+  const batchSize = 500;
+  for (let index = 0; index < rows.length; index += batchSize) {
+    const batch = rows.slice(index, index + batchSize);
+    const placeholders = batch.map(() => "(?, ?, ?)").join(", ");
+    const values = batch.flatMap((row) => [row.course_id, row.candidate_id, row.active]);
+    await ctx.target.execute(
+      `INSERT INTO tmp_legacy_certificate_active (course_id, candidate_id, active)
+       VALUES ${placeholders}
+       ON DUPLICATE KEY UPDATE active = VALUES(active)`,
+      values,
+    );
+  }
+
+  summary.missing_enrollment = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM tmp_legacy_certificate_active tmp
+     LEFT JOIN courses_enrollment ce
+       ON ce.course_id = tmp.course_id AND ce.candidate_id = tmp.candidate_id
+     WHERE ce.id IS NULL`,
+  );
+  summary.mismatched = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM courses_enrollment ce
+     JOIN tmp_legacy_certificate_active tmp
+       ON tmp.course_id = ce.course_id AND tmp.candidate_id = ce.candidate_id
+     WHERE COALESCE(ce.active, -1) <> tmp.active`,
+  );
+
+  const [samples] = await ctx.target.query(
+    `SELECT
+       CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name,
+       c.course_id AS course_code,
+       ce.active AS current_active,
+       tmp.active AS legacy_mapped_active
+     FROM courses_enrollment ce
+     JOIN tmp_legacy_certificate_active tmp
+       ON tmp.course_id = ce.course_id AND tmp.candidate_id = ce.candidate_id
+     JOIN users u ON u.id = ce.candidate_id
+     JOIN courses c ON c.id = ce.course_id
+     WHERE COALESCE(ce.active, -1) <> tmp.active
+     ORDER BY c.course_id, candidate_name
+     LIMIT 25`,
+  );
+  summary.samples = samples;
+
+  if (!ctx.dryRun) {
+    const [result] = await ctx.target.execute(
+      `UPDATE courses_enrollment ce
+       JOIN tmp_legacy_certificate_active tmp
+         ON tmp.course_id = ce.course_id AND tmp.candidate_id = ce.candidate_id
+       SET ce.active = tmp.active
+       WHERE COALESCE(ce.active, -1) <> tmp.active`,
+    );
+    summary.updated = result.affectedRows || 0;
+  }
+
+  ctx.summary.certificate_active_repair = summary;
+  ctx.increment("certificate_active_checked", summary.checked);
+  ctx.increment("certificate_active_mismatched", summary.mismatched);
+  if (!ctx.dryRun) ctx.increment("certificate_active_updated", summary.updated);
+  ctx.increment("certificate_active_missing_enrollment", summary.missing_enrollment);
 }
 
 async function importHotelFiles(ctx) {
@@ -1931,12 +2085,10 @@ async function importCertificates(ctx) {
         type: row.type || "Others",
         topic: row.topic || "UNKNOWN",
         course_level: row.course_level || "Operational",
-        course_id: legacyUuid(ENTITY.masterCourse, row.course_id),
-        active_course_id: row.active_course_id
-          ? legacyUuid(ENTITY.course, row.active_course_id)
-          : null,
-        candidate_id: legacyUuid(ENTITY.candidate, row.candidate_id),
-        trainer_id: row.trainer_id ? legacyUuid(ENTITY.trainer, row.trainer_id) : null,
+        course_id: legacyUuidOrNull(ENTITY.masterCourse, row.course_id),
+        active_course_id: legacyUuidOrNull(ENTITY.course, row.active_course_id),
+        candidate_id: legacyUuidOrNull(ENTITY.candidate, row.candidate_id),
+        trainer_id: legacyUuidOrNull(ENTITY.trainer, row.trainer_id),
         location: row.location || null,
         course_conduct: row.course_conduct || null,
         status: row.status || 0,
@@ -1955,6 +2107,122 @@ async function importCertificates(ctx) {
     );
     ctx.increment("certificate");
   }
+}
+
+async function repairCertificateCourseLinks(ctx) {
+  const matchSql = `
+    SELECT
+      cert.id AS certificate_id,
+      cert.certificate_no,
+      cert.candidate_id,
+      cert.issue_date,
+      cert.topic AS certificate_topic,
+      ce.id AS enrollment_id,
+      ce.course_id,
+      ce.certficate_generated AS existing_generated_certificate,
+      ce.generated_date,
+      c.course_id AS course_code,
+      c.course_name,
+      c.topic AS course_topic,
+      CONCAT_WS(' ', u.first_name, NULLIF(u.middle_name, ''), u.last_name) AS candidate_name
+    FROM certificates cert
+    JOIN courses_enrollment ce
+      ON ce.candidate_id = cert.candidate_id
+     AND DATE(ce.generated_date) = DATE(cert.issue_date)
+     AND (ce.status != 'Deleted' OR ce.status IS NULL)
+    JOIN courses c ON c.id = ce.course_id
+    JOIN users u ON u.id = cert.candidate_id
+    JOIN legacy_id_map cert_map
+      ON cert_map.entity_type = ?
+     AND cert_map.new_id = cert.id
+    JOIN legacy_id_map course_map
+      ON course_map.entity_type = ?
+     AND course_map.new_id = ce.course_id
+    JOIN legacy_id_map candidate_map
+      ON candidate_map.entity_type = ?
+     AND candidate_map.new_id = cert.candidate_id
+    WHERE cert.active_course_id IS NULL
+      AND cert.candidate_id IS NOT NULL
+      AND cert.issue_date IS NOT NULL
+      AND (
+        UPPER(TRIM(cert.topic)) = UPPER(TRIM(c.topic))
+        OR UPPER(cert.certificate_no) LIKE CONCAT(UPPER(TRIM(c.topic)), '/%')
+      )
+      AND (
+        ce.certficate_generated IS NULL
+        OR ce.certficate_generated = ''
+        OR ce.certficate_generated = cert.id
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM courses_enrollment ce2
+        JOIN courses c2 ON c2.id = ce2.course_id
+        WHERE ce2.candidate_id = cert.candidate_id
+          AND DATE(ce2.generated_date) = DATE(cert.issue_date)
+          AND (ce2.status != 'Deleted' OR ce2.status IS NULL)
+          AND (
+            UPPER(TRIM(cert.topic)) = UPPER(TRIM(c2.topic))
+            OR UPPER(cert.certificate_no) LIKE CONCAT(UPPER(TRIM(c2.topic)), '/%')
+          )
+          AND ce2.id <> ce.id
+      )
+  `;
+  const params = [ENTITY.certificate, ENTITY.course, ENTITY.candidate];
+  const [matches] = await ctx.target.query(matchSql, params);
+  const summary = {
+    checked_unlinked_certificates: await scalar(
+      ctx.target,
+      `SELECT COUNT(*) AS total
+       FROM certificates cert
+       JOIN legacy_id_map lim
+         ON lim.entity_type = ? AND lim.new_id = cert.id
+       WHERE cert.active_course_id IS NULL
+         AND cert.candidate_id IS NOT NULL
+         AND cert.issue_date IS NOT NULL`,
+      [ENTITY.certificate],
+    ),
+    unique_matches: matches.length,
+    linked_certificates: ctx.dryRun ? 0 : matches.length,
+    samples: matches.slice(0, 25).map((row) => ({
+      certificate_no: row.certificate_no,
+      candidate_name: row.candidate_name,
+      course_code: row.course_code || row.course_name,
+      issue_date: row.issue_date,
+      generated_date: row.generated_date,
+    })),
+  };
+
+  if (!ctx.dryRun) {
+    for (const match of matches) {
+      await ctx.target.execute(
+        `UPDATE certificates
+         SET active_course_id = ?
+         WHERE id = ? AND active_course_id IS NULL`,
+        [match.course_id, match.certificate_id],
+      );
+      await ctx.target.execute(
+        `UPDATE courses_enrollment
+         SET certficate_generated = ?,
+             generated_date = COALESCE(generated_date, ?)
+         WHERE id = ?
+           AND (
+             certficate_generated IS NULL
+             OR certficate_generated = ''
+             OR certficate_generated = ?
+           )`,
+        [
+          match.certificate_id,
+          dateOrNull(match.issue_date),
+          match.enrollment_id,
+          match.certificate_id,
+        ],
+      );
+    }
+  }
+
+  ctx.summary.certificate_course_link_repair = summary;
+  ctx.increment("certificate_course_link_unique_matches", matches.length);
+  if (!ctx.dryRun) ctx.increment("certificate_course_link_repaired", matches.length);
 }
 
 async function importQuestionBank(ctx) {
@@ -2121,13 +2389,17 @@ async function importAssessments(ctx) {
 async function importAssessmentResults(ctx, assessmentCourseMap) {
   const rows = await ctx.selectLegacy("assessment_score");
   const answerResultMap = new Map();
+  const answerOrderMap = new Map();
   for (const row of rows) {
     const id = legacyUuid(ENTITY.assessmentResult, row.id);
     String(row.assess_que_ans_ids || "")
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean)
-      .forEach((answerId) => answerResultMap.set(answerId, id));
+      .forEach((answerId, index) => {
+        answerResultMap.set(answerId, id);
+        answerOrderMap.set(answerId, index + 1);
+      });
     const total = Number(row.num_of_questions || 0);
     const score = Number(row.score || 0);
     await ctx.upsert(
@@ -2148,10 +2420,12 @@ async function importAssessmentResults(ctx, assessmentCourseMap) {
     );
     ctx.increment("assessment_results");
   }
-  return answerResultMap;
+  return { answerResultMap, answerOrderMap };
 }
 
-async function importAssessmentAnswers(ctx, answerResultMap) {
+async function importAssessmentAnswers(ctx, answerMaps) {
+  const answerResultMap = answerMaps.answerResultMap || answerMaps;
+  const answerOrderMap = answerMaps.answerOrderMap || new Map();
   const rows = await ctx.selectLegacy("assessment_question_answer");
   const alreadyMapped = await ctx.mappedLegacyIds(ENTITY.assessmentAnswer);
   const batchRows = [];
@@ -2197,6 +2471,7 @@ async function importAssessmentAnswers(ctx, answerResultMap) {
       question_id: legacyUuid(ENTITY.question, row.question_bank_id),
       selected_option: row.question_bank_option || null,
       is_correct: 0,
+      answer_order: answerOrderMap.get(String(row.id)) || null,
       created_at: dateTimeOrNull(row.created_at),
     });
     batchMaps.push({ entityType: ENTITY.assessmentAnswer, legacyId: row.id, newId: id });
@@ -2204,6 +2479,119 @@ async function importAssessmentAnswers(ctx, answerResultMap) {
   }
 
   await ctx.upsertMany("assessment_answers", batchRows, batchMaps);
+}
+
+async function repairAssessmentAnswerOrder(ctx) {
+  const scoreRows = await ctx.selectLegacy("assessment_score");
+  const rows = [];
+
+  for (const scoreRow of scoreRows) {
+    String(scoreRow.assess_que_ans_ids || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .forEach((answerId, index) => {
+        rows.push({
+          id: legacyUuid(ENTITY.assessmentAnswer, answerId),
+          answer_order: index + 1,
+        });
+      });
+  }
+
+  const summary = {
+    checked: rows.length,
+    mismatched: 0,
+    updated: 0,
+    missing_answer: 0,
+    samples: [],
+  };
+
+  if (rows.length === 0) {
+    ctx.summary.assessment_answer_order_repair = summary;
+    return;
+  }
+
+  if (!ctx.dryRun) await ensureSupportTables(ctx);
+  const hasAnswerOrderColumn = await ctx.targetHasColumn(
+    "assessment_answers",
+    "answer_order",
+  );
+  const currentOrderExpression = hasAnswerOrderColumn
+    ? "COALESCE(aa.answer_order, -1)"
+    : "-1";
+  const currentOrderSelect = hasAnswerOrderColumn
+    ? "aa.answer_order"
+    : "NULL";
+
+  await ctx.target.execute(
+    `CREATE TEMPORARY TABLE tmp_legacy_assessment_answer_order (
+       id VARCHAR(36) NOT NULL,
+       answer_order INT NOT NULL,
+       PRIMARY KEY (id)
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
+  );
+
+  const batchSize = 500;
+  for (let index = 0; index < rows.length; index += batchSize) {
+    const batch = rows.slice(index, index + batchSize);
+    const placeholders = batch.map(() => "(?, ?)").join(", ");
+    const values = batch.flatMap((row) => [row.id, row.answer_order]);
+    await ctx.target.execute(
+      `INSERT INTO tmp_legacy_assessment_answer_order (id, answer_order)
+       VALUES ${placeholders}
+       ON DUPLICATE KEY UPDATE answer_order = VALUES(answer_order)`,
+      values,
+    );
+  }
+
+  summary.missing_answer = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM tmp_legacy_assessment_answer_order tmp
+     LEFT JOIN assessment_answers aa ON aa.id = tmp.id
+     WHERE aa.id IS NULL`,
+  );
+  summary.mismatched = await scalar(
+    ctx.target,
+    `SELECT COUNT(*) AS total
+     FROM assessment_answers aa
+     JOIN tmp_legacy_assessment_answer_order tmp ON tmp.id = aa.id
+     WHERE ${currentOrderExpression} <> tmp.answer_order`,
+  );
+
+  const [samples] = await ctx.target.query(
+    `SELECT
+       lim.legacy_id,
+       qb.question,
+       ${currentOrderSelect} AS current_order,
+       tmp.answer_order AS legacy_order
+     FROM assessment_answers aa
+     JOIN tmp_legacy_assessment_answer_order tmp ON tmp.id = aa.id
+     LEFT JOIN question_bank qb ON qb.id = aa.question_id
+     LEFT JOIN legacy_id_map lim
+       ON lim.entity_type = ? AND lim.new_id = aa.id
+     WHERE ${currentOrderExpression} <> tmp.answer_order
+     ORDER BY lim.legacy_id
+     LIMIT 25`,
+    [ENTITY.assessmentAnswer],
+  );
+  summary.samples = samples;
+
+  if (!ctx.dryRun) {
+    const [result] = await ctx.target.execute(
+      `UPDATE assessment_answers aa
+       JOIN tmp_legacy_assessment_answer_order tmp ON tmp.id = aa.id
+       SET aa.answer_order = tmp.answer_order
+       WHERE COALESCE(aa.answer_order, -1) <> tmp.answer_order`,
+    );
+    summary.updated = result.affectedRows || 0;
+  }
+
+  ctx.summary.assessment_answer_order_repair = summary;
+  ctx.increment("assessment_answer_order_checked", summary.checked);
+  ctx.increment("assessment_answer_order_mismatched", summary.mismatched);
+  if (!ctx.dryRun) ctx.increment("assessment_answer_order_updated", summary.updated);
+  ctx.increment("assessment_answer_order_missing_answer", summary.missing_answer);
 }
 
 function feedbackQuestionType(format) {
@@ -2230,7 +2618,7 @@ async function importFeedback(ctx) {
       id,
       name: row.name || `Legacy Category ${row.id}`,
       description: row.description || null,
-      status: row.status === undefined || row.status === 0 ? 1 : row.status,
+      status: normalizeStatus(row.status),
       created_at: dateTimeOrNull(row.created_at),
       updated_at: dateTimeOrNull(row.updated_at),
     });
@@ -2549,7 +2937,7 @@ async function auditCandidateRegistrationTypes(ctx, audit) {
   let mismatches = 0;
 
   for (const row of legacyRows) {
-    const desired = registrationType(row.registration_type);
+    const desired = candidateRegistrationType(row);
     const actual = targetByLegacyId.get(String(row.id));
     desiredCounts[desired] = (desiredCounts[desired] || 0) + 1;
     actualCounts[actual || "missing"] = (actualCounts[actual || "missing"] || 0) + 1;
@@ -2559,6 +2947,7 @@ async function auditCandidateRegistrationTypes(ctx, audit) {
         samples.push({
           legacy_id: row.id,
           email: row.email,
+          employee_id: row.empId || row.employee_id_api || null,
           legacy_registration_type: row.registration_type,
           expected: desired,
           actual,
@@ -2934,6 +3323,36 @@ async function auditCertificates(ctx, audit) {
     { legacyCertificates, mappedCertificates, duplicateRows },
   );
 
+  const [missingSignatureRows] = await ctx.target.query(
+    `SELECT lim.legacy_id, c.certificate_no,
+            CASE
+              WHEN c.trainer_id IS NULL THEN 'missing trainer_id'
+              WHEN t.id IS NULL THEN 'missing trainer user'
+              WHEN tp.user_id IS NULL THEN 'missing trainer profile'
+              WHEN tp.digital_signature IS NULL OR TRIM(tp.digital_signature) = '' THEN 'missing digital_signature'
+              ELSE 'ok'
+            END AS reason
+     FROM certificates c
+     LEFT JOIN users t ON t.id = c.trainer_id
+     LEFT JOIN trainer_profiles tp ON tp.user_id = t.id
+     LEFT JOIN legacy_id_map lim ON lim.entity_type = ? AND lim.new_id = c.id
+     WHERE c.trainer_id IS NULL
+        OR t.id IS NULL
+        OR tp.user_id IS NULL
+        OR tp.digital_signature IS NULL
+        OR TRIM(tp.digital_signature) = ''
+     ORDER BY c.certificate_no
+     LIMIT 25`,
+    [ENTITY.certificate],
+  );
+  addAuditCheck(
+    audit,
+    "certificate trainer signatures available where trainer data exists",
+    missingSignatureRows.length ? "warn" : "pass",
+    "warning",
+    { samples: missingSignatureRows },
+  );
+
   const [sequenceMismatches] = await ctx.target.query(
     `SELECT expected.scope_type, expected.scope_key, expected.sequence_year,
             expected.expected_next_subid, cs.next_subid
@@ -3159,6 +3578,9 @@ async function repairAll(ctx) {
   await repairLocations(ctx);
   await repairCourseDates(ctx);
   await importCourseAttendance(ctx);
+  await repairCertificateActiveFlags(ctx);
+  await repairCertificateCourseLinks(ctx);
+  await repairAssessmentAnswerOrder(ctx);
   await repairLegacyPasswords(ctx);
   await seedTrainerPermissions(ctx);
 
@@ -3199,6 +3621,7 @@ async function runMigration(ctx) {
       await importHotelDetails(ctx);
       await importHotelFiles(ctx);
       await importCertificates(ctx);
+      await repairCertificateCourseLinks(ctx);
       await importQuestionBank(ctx);
       assessmentCourseMap = await importAssessments(ctx);
     }
@@ -3295,7 +3718,17 @@ async function main() {
       await ensureSupportTables(ctx);
       await repairLegacyPasswords(ctx);
     } else if (args.mode === "repair-trainer-permissions") {
+      await ensureSupportTables(ctx);
       await seedTrainerPermissions(ctx);
+    } else if (args.mode === "repair-certificate-links") {
+      await ensureSupportTables(ctx);
+      await repairCertificateCourseLinks(ctx);
+    } else if (args.mode === "repair-certificate-active") {
+      await ensureSupportTables(ctx);
+      await repairCertificateActiveFlags(ctx);
+    } else if (args.mode === "repair-assessment-answer-order") {
+      await ensureSupportTables(ctx);
+      await repairAssessmentAnswerOrder(ctx);
     } else {
       await runMigration(ctx);
     }
