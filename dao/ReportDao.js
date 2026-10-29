@@ -482,7 +482,12 @@ class ReportDao {
         DATE(c.start_date) AS start_date,
         DATE(c.end_date) AS end_date,
         MONTH(c.end_date) AS end_month,
-        GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0) AS training_period_days,
+        CASE
+          WHEN c.no_of_days IS NOT NULL AND c.no_of_days > 0 
+               AND c.no_of_days <= (DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1)
+          THEN c.no_of_days
+          ELSE GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0)
+        END AS training_period_days,
         COUNT(
           DISTINCT CASE
             WHEN (ce.is_observer = 0 OR ce.is_observer IS NULL)
@@ -507,7 +512,12 @@ class ReportDao {
         DATE(c.start_date),
         DATE(c.end_date),
         MONTH(c.end_date),
-        GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0)
+        CASE
+          WHEN c.no_of_days IS NOT NULL AND c.no_of_days > 0 
+               AND c.no_of_days <= (DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1)
+          THEN c.no_of_days
+          ELSE GREATEST(DATEDIFF(DATE(c.end_date), DATE(c.start_date)) + 1, 0)
+        END
       ORDER BY course_name ASC, training_period_days ASC, DATE(c.end_date) ASC
     `;
 
