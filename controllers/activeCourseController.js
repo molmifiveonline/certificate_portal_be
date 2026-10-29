@@ -105,7 +105,7 @@ exports.createCourse = async (req, res) => {
     }
 
     // Auto-calculate no_of_days from start_date and end_date
-    if (start_date && end_date) {
+    if (start_date && end_date && (!req.body.no_of_days || Number(req.body.no_of_days) <= 0)) {
       const diffMs = new Date(end_date) - new Date(start_date);
       const diffDays = Math.max(
         0,
@@ -227,7 +227,7 @@ exports.updateCourse = async (req, res) => {
 
     const start = req.body.start_date;
     const end = req.body.end_date;
-    if (start && end) {
+    if (start && end && (!req.body.no_of_days || Number(req.body.no_of_days) <= 0)) {
       const diffMs = new Date(end) - new Date(start);
       const diffDays = Math.max(
         0,
