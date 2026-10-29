@@ -471,6 +471,7 @@ class ReportDao {
     const query = `
       SELECT
         c.id AS course_id,
+        c.status,
         COALESCE(
           NULLIF(TRIM(c.master_course_name), ''),
           NULLIF(TRIM(mc.master_course_name), ''),
@@ -503,6 +504,7 @@ class ReportDao {
         AND DATE(c.end_date) < ?
       GROUP BY
         c.id,
+        c.status,
         COALESCE(
           NULLIF(TRIM(c.master_course_name), ''),
           NULLIF(TRIM(mc.master_course_name), ''),
