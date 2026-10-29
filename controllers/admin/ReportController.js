@@ -1364,11 +1364,14 @@ function normalizeTrainingRecordRows(courseInstances) {
     const section = getTrainingRecordSection(item);
     const key = `${section}__${courseName.toLowerCase()}`;
 
+    const isCancelled = item.status === "Cancelled";
+
     if (!grouped.has(key)) {
       grouped.set(key, {
         section,
         courseName,
         trainingPeriodDays: new Set(),
+        activeTrainingPeriodDays: new Set(),
         monthlyTime: Array(12).fill(0),
         monthlyTrainees: Array(12).fill(0),
         monthlyMandays: Array(12).fill(0),
@@ -1378,6 +1381,9 @@ function normalizeTrainingRecordRows(courseInstances) {
     const current = grouped.get(key);
     if (trainingPeriodDays) {
       current.trainingPeriodDays.add(trainingPeriodDays);
+      if (!isCancelled) {
+        current.activeTrainingPeriodDays.add(trainingPeriodDays);
+      }
     }
     current.monthlyTime[monthIndex] += 1;
     current.monthlyTrainees[monthIndex] += traineeCount;
@@ -1386,6 +1392,11 @@ function normalizeTrainingRecordRows(courseInstances) {
 
   return Array.from(grouped.values())
     .map((item, index) => {
+      const effectiveDays =
+        item.activeTrainingPeriodDays.size > 0
+          ? item.activeTrainingPeriodDays
+          : item.trainingPeriodDays;
+
       const totalTime = item.monthlyTime.reduce((sum, value) => sum + value, 0);
       const totalTrainees = item.monthlyTrainees.reduce(
         (sum, value) => sum + value,
@@ -1396,7 +1407,7 @@ function normalizeTrainingRecordRows(courseInstances) {
         serialNo: index + 1,
         section: item.section,
         courseName: item.courseName,
-        trainingPeriodDays: formatTrainingPeriodDays(item.trainingPeriodDays),
+        trainingPeriodDays: formatTrainingPeriodDays(effectiveDays),
         monthlyTime: item.monthlyTime,
         monthlyTrainees: item.monthlyTrainees,
         monthlyMandays: item.monthlyMandays,
