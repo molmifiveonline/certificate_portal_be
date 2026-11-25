@@ -47,6 +47,7 @@
     "fontkit": "1.9.0",
     "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.3",
+    "linebreak": "1.0.2",
     "multer": "^2.0.2",
     "mysql2": "^3.16.2",
     "nodemailer": "^8.0.0",
@@ -60,6 +61,7 @@
     "playwright": "^1.60.0"
   },
   "overrides": {
-    "fontkit": "1.9.0"
+    "fontkit": "1.9.0",
+    "linebreak": "1.0.2"
   }
 }
