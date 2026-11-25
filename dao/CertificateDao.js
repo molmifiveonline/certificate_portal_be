@@ -447,6 +447,7 @@ class CertificateDao {
   static async getById(id) {
     const query = `
       SELECT c.*,
+             COALESCE(NULLIF(mc.description, ''), c.description1) as description1,
              DATE_FORMAT(c.issue_date, '%Y-%m-%d') as issue_date,
              DATE_FORMAT(c.added_date, '%Y-%m-%d') as added_date,
              DATE_FORMAT(COALESCE(c.from_date, ac.start_date), '%Y-%m-%d') as from_date,

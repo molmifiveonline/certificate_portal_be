@@ -234,6 +234,14 @@ exports.createManualCertificate = async (req, res) => {
       return res.status(400).json({ message: "No candidates selected" });
     }
 
+    let masterDescription = null;
+    if (data.course_id) {
+      const masterCourse = await MasterCourseDao.getById(data.course_id);
+      if (masterCourse) {
+        masterDescription = masterCourse.description;
+      }
+    }
+
     const createdCertificates = [];
 
     for (let i = 0; i < candidateIds.length; i++) {
@@ -241,6 +249,10 @@ exports.createManualCertificate = async (req, res) => {
 
       let certData = { ...data, candidate_id: candidateId };
       certData.topic = normalizeTopic(certData.topic);
+
+      if (!certData.description1 && masterDescription) {
+        certData.description1 = masterDescription;
+      }
 
       const type = certData.type || "Others";
       const [candidateRows] = await pool.execute(
